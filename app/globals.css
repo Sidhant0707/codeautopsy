@@ -1,0 +1,98 @@
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700,500&f[]=satoshi@400,500,700&f[]=azeret-mono@400&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* Your original variables */
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* The new motion spec variables added safely */
+  --bg-deep: #0e0e0e;
+  --bg-card: rgba(22, 22, 22, 0.6);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --accent-gray: #f1f5f9;
+  --text-dim: #94a3b8;
+  --easing-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --delay-base: 0.1s;
+  --duration-mid: 0.6s;
+  --duration-slow: 1.2s;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  /* Safely combined your original body styles with the new ones */
+  background: var(--bg-deep); /* Uses the dark theme background from the spec */
+  color: var(--accent-gray);
+  font-family: 'Satoshi', Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+/* The new motion spec classes */
+.cabinet { font-family: 'Cabinet Grotesk', sans-serif; }
+.mono { font-family: 'Azeret Mono', monospace; }
+
+.hover-depth-card {
+  transition: transform 0.4s var(--easing-expo), border-color 0.4s ease;
+  transform-style: preserve-3d;
+}
+
+.hover-depth-card:hover {
+  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(-8px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.glass-card {
+  background: rgba(22, 22, 22, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.btn-gray {
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-gray:hover {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.gray-soft-glow {
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.03);
+}
+
+.hero-gradient {
+  background: radial-gradient(circle at top center, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+}
+
+.font-satoshi {
+  font-family: 'Satoshi', sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(500%); }
+}
+
+.animate-scan {
+  animation: scan 2s linear infinite;
+}

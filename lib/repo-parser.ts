@@ -1,0 +1,69 @@
+export interface RepoFile {
+  path: string;
+  score: number;
+  role: "entry" | "config" | "core" | "test" | "other";
+}
+
+const ENTRY_PATTERNS = [
+  "index.js", "index.ts", "main.js", "main.ts",
+  "app.js", "app.ts", "server.js", "server.ts",
+  "main.py", "app.py", "manage.py", "wsgi.py",
+  "main.go", "cmd/main.go",
+];
+
+const CONFIG_PATTERNS = [
+  "package.json", "tsconfig.json", "pyproject.toml",
+  "requirements.txt", "Dockerfile", "docker-compose.yml",
+  ".env.example", "next.config", "vite.config", "webpack.config",
+];
+
+const TEST_PATTERNS = ["test", "spec", "__tests__", "fixtures"];
+
+export function classifyAndScoreFiles(paths: string[]): RepoFile[] {
+  return paths.map((path) => {
+    const filename = path.split("/").pop() || "";
+    let score = 0;
+    let role: RepoFile["role"] = "other";
+
+    // Entry points — highest value
+    if (ENTRY_PATTERNS.some((p) => filename === p || path.endsWith("/" + p))) {
+      score += 10;
+      role = "entry";
+    }
+
+    // Config files — high value
+    if (CONFIG_PATTERNS.some((p) => filename.startsWith(p) || path.endsWith(p))) {
+      score += 6;
+      role = "config";
+    }
+
+    // Test files — deprioritize
+    if (TEST_PATTERNS.some((p) => path.includes(p))) {
+      score -= 4;
+      role = "test";
+    }
+
+    // Files in root or src/ — more important
+    const depth = path.split("/").length;
+    if (depth === 1) score += 3;
+    if (path.startsWith("src/") || path.startsWith("lib/")) score += 2;
+
+    // Penalize deeply nested files
+    if (depth > 4) score -= 2;
+
+    // Deprioritize example/demo folders
+    if (path.startsWith("examples/") || path.startsWith("demo/") || path.startsWith("sample/")) {
+      score -= 5;
+      if (role === "entry") role = "other";
+    }
+
+    return { path, score, role };
+  });
+}
+
+export function getTopFiles(files: RepoFile[], limit = 30): RepoFile[] {
+  return files
+    .filter((f) => f.role !== "test")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}

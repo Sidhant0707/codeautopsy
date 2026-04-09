@@ -1,0 +1,84 @@
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+export interface AnalysisResult {
+  architecture_pattern: string;
+  what_it_does: string;
+  execution_flow: string[];
+  tech_stack: { name: string; purpose: string }[];
+  key_modules: { file: string; role: string; why_it_exists: string }[];
+  onboarding_guide: string[];
+  evidence_paths: string[];
+}
+
+export async function analyzeWithGemini(
+  repoName: string,
+  description: string,
+  entryPoints: string[],
+  topFiles: { path: string; role: string }[],
+  fileContents: { path: string; content: string }[]
+): Promise<AnalysisResult> {
+
+  const fileContentText = fileContents
+    .map((f) => `=== ${f.path} ===\n${f.content}`)
+    .join("\n\n");
+
+  const prompt = `
+You are a senior software engineer analyzing a GitHub repository.
+
+Repository: ${repoName}
+Description: ${description}
+Entry Points: ${entryPoints.join(", ")}
+Important Files: ${topFiles.map((f) => f.path).join(", ")}
+
+FILE CONTENTS:
+${fileContentText}
+
+Analyze this codebase and return ONLY a valid JSON object with exactly this structure:
+{
+  "architecture_pattern": "one of: MVC | Microservices | Monolith | Serverless | Event-driven | Library | CLI | Other",
+  "what_it_does": "2-3 sentence plain English explanation of what this project does",
+  "execution_flow": ["step 1", "step 2", "step 3"],
+  "tech_stack": [{ "name": "technology name", "purpose": "what it does in this project" }],
+  "key_modules": [{ "file": "exact filename from the list above", "role": "short role name", "why_it_exists": "one sentence explanation" }],
+  "onboarding_guide": ["first thing a new dev should know", "second thing", "third thing"],
+  "evidence_paths": ["list of files you actually used to draw your conclusions"]
+}
+
+Rules:
+- Only reference files I provided above
+- Do not invent filenames
+- Return only the JSON, no markdown, no backticks, no extra text
+`;
+
+  let res: Response | undefined;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    res = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2 }
+      }),
+    });
+
+    if (res.ok) break;
+
+    if ((res.status === 503 || res.status === 429) && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 3000 * attempt)); // 3s, then 6s
+      continue;
+    }
+
+    throw new Error(`Gemini API error: ${res.status}`);
+  }
+
+  if (!res || !res.ok) throw new Error("Gemini API failed after retries");
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Empty response from Gemini");
+
+  const clean = text.replace(/```json|```/g, "").trim();
+  return JSON.parse(clean) as AnalysisResult;
+}
