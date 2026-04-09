@@ -1,6 +1,3 @@
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
-
 export interface AnalysisResult {
   architecture_pattern: string;
   what_it_does: string;
@@ -18,6 +15,8 @@ export async function analyzeWithGemini(
   topFiles: { path: string; role: string }[],
   fileContents: { path: string; content: string }[]
 ): Promise<AnalysisResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const fileContentText = fileContents
     .map((f) => `=== ${f.path} ===\n${f.content}`)
@@ -54,7 +53,7 @@ Rules:
   let res: Response | undefined;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    res = await fetch(GEMINI_URL, {
+    res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -66,7 +65,7 @@ Rules:
     if (res.ok) break;
 
     if ((res.status === 503 || res.status === 429) && attempt < 3) {
-      await new Promise((r) => setTimeout(r, 3000 * attempt)); // 3s, then 6s
+      await new Promise((r) => setTimeout(r, 3000 * attempt));
       continue;
     }
 
