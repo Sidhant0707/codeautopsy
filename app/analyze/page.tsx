@@ -7,6 +7,7 @@ import { ArrowLeft, Star, FileCode, Terminal, Cpu, GitMerge, CheckCircle2, Box, 
 import { FaGithub } from "react-icons/fa";
 import MermaidDiagram from "@/components/MermaidDiagram";
 import RepoChat from "@/components/RepoChat";
+import ShareButton from "@/components/ShareButton";
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -188,6 +189,10 @@ function AnalyzeContent() {
                     <span className="mono text-xs font-bold">{data.analysis.architecture_pattern}</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex-shrink-0 mt-2 md:mt-0">
+                <ShareButton owner={data.owner} repo={data.repo} />
               </div>
             </div>
           </motion.div>

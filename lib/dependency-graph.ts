@@ -138,24 +138,37 @@ export function graphToMermaid(
   entryPoints: string[]
 ): string {
   const lines: string[] = ["graph TD"];
+
   const seen = new Set<string>();
   const queue = [...entryPoints];
   let nodes = 0;
 
-  while (queue.length > 0 && nodes < 25) {
+  // ENTRY SUBGRAPH
+  lines.push("subgraph Entry");
+  entryPoints.forEach((entry) => {
+    const id = sanitize(entry);
+    const name = entry.split("/").pop() || entry;
+    lines.push(`  ${id}["${name}"]`);
+  });
+  lines.push("end");
+
+  // DEPENDENCY GRAPH
+  while (queue.length > 0 && nodes < 30) {
     const current = queue.shift()!;
     if (seen.has(current)) continue;
     seen.add(current);
 
     const deps = graph[current] || [];
+
     for (const dep of deps.slice(0, 5)) {
       const from = current.split("/").pop() || current;
       const to = dep.split("/").pop() || dep;
-      
+
       const fromId = sanitize(current);
       const toId = sanitize(dep);
-      
-      lines.push(`  ${fromId}["${from}"] --> ${toId}["${to}"]`);
+
+      lines.push(`  ${fromId} --> ${toId}`);
+
       queue.push(dep);
     }
 
@@ -163,15 +176,7 @@ export function graphToMermaid(
   }
 
   if (lines.length === 1) {
-    if (entryPoints.length > 0) {
-      for (const entry of entryPoints.slice(0, 3)) {
-        const name = entry.split("/").pop() || entry;
-        const id = sanitize(entry);
-        lines.push(`  ${id}["${name}"]`);
-      }
-    } else {
-      lines.push(`  Project["No clear entry points detected"]`);
-    }
+    lines.push(`  A["No dependency relationships detected"]`);
   }
 
   return lines.join("\n");
