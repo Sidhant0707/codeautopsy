@@ -58,22 +58,30 @@ export async function POST(req: NextRequest) {
 
     // Classify and score files
     const scoredFiles = classifyAndScoreFiles(filteredPaths);
+
+    scoredFiles.forEach(file => {
+      if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
+        file.role = "entry";
+        file.score += 500;
+      }
+    });
+
     const topFiles = getTopFiles(scoredFiles, 20);
     const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
 
     // Fetch content of top files
     // Fetch content of top files
-const fileContents: { path: string; content: string }[] = [];
+    const fileContents: { path: string; content: string }[] = [];
 
-for (const file of topFiles.slice(0, 15)) {
-  try {
-    const content = await fetchFileContent(owner, repo, file.path);
-    const lines = content.split("\n").slice(0, 200).join("\n");
-    fileContents.push({ path: file.path, content: lines });
-  } catch {
-    // Skip files that fail
-  }
-}
+    for (const file of topFiles.slice(0, 15)) {
+      try {
+        const content = await fetchFileContent(owner, repo, file.path);
+        const lines = content.split("\n").slice(0, 500).join("\n");
+        fileContents.push({ path: file.path, content: lines });
+      } catch {
+        // Skip files that fail
+      }
+    }
 
     // Build dependency graph — real static analysis
     const dependencyGraph = buildDependencyGraph(fileContents, filteredPaths);
