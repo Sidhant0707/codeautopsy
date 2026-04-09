@@ -16,7 +16,7 @@ export async function analyzeWithGemini(
   fileContents: { path: string; content: string }[]
 ): Promise<AnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
   const fileContentText = fileContents
     .map((f) => `=== ${f.path} ===\n${f.content}`)
