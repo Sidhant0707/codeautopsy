@@ -16,11 +16,17 @@ export async function analyzeWithGemini(
   fileContents: { path: string; content: string }[]
 ): Promise<AnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  if (!apiKey) {
+  throw new Error("Missing GEMINI_API_KEY environment variable");
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const fileContentText = fileContents
-    .map((f) => `=== ${f.path} ===\n${f.content}`)
-    .join("\n\n");
+  .map((f) => {
+    const trimmed = f.content.slice(0, 1500);
+    return `=== ${f.path} ===\n${trimmed}`;
+  })
+  .join("\n\n");
 
   const prompt = `
 You are a senior software engineer analyzing a GitHub repository.
@@ -78,6 +84,13 @@ Rules:
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Empty response from Gemini");
 
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean) as AnalysisResult;
+  const jsonStart = text.indexOf("{");
+const jsonEnd = text.lastIndexOf("}");
+
+if (jsonStart === -1 || jsonEnd === -1) {
+  throw new Error("Gemini returned invalid JSON");
+}
+
+const clean = text.slice(jsonStart, jsonEnd + 1);
+return JSON.parse(clean)  as AnalysisResult;
 }
