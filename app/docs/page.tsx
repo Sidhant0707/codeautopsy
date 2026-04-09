@@ -12,7 +12,7 @@ import {
   FaLightbulb 
 } from 'react-icons/fa';
 
-const EXPO_OUT = [0.16, 1, 0.3, 1];
+const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 const staggerContainer = {
   hidden: { opacity: 0 },

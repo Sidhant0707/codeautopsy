@@ -8,7 +8,7 @@ import { FaGithub } from "react-icons/fa";
 import MermaidDiagram from "@/components/MermaidDiagram";
 import RepoChat from "@/components/RepoChat";
 
-const EXPO_OUT = [0.16, 1, 0.3, 1];
+const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 const staggerContainer = {
   hidden: { opacity: 0 },

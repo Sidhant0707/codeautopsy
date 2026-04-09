@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FaCode, FaBrain, FaRocket, FaTerminal, FaUsers } from 'react-icons/fa';
 
-const EXPO_OUT = [0.16, 1, 0.3, 1];
+const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
