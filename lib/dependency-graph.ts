@@ -101,8 +101,6 @@ export function graphToMermaid(
 ): string {
   const lines: string[] = ["graph TD"];
   const seen = new Set<string>();
-
-  // Start from entry points and trace outward
   const queue = [...entryPoints];
   let depth = 0;
 
@@ -115,25 +113,32 @@ export function graphToMermaid(
     for (const dep of deps.slice(0, 5)) {
       const from = current.split("/").pop()?.replace(/\.[^.]+$/, "") || current;
       const to = dep.split("/").pop()?.replace(/\.[^.]+$/, "") || dep;
-      lines.push(`  ${sanitize(from)} --> ${sanitize(to)}`);
+      
+      const fromId = sanitize(current);
+      const toId = sanitize(dep);
+      
+      lines.push(`  ${fromId}["${from}"] --> ${toId}["${to}"]`);
       queue.push(dep);
     }
 
     depth++;
   }
 
-  // If no connections found, show entry points alone
   if (lines.length === 1) {
-    for (const entry of entryPoints.slice(0, 3)) {
-      const name = entry.split("/").pop()?.replace(/\.[^.]+$/, "") || entry;
-      lines.push(`  ${sanitize(name)}`);
+    if (entryPoints.length > 0) {
+      for (const entry of entryPoints.slice(0, 3)) {
+        const name = entry.split("/").pop()?.replace(/\.[^.]+$/, "") || entry;
+        const id = sanitize(entry);
+        lines.push(`  ${id}["${name}"]`);
+      }
+    } else {
+      lines.push(`  Project["No clear entry points detected"]`);
     }
   }
 
   return lines.join("\n");
 }
 
-// Sanitize node names for Mermaid
 function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
