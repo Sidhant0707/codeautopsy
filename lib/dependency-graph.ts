@@ -2,14 +2,50 @@ export interface DependencyGraph {
   [file: string]: string[];
 }
 
-// Extract local imports from a file's content
+function extractHtmlDependencies(content: string): string[] {
+  const deps: string[] = [];
+
+  const scriptRegex = /<script[^>]*src=["']([^"']+)["']/g;
+  const cssRegex = /<link\s+[^>]*href=["']([^"']+)["']/g;
+
+  let match;
+
+  while ((match = scriptRegex.exec(content)) !== null) {
+    const filePath = match[1];
+
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  while ((match = cssRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  return deps;
+}
+
 function extractImports(content: string, currentFile: string): string[] {
   const imports: string[] = [];
   const dir = currentFile.split("/").slice(0, -1).join("/");
 
-  // Match ES6 imports: import x from "./something"
   const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`](\.[^'"`]+)['"`]/g;
-  // Match CommonJS: require("./something")
   const cjsRegex = /require\s*\(\s*['"`](\.[^'"`]+)['"`]\s*\)/g;
 
   let match;
@@ -25,7 +61,6 @@ function extractImports(content: string, currentFile: string): string[] {
   return imports;
 }
 
-// Resolve relative import path to absolute
 function resolveImport(importPath: string, dir: string): string {
   const parts = (dir ? dir + "/" + importPath : importPath).split("/");
   const resolved: string[] = [];
@@ -38,22 +73,18 @@ function resolveImport(importPath: string, dir: string): string {
   return resolved.join("/");
 }
 
-// Try to match an import path to an actual file in the repo
 function resolveToActualFile(
   importPath: string,
   allFiles: string[]
 ): string | null {
-  const extensions = [".js", ".ts", ".jsx", ".tsx", ".py", ".go"];
+  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".py", ".go", ".css", ".html"];
 
-  // Exact match
   if (allFiles.includes(importPath)) return importPath;
 
-  // Try adding extensions
   for (const ext of extensions) {
     if (allFiles.includes(importPath + ext)) return importPath + ext;
   }
 
-  // Try index files
   for (const ext of extensions) {
     const indexPath = importPath + "/index" + ext;
     if (allFiles.includes(indexPath)) return indexPath;
@@ -62,7 +93,6 @@ function resolveToActualFile(
   return null;
 }
 
-// Build the full dependency graph from file contents
 export function buildDependencyGraph(
   fileContents: { path: string; content: string }[],
   allFiles: string[]
@@ -70,18 +100,27 @@ export function buildDependencyGraph(
   const graph: DependencyGraph = {};
 
   for (const file of fileContents) {
-    const imports = extractImports(file.content, file.path);
+    let imports: string[] = [];
+
+    if (file.path.endsWith(".html") || file.path.endsWith(".htm")) {
+      imports = extractHtmlDependencies(file.content);
+    } else {
+      imports = extractImports(file.content, file.path);
+    }
+
+    const dir = file.path.split("/").slice(0, -1).join("/");
+    imports = imports.map(path => resolveImport(path, dir));
+
     const resolved = imports
       .map((imp) => resolveToActualFile(imp, allFiles))
       .filter((imp): imp is string => imp !== null);
 
-    graph[file.path] = [...new Set(resolved)]; // deduplicate
+    graph[file.path] = [...new Set(resolved)];
   }
 
   return graph;
 }
 
-// Compute how many files import each file (fan-in = importance)
 export function computeFanIn(graph: DependencyGraph): Record<string, number> {
   const fanIn: Record<string, number> = {};
 
@@ -94,7 +133,6 @@ export function computeFanIn(graph: DependencyGraph): Record<string, number> {
   return fanIn;
 }
 
-// Convert graph to Mermaid diagram string
 export function graphToMermaid(
   graph: DependencyGraph,
   entryPoints: string[]
@@ -102,17 +140,17 @@ export function graphToMermaid(
   const lines: string[] = ["graph TD"];
   const seen = new Set<string>();
   const queue = [...entryPoints];
-  let depth = 0;
+  let nodes = 0;
 
-  while (queue.length > 0 && depth < 3) {
+  while (queue.length > 0 && nodes < 25) {
     const current = queue.shift()!;
     if (seen.has(current)) continue;
     seen.add(current);
 
     const deps = graph[current] || [];
     for (const dep of deps.slice(0, 5)) {
-      const from = current.split("/").pop()?.replace(/\.[^.]+$/, "") || current;
-      const to = dep.split("/").pop()?.replace(/\.[^.]+$/, "") || dep;
+      const from = current.split("/").pop() || current;
+      const to = dep.split("/").pop() || dep;
       
       const fromId = sanitize(current);
       const toId = sanitize(dep);
@@ -121,13 +159,13 @@ export function graphToMermaid(
       queue.push(dep);
     }
 
-    depth++;
+    nodes++;
   }
 
   if (lines.length === 1) {
     if (entryPoints.length > 0) {
       for (const entry of entryPoints.slice(0, 3)) {
-        const name = entry.split("/").pop()?.replace(/\.[^.]+$/, "") || entry;
+        const name = entry.split("/").pop() || entry;
         const id = sanitize(entry);
         lines.push(`  ${id}["${name}"]`);
       }
