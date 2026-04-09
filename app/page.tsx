@@ -32,39 +32,20 @@ export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const router = useRouter();
 
-  const handleAnalyze = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError(null); 
-
-  const input = repoUrl.trim();
-
-  if (!input) {
-    setError("Please enter a GitHub repository URL or 'owner/repo'.");
-    return;
+  function handleAnalyze() {
+    const trimmed = repoUrl.trim();
+    if (!trimmed) return;
+    if (!trimmed.startsWith("https://github.com/")) {
+      alert("Please enter a valid GitHub URL starting with https://github.com/");
+      return;
+    }
+    const parts = trimmed.replace("https://github.com/", "").split("/");
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      alert("Please enter a full repo URL like https://github.com/facebook/react");
+      return;
+    }
+    router.push(`/analyze?repo=${encodeURIComponent(trimmed)}`);
   }
-
-  const isValidFormat = input.includes("github.com/") || input.split("/").length === 2;
-  
-  if (!isValidFormat || !input.includes("/")) {
-    setError("Invalid format. Please paste a real GitHub link (e.g., Sidhant0707/sidcore).");
-    return;
-  }
-
-  setIsLoading(true);
-  
-  try {
-    
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      body: JSON.stringify({ repoUrl: input }),
-    });
-    
-  } catch (err) {
-    setError("Failed to analyze repository. Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
-};
 
   const features = [
     { icon: GraduationCap, title: "Students", description: "Learn from open-source giants. Deconstruct production-grade code to understand best practices." },
