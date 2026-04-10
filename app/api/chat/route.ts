@@ -1,24 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-4b-it:generateContent?key=${GEMINI_API_KEY}`;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    console.log("Chat request received, question:", body.question);
-    console.log("Context keys:", Object.keys(body.repoContext || {}));
-
     const { question, repoContext } = body;
 
     if (!question || !repoContext) {
       return NextResponse.json({ error: "Missing question or context" }, { status: 400 });
     }
 
-    const prompt = `
-You are an expert code assistant analyzing a specific GitHub repository.
-
-Here is everything known about this repository:
+    const systemPrompt = `You are an expert code assistant analyzing a specific GitHub repository.
 
 Repository: ${repoContext.owner}/${repoContext.repo}
 Description: ${repoContext.description}
@@ -26,8 +20,7 @@ Architecture: ${repoContext.analysis.architecture_pattern}
 Primary Language: ${repoContext.language}
 Entry Points: ${repoContext.entryPoints.join(", ")}
 
-What it does:
-${repoContext.analysis.what_it_does}
+What it does: ${repoContext.analysis.what_it_does}
 
 Execution Flow:
 ${repoContext.analysis.execution_flow.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")}
@@ -38,54 +31,38 @@ ${repoContext.analysis.tech_stack.map((t: { name: string; purpose: string }) => 
 Key Modules:
 ${repoContext.analysis.key_modules.map((m: { file: string; role: string; why_it_exists: string }) => `- ${m.file} (${m.role}): ${m.why_it_exists}`).join("\n")}
 
-Now answer this question about the repository:
-${question}
-
 Rules:
-- Only answer based on the repository information provided above
-- Be specific and reference actual files and modules when relevant
-- If the answer is not in the provided context, say so honestly
-- Keep answers concise but complete
-- Do not make up file names or functionality that wasn't mentioned
-`;
+- Only answer based on the repository information provided
+- Be specific and reference actual files when relevant
+- If not in context, say so honestly
+- Keep answers concise but complete`;
 
-    console.log("Prompt length:", prompt.length);
-    console.log("Sending to Gemini...");
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: question },
+        ],
+        temperature: 0.3,
+        max_tokens: 1024,
+      }),
+    });
 
-    let res: Response | undefined;
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      console.log(`Attempt ${attempt}...`);
-
-      res = await fetch(GEMINI_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3 },
-        }),
-      });
-
-      console.log("Gemini response status:", res.status);
-
-      if (res.ok) break;
-
-      if ((res.status === 503 || res.status === 429) && attempt < 3) {
-        console.log(`Rate limited, waiting ${3000 * attempt}ms...`);
-        await new Promise((r) => setTimeout(r, 3000 * attempt));
-        continue;
-      }
-
+    if (!res.ok) {
       const errText = await res.text();
-      console.error("Gemini error body:", errText);
-      throw new Error(`Gemini API error: ${res.status}`);
+      console.error("Groq error:", errText);
+      throw new Error(`Groq API error: ${res.status}`);
     }
 
-    if (!res || !res.ok) throw new Error("Gemini API failed after retries");
-
     const data = await res.json();
-    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!answer) throw new Error("Empty response from Gemini");
+    const answer = data.choices?.[0]?.message?.content;
+    if (!answer) throw new Error("Empty response from Groq");
 
     return NextResponse.json({ answer });
 
