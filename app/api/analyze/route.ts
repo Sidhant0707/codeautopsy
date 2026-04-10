@@ -48,8 +48,8 @@ export async function POST(req: NextRequest) {
 
     const { data: { session } } = await supabase.auth.getSession();
 
-    const providerToken = session?.provider_token ?? null;
-    const userId = session?.user?.id ?? null;
+    const providerToken = session?.provider_token ?? undefined;
+    const userId = session?.user?.id ?? undefined;
 
     const { repoUrl } = await req.json();
 
