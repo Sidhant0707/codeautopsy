@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from 'next/link';
 import { Sparkles, Link2, Cpu, Map, GraduationCap, Users, Zap, Search, Check } from "lucide-react";
@@ -30,7 +30,15 @@ const fadeUp = {
 
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
+  const [remaining, setRemaining] = useState<number | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/limits")
+      .then((res) => res.json())
+      .then((data) => setRemaining(data.remaining))
+      .catch(() => setRemaining(3));
+  }, []);
 
   function handleAnalyze() {
     const trimmed = repoUrl.trim();
@@ -111,7 +119,6 @@ export default function Home() {
         />
       </div>
 
-      {/* Header */}
       <Header />
 
       {/* Hero */}
@@ -153,17 +160,26 @@ export default function Home() {
                   className="flex-1 bg-transparent border-none outline-none px-4 text-slate-200 placeholder:text-slate-600/50 font-mono text-sm cursor-text"
                 />
 
-<motion.button
-  onClick={handleAnalyze}
-  whileHover={{ scale: 1.05 }}
-  whileTap={{ scale: 0.95 }}
-  className="cursor-pointer btn-gray text-white px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
->
-  Analyze →
-</motion.button>
+                <motion.button
+                  onClick={handleAnalyze}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="cursor-pointer btn-gray text-white px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
+                >
+                  Analyze →
+                </motion.button>
               </div>
             </div>
-            <p className="mt-4 text-slate-500 text-sm">
+
+            {/* System Status Meter */}
+            <div className="flex items-center justify-center gap-3 mt-6 mb-2">
+              <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${remaining === 0 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`} />
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">
+                {remaining !== null ? `${remaining} / 3 Autopsies Available Today` : "Initializing Engine..."}
+              </span>
+            </div>
+
+            <p className="text-slate-500 text-sm">
               Try:{" "}
               {["expressjs/express", "vercel/next.js", "facebook/react"].map((example) => (
                 <button
@@ -180,7 +196,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* Trusted by */}
+      {/* Trusted by engineers at section */}
       <motion.section
         initial="hidden"
         whileInView="show"
@@ -192,23 +208,23 @@ export default function Home() {
           <p className="text-center text-slate-500 text-xs font-bold mb-10 uppercase tracking-widest">Trusted by engineers at</p>
           <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-20">
             {[
-  { name: "GitHub", Icon: FaGithub },
-  { name: "Google", Icon: FaGoogle },
-  { name: "Meta", Icon: SiMeta },
-  { name: "Microsoft", Icon: FaMicrosoft },
-  { name: "Vercel", Icon: SiVercel },
-  { name: "Stripe", Icon: FaStripe },
-].map(({ name, Icon }) => (
-  <div key={name} className="flex items-center gap-3 text-2xl font-bold text-slate-400">
-    <Icon className="w-8 h-8" />
-    <span>{name}</span>
-  </div>
-))}
+              { name: "GitHub", Icon: FaGithub },
+              { name: "Google", Icon: FaGoogle },
+              { name: "Meta", Icon: SiMeta },
+              { name: "Microsoft", Icon: FaMicrosoft },
+              { name: "Vercel", Icon: SiVercel },
+              { name: "Stripe", Icon: FaStripe },
+            ].map(({ name, Icon }) => (
+              <div key={name} className="flex items-center gap-3 text-2xl font-bold text-slate-400">
+                <Icon className="w-8 h-8" />
+                <span>{name}</span>
+              </div>
+            ))}
           </div>
         </div>
       </motion.section>
 
-      {/* How it Works */}
+      {/* The Autopsy Process section */}
       <section id="how-it-works" className="py-32 px-6">
         <motion.div
           initial="hidden"
@@ -238,7 +254,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Features */}
+      {/* Dissection features section */}
       <section id="features" className="py-32 bg-black/40 px-6">
         <motion.div
           initial="hidden"
@@ -289,7 +305,6 @@ export default function Home() {
                   </div>
                 ))}
                 
-                {/* Visual Analysis Simulation */}
                 <div className="mt-4 p-4 rounded-lg bg-white/[0.02] border border-white/5 font-mono text-[10px] space-y-3">
                   <div className="flex justify-between items-center text-slate-500 border-b border-white/5 pb-2">
                     <span>MAPPING_FLOW</span>
@@ -318,7 +333,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Use Cases */}
+      {/* Tailored Ecosystem section */}
       <section className="py-32 px-6">
         <motion.div
           initial="hidden"
@@ -348,7 +363,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing section */}
       <section id="pricing" className="py-32 bg-black/40 px-6">
         <motion.div
           initial="hidden"
@@ -402,7 +417,6 @@ export default function Home() {
                   ))}
                 </ul>
 
-                {/* Intern button navigates to signup, others are disabled */}
                 {plan.status === 'active' ? (
                   <Link 
                     href="/signup" 

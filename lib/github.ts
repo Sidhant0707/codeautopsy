@@ -1,11 +1,20 @@
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+// lib/github.ts
 
-const headers: HeadersInit = {
-  Accept: "application/vnd.github+json",
-  ...(GITHUB_TOKEN && { Authorization: `Bearer ${GITHUB_TOKEN}` }),
-};
+// Helper to create headers dynamically
+// If a user token is provided, we use it. Otherwise, we fall back to the system GITHUB_TOKEN.
+function getHeaders(userToken?: string) {
+  const token = userToken || process.env.GITHUB_TOKEN;
+  const headers: HeadersInit = {
+    Accept: "application/vnd.github.v3+json",
+  };
+  
+  if (token) {
+    headers.Authorization = `token ${token}`;
+  }
+  
+  return headers;
+}
 
-// Parse owner and repo name from a GitHub URL
 export function parseRepoUrl(url: string): { owner: string; repo: string } | null {
   try {
     const parsed = new URL(url);
@@ -17,31 +26,42 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } | nul
   }
 }
 
-// Fetch basic repo metadata
-export async function fetchRepoMeta(owner: string, repo: string) {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+// Added token parameter to all fetch functions
+export async function fetchRepoMeta(owner: string, repo: string, token?: string) {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { 
+    headers: getHeaders(token) 
+  });
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
   return res.json();
 }
 
-// Fetch the full file tree in one API call
-export async function fetchRepoTree(owner: string, repo: string, branch: string) {
+export async function fetchRepoTree(owner: string, repo: string, branch: string, token?: string) {
   const res = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    { headers }
+    { headers: getHeaders(token) }
   );
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
   return res.json();
 }
 
-// Fetch content of a single file
-export async function fetchFileContent(owner: string, repo: string, path: string): Promise<string> {
+export async function fetchFileContent(
+  owner: string,
+  repo: string,
+  path: string,
+  token?: string
+): Promise<string> {
   const res = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
-    { headers }
+    { headers: getHeaders(token) }
   );
+
   if (!res.ok) throw new Error(`Failed to fetch file: ${path}`);
+
   const data = await res.json();
-  // GitHub returns file content as base64
+
+  if (!data || data.type !== "file" || !data.content) {
+    throw new Error(`Invalid file response for ${path}`);
+  }
+
   return Buffer.from(data.content, "base64").toString("utf-8");
 }
