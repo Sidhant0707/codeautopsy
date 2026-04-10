@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import MermaidDiagram from "@/components/MermaidDiagram";
+import Header from "@/components/Header";
 
 type Props = {
   params: Promise<{ slug: string[] }>;
@@ -77,7 +78,9 @@ export default async function ViewAutopsyPage({ params }: Props) {
   const result = data.result_json;
 
   return (
-    <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative">
+    <div className="min-h-screen bg-[#0e0e0e] text-slate-300 relative">
+      <Header />
+      <div className="py-24 px-6">
       {/* Background glow */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.01] blur-[150px] rounded-full pointer-events-none" />
 
@@ -180,6 +183,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
 </section>
 
         {/* Future sections (Mermaid graph, modules, tech stack) */}
+      </div>
       </div>
     </div>
   );
