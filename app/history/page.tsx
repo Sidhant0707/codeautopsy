@@ -46,17 +46,25 @@ export default function HistoryPage() {
 
   useEffect(() => {
     async function fetchHistory() {
-      const { data, error } = await supabase
-        .from("analyses")
-        .select("id, repo_url, repo_name, created_at, result_json")
-        .order("created_at", { ascending: false })
-        .limit(50);
+  const { data: { user } } = await supabase.auth.getUser();
 
-      if (!error && data) {
-        setAnalyses(data);
-      }
-      setLoading(false);
-    }
+  if (!user) {
+    router.push("/login");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("analyses")
+    .select("id, repo_url, repo_name, created_at, result_json")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (!error && data) {
+    setAnalyses(data);
+  }
+  setLoading(false);
+}
 
     fetchHistory();
   }, []);

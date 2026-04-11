@@ -8,6 +8,7 @@ import { FaGithub } from "react-icons/fa";
 import MermaidDiagram from "@/components/MermaidDiagram";
 import RepoChat from "@/components/RepoChat";
 import ShareButton from "@/components/ShareButton";
+import { createClient } from "@/lib/supabase-browser";
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -61,21 +62,30 @@ function AnalyzeContent() {
     if (!repoUrl) return;
 
     async function analyze() {
-      try {
-        const res = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repoUrl }),
-        });
-        const json = await res.json();
-        if (json.error) throw new Error(json.error);
-        setData(json);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
-      } finally {
-        setLoading(false);
-      }
+  try {
+    // Check if user is logged in
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push(`/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`);
+      return;
     }
+
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoUrl }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    setData(json);
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "Something went wrong");
+  } finally {
+    setLoading(false);
+  }
+}
 
     analyze();
   }, [repoUrl]);

@@ -16,20 +16,22 @@ export default function LoginPage() {
 
   const supabase = createClient();
 
-  async function handleEmailLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+  async function handleEmailLogin(e: React.SyntheticEvent) {
+  e.preventDefault();
+  setIsLoading(true);
+  setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setError(error.message);
-      setIsLoading(false);
-    } else {
-      window.location.href = "/";
-    }
+  if (error) {
+    setError(error.message);
+    setIsLoading(false);
+  } else {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect") || "/";
+    window.location.href = redirect;
   }
+}
 
   async function handleOAuth(provider: "github" | "google") {
     setOauthLoading(provider);
@@ -212,7 +214,7 @@ export default function LoginPage() {
 
           <div className="mt-10 text-center">
             <p className="text-sm text-slate-500">
-              Don't have an account?{" "}
+              Do not have an account?{" "}
               <Link href="/signup" className="text-white font-bold hover:underline">
                 Create an account
               </Link>
