@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase-browser";
@@ -40,10 +41,16 @@ export default function SignupPage() {
     <div className="min-h-screen bg-[#0e0e0e] text-[#f1f5f9] flex items-center justify-center px-4">
       <div className="w-full max-w-[440px]">
 
-        <Link href="/" className="flex items-center gap-3 mb-12 justify-center">
-          <span className="text-2xl">🔬</span>
-          <span className="cabinet text-xl font-bold">CodeAutopsy</span>
-        </Link>
+        <Link href="/" className="flex items-center gap-3 mb-12 justify-center group">
+  <Image 
+    src="/codeautopsy-logo1.png" 
+    alt="CodeAutopsy Logo" 
+    width={28} 
+    height={28} 
+    className="transition-transform group-hover:scale-110"
+  />
+  <span className="cabinet text-xl font-bold text-slate-100">CodeAutopsy</span>
+</Link>
 
         {success ? (
           <div className="glass-card p-8 rounded-2xl text-center">

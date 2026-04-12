@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-browser";
 import { User } from "@supabase/supabase-js";
@@ -38,7 +39,14 @@ export default function Header() {
       }}
     >
       <Link href="/" className="cursor-pointer flex items-center gap-3 group">
-        <span className="text-2xl transition-transform group-hover:scale-110">🔬</span>
+        <Image 
+          src="/codeautopsy-logo1.png" 
+          alt="Logo" 
+          width={32} 
+          height={32}
+          style={{ width: 'auto', height: 'auto' }} 
+          className="transition-transform group-hover:scale-110"
+        />
         <span className="text-xl font-bold tracking-tight text-slate-100">CodeAutopsy</span>
       </Link>
 
@@ -46,9 +54,9 @@ export default function Header() {
         <Link href="/about" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
           About
         </Link>
-        <a href="/#features" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
+        <Link href="/#features" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
           Features
-        </a>
+        </Link>
         {/* Changed from #pricing to /pricing */}
         <Link href="/pricing" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
           Pricing

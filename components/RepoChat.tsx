@@ -124,6 +124,7 @@ export default function RepoChat({ repoContext }: Props) {
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
+                  title={q}
                   className="text-left px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition-all hover:bg-white/5"
                   style={{ border: "1px solid rgba(255,255,255,0.05)" }}
                 >
@@ -197,6 +198,7 @@ export default function RepoChat({ repoContext }: Props) {
           <button
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
+            aria-label="Send message"
             className="w-10 h-10 rounded-xl bg-white flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
           >
             <Send className="w-4 h-4 text-black" />

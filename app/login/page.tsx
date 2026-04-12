@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Zap, GitBranch, Terminal, Loader2, Check } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
@@ -63,10 +64,18 @@ export default function LoginPage() {
         />
 
         <div className="relative z-10">
-          <Link href="/" className="flex items-center gap-3 mb-16">
-            <span className="text-2xl">🔬</span>
-            <span className="cabinet text-2xl font-bold tracking-tight">CodeAutopsy</span>
-          </Link>
+  <Link href="/" className="flex items-center gap-3 mb-16 group">
+    <Image 
+      src="/codeautopsy-logo1.png" 
+      alt="CodeAutopsy Logo" 
+      width={32} 
+      height={32} 
+      className="transition-transform group-hover:scale-110"
+    />
+    <span className="cabinet text-2xl font-bold tracking-tight text-slate-100">
+      CodeAutopsy
+    </span>
+  </Link>
 
           <div className="max-w-xl">
             <h1 className="cabinet text-5xl lg:text-6xl font-extrabold leading-[1.1] mb-8 tracking-tight">
@@ -103,9 +112,15 @@ export default function LoginPage() {
 
       <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24">
         <div className="md:hidden mb-12">
-          <Link href="/" className="flex items-center gap-3">
-            <span className="text-2xl">🔬</span>
-            <span className="cabinet text-xl font-bold">CodeAutopsy</span>
+          <Link href="/" className="flex items-center gap-3 group">
+            <Image 
+              src="/codeautopsy-logo1.png" 
+              alt="CodeAutopsy Logo" 
+              width={28} 
+              height={28} 
+              className="transition-transform group-hover:scale-110"
+            />
+            <span className="cabinet text-xl font-bold text-slate-100">CodeAutopsy</span>
           </Link>
         </div>
 

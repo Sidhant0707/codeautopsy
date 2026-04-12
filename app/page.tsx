@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import Link from 'next/link';
 import { Sparkles, Link2, Cpu, Map, GraduationCap, Users, Zap, Search, Check } from "lucide-react";
 import { FaGithub, FaTwitter, FaLinkedin, FaGoogle, FaMicrosoft, FaStripe } from "react-icons/fa";
@@ -198,31 +199,36 @@ export default function Home() {
 
       {/* Trusted by engineers at section */}
       <motion.section
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, margin: "-10%" }}
-        variants={fadeUp}
-        className="py-12 border-y border-white/5"
-      >
-        <div className="max-w-7xl mx-auto px-6">
-          <p className="text-center text-slate-500 text-xs font-bold mb-10 uppercase tracking-widest">Trusted by engineers at</p>
-          <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-20">
-            {[
-              { name: "GitHub", Icon: FaGithub },
-              { name: "Google", Icon: FaGoogle },
-              { name: "Meta", Icon: SiMeta },
-              { name: "Microsoft", Icon: FaMicrosoft },
-              { name: "Vercel", Icon: SiVercel },
-              { name: "Stripe", Icon: FaStripe },
-            ].map(({ name, Icon }) => (
-              <div key={name} className="flex items-center gap-3 text-2xl font-bold text-slate-400">
-                <Icon className="w-8 h-8" />
-                <span>{name}</span>
-              </div>
-            ))}
-          </div>
+  initial="hidden"
+  whileInView="show"
+  viewport={{ once: true, margin: "-10%" }}
+  variants={fadeUp}
+  className="py-12 border-y border-white/5 bg-white/[0.01]"
+>
+  <div className="max-w-7xl mx-auto px-6">
+    <p className="text-center text-slate-500 text-[10px] font-bold mb-10 uppercase tracking-[0.3em]">
+      Trusted by engineers at
+    </p>
+    <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24">
+      {[
+        { name: "GitHub", Icon: FaGithub },
+        { name: "Google", Icon: FaGoogle },
+        { name: "Meta", Icon: SiMeta },
+        { name: "Microsoft", Icon: FaMicrosoft },
+        { name: "Vercel", Icon: SiVercel },
+        { name: "Stripe", Icon: FaStripe },
+      ].map(({ name, Icon }) => (
+        <div 
+          key={name} 
+          className="flex items-center gap-3 text-xl font-bold text-slate-500 opacity-40 hover:opacity-100 hover:text-slate-100 transition-all duration-500 grayscale hover:grayscale-0 cursor-default"
+        >
+          <Icon className="w-6 h-6" />
+          <span className="tracking-tight">{name}</span>
         </div>
-      </motion.section>
+      ))}
+    </div>
+  </div>
+</motion.section>
 
       {/* The Autopsy Process section */}
       <section id="how-it-works" className="py-32 px-6">
@@ -269,7 +275,7 @@ export default function Home() {
                 Everything you need to<br />dissect a project.
               </h2>
               <p className="text-slate-400 mb-10 leading-relaxed">
-                Built for the modern developer who doesn't have time to browse thousands of files manually.
+                Built for the modern developer who doe not have time to browse thousands of files manually.
               </p>
               <div className="space-y-6">
                 {[
@@ -444,7 +450,13 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
             <div>
               <div className="flex items-center gap-3 mb-6">
-                <span className="text-2xl">🔬</span>
+                <Image 
+                  src="/codeautopsy-logo1.png" 
+                  alt="CodeAutopsy Logo" 
+                  width={28} 
+                  height={28} 
+                  className="rounded-sm"
+                />
                 <span className="text-lg font-bold text-slate-100">CodeAutopsy</span>
               </div>
               <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
