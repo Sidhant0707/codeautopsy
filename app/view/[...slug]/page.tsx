@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import MermaidDiagram from "@/components/MermaidDiagram";
 import Header from "@/components/Header";
+import DebugInterface from "@/components/debug/DebugInterface";
 
 type Props = {
   params: Promise<{ slug: string[] }>;
@@ -168,18 +169,10 @@ export default async function ViewAutopsyPage({ params }: Props) {
 </section>
 
 <section className="mt-12">
-  <h3 className="text-lg font-bold text-white mb-4">
-    Dependency Graph
-  </h3>
-
-  <div className="p-6 border border-white/10 rounded-2xl bg-white/5">
-    <MermaidDiagram
-  chart={
-    result?.mermaidDiagram ||
-    "graph TD\nA[Dependency graph unavailable]"
-  }
-/>
-  </div>
+  <DebugInterface 
+    initialChart={result?.mermaidDiagram || "graph TD\nA[Dependency graph unavailable]"} 
+    repoUrl={`https://github.com/${owner}/${repo}`}
+  />
 </section>
 
         {/* Future sections (Mermaid graph, modules, tech stack) */}

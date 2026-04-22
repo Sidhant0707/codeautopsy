@@ -5,10 +5,10 @@ import { useEffect, useState, Suspense } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Star, FileCode, Terminal, Cpu, GitMerge, CheckCircle2, Box, Layers } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
-import MermaidDiagram from "@/components/MermaidDiagram";
 import RepoChat from "@/components/RepoChat";
 import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
+import DebugInterface from "@/components/debug/DebugInterface"; // ✨ ADDED IMPORT
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -62,30 +62,29 @@ function AnalyzeContent() {
     if (!repoUrl) return;
 
     async function analyze() {
-  try {
-    // Check if user is logged in
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`);
-      return;
+        if (!user) {
+          router.push(`/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`);
+          return;
+        }
+
+        const res = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repoUrl }),
+        });
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+        setData(json);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        setLoading(false);
+      }
     }
-
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repoUrl }),
-    });
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    setData(json);
-  } catch (err) {
-    setError(err instanceof Error ? err.message : "Something went wrong");
-  } finally {
-    setLoading(false);
-  }
-}
 
     analyze();
   }, [repoUrl]);
@@ -244,16 +243,13 @@ function AnalyzeContent() {
                 </div>
               </motion.section>
 
-              {/* Dependency Graph */}
+              {/* ✨ NEW: Code Doctor & Interactive Dependency Graph ✨ */}
               {data.mermaidDiagram && (
-                <motion.section variants={fadeUp} className="glass-card p-8 rounded-3xl">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                      <GitMerge className="w-4 h-4 text-slate-400" />
-                    </div>
-                    <h2 className="cabinet text-2xl font-bold text-white">Dependency Graph</h2>
-                  </div>
-                  <MermaidDiagram chart={data.mermaidDiagram} />
+                <motion.section variants={fadeUp}>
+                  <DebugInterface 
+                    initialChart={data.mermaidDiagram} 
+                    repoUrl={`https://github.com/${data.owner}/${data.repo}`}
+                  />
                 </motion.section>
               )}
 
@@ -276,6 +272,7 @@ function AnalyzeContent() {
                   ))}
                 </div>
               </motion.section>
+              
               {/* Ask the Repo */}
               <motion.section variants={fadeUp}>
                 <RepoChat repoContext={data} />

@@ -19,64 +19,66 @@ export async function POST(req: NextRequest) {
       headerList.get("x-real-ip") ||
       "127.0.0.1";
 
-    const { success, limit, reset, remaining } = await ratelimit.limit(ip);
-
-    if (!success) {
-      return NextResponse.json(
-        { error: "Daily limit reached.", limit, remaining, reset },
-        { status: 429 }
-      );
-    }
-
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: any) {
-            cookieStore.set(name, value, options);
-          },
-          remove(name: string) {
-            cookieStore.delete(name);
-          }
-        }
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options: any) {
+        cookieStore.set(name, value, options);
+      },
+      remove(name: string) {
+        cookieStore.delete(name);
       }
-    );
-
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const providerToken = session?.provider_token ?? undefined;
-    const userId = session?.user?.id ?? undefined;
-
-    const { repoUrl } = await req.json();
-
-    const parsed = parseRepoUrl(repoUrl);
-
-    if (!parsed) {
-      return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
     }
+  }
+);
 
-    const { owner, repo } = parsed;
+const { data: { session } } = await supabase.auth.getSession();
 
-    const meta = await fetchRepoMeta(owner, repo, providerToken);
-    const commitSha = meta.default_branch;
+const providerToken = session?.provider_token ?? undefined;
+const userId = session?.user?.id ?? undefined;
 
-    const { data: cached } = await supabase
-      .from("analyses")
-      .select("result_json")
-      .eq("repo_url", repoUrl)
-      .eq("commit_sha", commitSha)
-      .eq("analysis_version", ANALYSIS_VERSION)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+const { repoUrl } = await req.json();
 
-    if (cached?.result_json) {
-      return NextResponse.json({ ...cached.result_json, cached: true });
-    }
+const parsed = parseRepoUrl(repoUrl);
+
+if (!parsed) {
+  return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
+}
+
+const { owner, repo } = parsed;
+
+const meta = await fetchRepoMeta(owner, repo, providerToken);
+const commitSha = meta.default_branch;
+
+// ✅ CHECK CACHE FIRST (before rate limiting)
+const { data: cached } = await supabase
+  .from("analyses")
+  .select("result_json")
+  .eq("repo_url", repoUrl)
+  .eq("commit_sha", commitSha)
+  .eq("analysis_version", ANALYSIS_VERSION)
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (cached?.result_json) {
+  return NextResponse.json({ ...cached.result_json, cached: true });
+}
+
+// ✅ ONLY rate limit if cache miss
+const { success, limit, reset, remaining } = await ratelimit.limit(ip);
+
+if (!success) {
+  return NextResponse.json(
+    { error: "Daily limit reached.", limit, remaining, reset },
+    { status: 429 }
+  );
+}
 
     const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
 

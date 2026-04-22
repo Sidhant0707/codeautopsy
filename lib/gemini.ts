@@ -94,3 +94,5 @@ if (jsonStart === -1 || jsonEnd === -1) {
 const clean = text.slice(jsonStart, jsonEnd + 1);
 return JSON.parse(clean)  as AnalysisResult;
 }
+
+
