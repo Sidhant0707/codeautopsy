@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
 
     // Fetch missing files
     const fileContents = result_json.fileContents || [];
-    const existingContents = new Map(
-      fileContents.map((f: any) => [f.path, f.content])
+    const existingContents = new Map<string, string>(
+      fileContents.map((f: any) => [f.path as string, f.content as string])
     );
 
     const allContents = await fetchMissingFiles(
