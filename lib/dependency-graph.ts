@@ -43,25 +43,38 @@ function extractHtmlDependencies(content: string): string[] {
 
 function extractImports(content: string, currentFile: string): string[] {
   const imports: string[] = [];
-  const dir = currentFile.split("/").slice(0, -1).join("/");
 
-  const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`](\.[^'"`]+)['"`]/g;
-  const cjsRegex = /require\s*\(\s*['"`](\.[^'"`]+)['"`]\s*\)/g;
+  const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
+  const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
 
   let match;
 
   while ((match = es6Regex.exec(content)) !== null) {
-    imports.push(resolveImport(match[1], dir));
+    const importPath = match[1];
+    // Ignore standard node_modules (e.g., 'react', 'framer-motion')
+    if (importPath.startsWith(".") || importPath.startsWith("@/") || importPath.startsWith("~/")) {
+      imports.push(resolveImport(importPath, dir));
+    }
   }
 
   while ((match = cjsRegex.exec(content)) !== null) {
-    imports.push(resolveImport(match[1], dir));
+    const importPath = match[1];
+    if (importPath.startsWith(".") || importPath.startsWith("@/") || importPath.startsWith("~/")) {
+      imports.push(importPath);
+    }
   }
 
   return imports;
 }
 
 function resolveImport(importPath: string, dir: string): string {
+  // FIX: Handle Next.js path aliases
+  if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
+    // Strips the alias and treats it as relative to the repo root
+    return importPath.substring(2);
+  }
+
+  // Handle standard relative paths
   const parts = (dir ? dir + "/" + importPath : importPath).split("/");
   const resolved: string[] = [];
 
