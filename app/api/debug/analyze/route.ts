@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     // 1. SECURITY FIX: Use getUser() instead of getSession()
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
-    const providerToken = null; // Note: getUser doesn't return provider_token directly. If you need it, you might have to fetch the session specifically for the token, but let's stick to getUser for auth.
+    const providerToken = undefined; // Note: getUser doesn't return provider_token directly. If you need it, you might have to fetch the session specifically for the token, but let's stick to getUser for auth.
 
     // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
