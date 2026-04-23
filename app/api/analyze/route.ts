@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name: string, value: string, options: any) {
+      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
         cookieStore.set(name, value, options);
       },
       remove(name: string) {
@@ -108,14 +108,16 @@ if (!success) {
       ".woff2"
     ];
 
-    const filteredPaths: string[] = treeData.tree
-      .filter((file: any) => {
+    type RepoTreeItem = { type: string; path: string };
+
+    const filteredPaths: string[] = (treeData.tree as RepoTreeItem[])
+      .filter((file) => {
         if (file.type !== "blob") return false;
         if (IGNORE.some((ig) => file.path.includes(ig))) return false;
         if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
         return true;
       })
-      .map((file: any) => file.path);
+      .map((file) => file.path);
 
     const scoredFiles = classifyAndScoreFiles(filteredPaths);
 
@@ -165,7 +167,8 @@ if (!success) {
       dependencyGraph,
       fanIn,
       mermaidDiagram,
-      analysis
+      analysis,
+      fileContents
     };
 
     await supabase.from("analyses").insert({
