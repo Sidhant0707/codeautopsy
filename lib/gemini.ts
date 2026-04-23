@@ -19,7 +19,7 @@ export async function analyzeWithGemini(
   if (!apiKey) {
   throw new Error("Missing GEMINI_API_KEY environment variable");
   }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
 
   const fileContentText = fileContents
   .map((f) => {
