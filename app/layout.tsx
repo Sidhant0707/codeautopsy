@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/next"; 
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     siteName: "CodeAutopsy",
     images: [
       {
-        url: "/og-image.png", // We will create this file next!
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: "CodeAutopsy Visual Architecture Analysis",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "CodeAutopsy | Dissect Any Codebase",
     description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
-    creator: "@Sidhant07", // Update this to your real Twitter handle if you have one!
+    creator: "@Sidhant07",
     images: ["/og-image.png"],
   },
 };
@@ -54,7 +54,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        <Analytics />
+        <Analytics /> 
       </body>
     </html>
   );
