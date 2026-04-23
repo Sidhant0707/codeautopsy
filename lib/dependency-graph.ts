@@ -4,15 +4,12 @@ export interface DependencyGraph {
 
 function extractHtmlDependencies(content: string): string[] {
   const deps: string[] = [];
-
   const scriptRegex = /<script[^>]*src=["']([^"']+)["']/g;
   const cssRegex = /<link\s+[^>]*href=["']([^"']+)["']/g;
-
   let match;
 
   while ((match = scriptRegex.exec(content)) !== null) {
     const filePath = match[1];
-
     if (
       !filePath.startsWith("http") &&
       !filePath.startsWith("//") &&
@@ -26,7 +23,6 @@ function extractHtmlDependencies(content: string): string[] {
 
   while ((match = cssRegex.exec(content)) !== null) {
     const filePath = match[1];
-    
     if (
       !filePath.startsWith("http") &&
       !filePath.startsWith("//") &&
@@ -43,7 +39,9 @@ function extractHtmlDependencies(content: string): string[] {
 
 function extractImports(content: string, currentFile: string): string[] {
   const imports: string[] = [];
+  const dir = currentFile.split("/").slice(0, -1).join("/");
 
+  // ES6 imports - NOW SUPPORTS PATH ALIASES
   const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
   const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
 
@@ -51,16 +49,35 @@ function extractImports(content: string, currentFile: string): string[] {
 
   while ((match = es6Regex.exec(content)) !== null) {
     const importPath = match[1];
-    // Ignore standard node_modules (e.g., 'react', 'framer-motion')
-    if (importPath.startsWith(".") || importPath.startsWith("@/") || importPath.startsWith("~/")) {
+    
+    // Handle relative imports
+    if (importPath.startsWith(".")) {
       imports.push(resolveImport(importPath, dir));
+    }
+    // Handle path aliases (@/, ~/, etc.)
+    else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    }
+    else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
+    }
+    // Skip node_modules
+    else if (!importPath.includes("/")) {
+      continue;
     }
   }
 
   while ((match = cjsRegex.exec(content)) !== null) {
     const importPath = match[1];
-    if (importPath.startsWith(".") || importPath.startsWith("@/") || importPath.startsWith("~/")) {
-      imports.push(importPath);
+    
+    if (importPath.startsWith(".")) {
+      imports.push(resolveImport(importPath, dir));
+    }
+    else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    }
+    else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
     }
   }
 
@@ -68,13 +85,6 @@ function extractImports(content: string, currentFile: string): string[] {
 }
 
 function resolveImport(importPath: string, dir: string): string {
-  // FIX: Handle Next.js path aliases
-  if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
-    // Strips the alias and treats it as relative to the repo root
-    return importPath.substring(2);
-  }
-
-  // Handle standard relative paths
   const parts = (dir ? dir + "/" + importPath : importPath).split("/");
   const resolved: string[] = [];
 
@@ -121,9 +131,6 @@ export function buildDependencyGraph(
       imports = extractImports(file.content, file.path);
     }
 
-    const dir = file.path.split("/").slice(0, -1).join("/");
-    imports = imports.map(path => resolveImport(path, dir));
-
     const resolved = imports
       .map((imp) => resolveToActualFile(imp, allFiles))
       .filter((imp): imp is string => imp !== null);
@@ -151,19 +158,34 @@ export function graphToMermaid(
   entryPoints: string[]
 ): string {
   const lines: string[] = ["graph TD"];
-
   const seen = new Set<string>();
   const queue = [...entryPoints];
   let nodes = 0;
 
+  // IMPROVED: Auto-detect entry points if none provided
+  if (entryPoints.length === 0) {
+    // Find files with zero dependencies or high fan-in
+    const fanIn = computeFanIn(graph);
+    const potentialEntries = Object.keys(graph).filter(file => {
+      const hasNoDeps = graph[file].length === 0;
+      const isHighFanIn = (fanIn[file] || 0) > 2;
+      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.");
+      return hasNoDeps || isHighFanIn || isEntry;
+    });
+    
+    queue.push(...potentialEntries.slice(0, 3));
+  }
+
   // ENTRY SUBGRAPH
-  lines.push("subgraph Entry");
-  entryPoints.forEach((entry) => {
-    const id = sanitize(entry);
-    const name = entry.split("/").pop() || entry;
-    lines.push(`  ${id}["${name}"]`);
-  });
-  lines.push("end");
+  if (queue.length > 0) {
+    lines.push("subgraph Entry");
+    queue.forEach((entry) => {
+      const id = sanitize(entry);
+      const name = entry.split("/").pop() || entry;
+      lines.push(`  ${id}["${name}"]`);
+    });
+    lines.push("end");
+  }
 
   // DEPENDENCY GRAPH
   while (queue.length > 0 && nodes < 30) {
@@ -174,9 +196,6 @@ export function graphToMermaid(
     const deps = graph[current] || [];
 
     for (const dep of deps.slice(0, 5)) {
-      const from = current.split("/").pop() || current;
-      const to = dep.split("/").pop() || dep;
-
       const fromId = sanitize(current);
       const toId = sanitize(dep);
 
@@ -188,7 +207,7 @@ export function graphToMermaid(
     nodes++;
   }
 
-  if (lines.length === 1) {
+  if (lines.length === 2) {
     lines.push(`  A["No dependency relationships detected"]`);
   }
 
