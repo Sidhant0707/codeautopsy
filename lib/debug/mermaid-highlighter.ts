@@ -14,7 +14,6 @@ export function highlightDebugPath(
   const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
 
   const crashId = sanitize(crashNode);
-  const traversalIds = traversalPath.map((n) => sanitize(n.file));
   const rootCauseId = rootCauseFile ? sanitize(rootCauseFile) : null;
 
   // Add styling at the end of the Mermaid definition

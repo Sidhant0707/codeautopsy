@@ -1,0 +1,2139 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/api/analyze/route.ts
+app/api/debug/analyze/route.ts
+app/favicon.ico
+app/layout.tsx
+components/debug/CodeDoctorPanel.tsx
+components/debug/DebugForm.tsx
+components/debug/DebugInterface.tsx
+components/debug/DebugResults.tsx
+components/debug/LoadingSkeleton.tsx
+hooks/use-debug.ts
+lib/debug/cache.ts
+lib/debug/file-fetcher.ts
+lib/debug/gemini-debug.ts
+lib/debug/graph-traversal.ts
+lib/debug/heuristics.ts
+lib/debug/mermaid-highlighter.ts
+lib/debug/stack-parser.ts
+lib/debug/types.ts
+lib/dependency-graph.ts
+package.json
+public/codeautopsy-logo1.png
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="components/debug/CodeDoctorPanel.tsx">
+"use client";
+
+import { useEffect } from "react";
+import { useDebugAnalysis } from "@/hooks/use-debug";
+import { DebugForm } from "./DebugForm";
+import { DebugResults } from "./DebugResults";
+import { LoadingSkeleton } from "./LoadingSkeleton";
+
+interface CodeDoctorPanelProps {
+  repoUrl: string;
+  onUpdateGraph?: (newMermaidString: string) => void;
+}
+
+export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps) {
+  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
+
+  useEffect(() => {
+    if (result?.highlighted_mermaid && onUpdateGraph) {
+      onUpdateGraph(result.highlighted_mermaid);
+    }
+  }, [result, onUpdateGraph]);
+
+  return (
+    <div className="w-full bg-black/40 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative overflow-hidden">
+      {/* Background glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-indigo-500/10 blur-[100px] pointer-events-none" />
+
+      <div className="mb-8 relative z-10">
+        <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 mb-2">
+          Code Doctor
+        </h2>
+        <p className="text-gray-400 text-sm">
+          Paste a stack trace. The engine will traverse your architecture graph to pinpoint the root cause.
+        </p>
+      </div>
+
+      <div className="relative z-10">
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start">
+            <span className="text-lg">❌</span>
+            <div className="flex-1">
+              <p className="font-medium mb-1">Diagnosis Failed</p>
+              <p className="text-xs text-red-300/70">{error}</p>
+              <button
+                onClick={reset}
+                className="mt-3 text-xs text-red-400 hover:text-red-300 underline"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <LoadingSkeleton />
+        ) : result ? (
+          <DebugResults result={result} onReset={reset} />
+        ) : (
+          <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="components/debug/DebugForm.tsx">
+"use client";
+
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
+
+interface DebugFormProps {
+  onSubmit: (stackTrace: string) => void;
+  isLoading: boolean;
+}
+
+const EXAMPLE_TRACES = [
+  {
+    label: "TypeError Example",
+    trace: `TypeError: Cannot read properties of undefined (reading 'map')
+    at UserList (components/UserList.tsx:42:15)
+    at renderWithHooks (node_modules/react-dom/cjs/react-dom.development.js:14985:18)`,
+  },
+  {
+    label: "Reference Error",
+    trace: `ReferenceError: fetchData is not defined
+    at loadUsers (lib/api.ts:23:10)
+    at Dashboard (app/dashboard/page.tsx:15:5)`,
+  },
+];
+
+export function DebugForm({ onSubmit, isLoading }: DebugFormProps) {
+  const [trace, setTrace] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (trace.trim()) {
+      onSubmit(trace);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Example Traces */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-slate-500 uppercase tracking-wider">Quick Test:</span>
+        {EXAMPLE_TRACES.map((example) => (
+          <button
+            key={example.label}
+            type="button"
+            onClick={() => setTrace(example.trace)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white transition-all"
+          >
+            {example.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Textarea */}
+      <div className="flex flex-col gap-2">
+        <label htmlFor="stackTrace" className="text-sm font-medium text-gray-300 ml-1">
+          Paste your stack trace or error message
+        </label>
+        <textarea
+          id="stackTrace"
+          value={trace}
+          onChange={(e) => setTrace(e.target.value)}
+          placeholder="TypeError: Cannot read properties of undefined (reading 'map')&#10;    at UserList (components/UserList.tsx:42:15)"
+          className="min-h-[200px] p-4 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl font-mono text-sm text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none resize-y transition-all placeholder:text-gray-600"
+          disabled={isLoading}
+        />
+        <p className="text-xs text-slate-500 ml-1">
+          💡 Tip: Include file paths and line numbers for best results
+        </p>
+      </div>
+
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={isLoading || !trace.trim()}
+        className="w-full px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_30px_rgba(79,70,229,0.5)] flex items-center justify-center gap-2"
+      >
+        {isLoading ? (
+          <>
+            <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            Analyzing Architecture...
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-4 h-4" />
+            Diagnose Crash
+          </>
+        )}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="components/debug/DebugInterface.tsx">
+"use client";
+
+import { useState } from "react";
+import MermaidDiagram from "@/components/MermaidDiagram";
+import { CodeDoctorPanel } from "./CodeDoctorPanel";
+
+export default function DebugInterface({ initialChart, repoUrl }: { initialChart: string, repoUrl: string }) {
+  const [chart, setChart] = useState(initialChart);
+
+  return (
+    <div className="space-y-12">
+      <section>
+        <h3 className="text-lg font-bold text-white mb-4 italic uppercase tracking-widest">
+          Code Doctor <span className="text-slate-600 text-xs ml-2">V1.0</span>
+        </h3>
+        <CodeDoctorPanel 
+          repoUrl={repoUrl} 
+          onUpdateGraph={(newChart) => setChart(newChart)} 
+        />
+      </section>
+
+      <section>
+        <h3 className="text-lg font-bold text-white mb-4 italic uppercase tracking-widest">
+          Dependency Graph
+        </h3>
+        <div className="p-6 border border-white/5 rounded-3xl bg-white/[0.02] backdrop-blur-sm shadow-2xl">
+          <MermaidDiagram chart={chart} />
+        </div>
+      </section>
+    </div>
+  );
+}
+</file>
+
+<file path="components/debug/DebugResults.tsx">
+"use client";
+
+import { useState } from "react";
+import { Check, Copy, Download, ThumbsUp, ThumbsDown, RotateCcw } from "lucide-react";
+import { motion } from "framer-motion";
+
+interface DebugResultsProps {
+  result: {
+    root_cause_hypothesis: string;
+    fix_suggestions: string[];
+    verification_steps: string[];
+    confidence: "high" | "medium" | "low";
+    requires_runtime_check: boolean;
+    crash_node?: { file: string; line: number };
+  };
+  onReset: () => void;
+}
+
+export function DebugResults({ result, onReset }: DebugResultsProps) {
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+
+  const confidenceColors = {
+    high: "bg-green-500/10 border-green-500/20 text-green-400",
+    medium: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+    low: "bg-red-500/10 border-red-500/20 text-red-400",
+  };
+
+  const copyDiagnosis = () => {
+    const text = `
+CODE DOCTOR DIAGNOSIS
+=====================
+
+CONFIDENCE: ${result.confidence.toUpperCase()}
+
+ROOT CAUSE:
+${result.root_cause_hypothesis}
+
+FIX SUGGESTIONS:
+${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+VERIFICATION STEPS:
+${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+${result.requires_runtime_check ? "⚠️ This appears to be a runtime/state error. Check database, API, and environment variables." : ""}
+    `.trim();
+
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const exportMarkdown = () => {
+    const markdown = `# Code Doctor Diagnosis
+
+**Confidence:** ${result.confidence.toUpperCase()}  
+**Crash Location:** \`${result.crash_node?.file}:${result.crash_node?.line}\`
+
+## Root Cause Hypothesis
+
+${result.root_cause_hypothesis}
+
+${result.requires_runtime_check ? "> ⚠️ **Warning:** This appears to be a runtime/state error. Ensure you check database queries, API responses, and environment variables.\n" : ""}
+
+## Fix Suggestions
+
+${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+## Verification Steps
+
+${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+---
+*Generated by CodeAutopsy Code Doctor*
+`;
+
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `diagnosis-${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      {/* Header with Actions */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center">
+            <span className="text-2xl">🩺</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">Code Doctor Diagnosis</h3>
+            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${confidenceColors[result.confidence]}`}>
+              {result.confidence} Confidence
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Copy Button */}
+          <button
+            onClick={copyDiagnosis}
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? "Copied!" : "Copy"}
+          </button>
+
+          {/* Export Button */}
+          <button
+            onClick={exportMarkdown}
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+
+          {/* Reset Button */}
+          <button
+            onClick={onReset}
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            <RotateCcw className="w-4 h-4" />
+            New Diagnosis
+          </button>
+        </div>
+      </div>
+
+      {/* Runtime Check Warning */}
+      {result.requires_runtime_check && (
+        <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-start gap-3">
+          <span className="text-xl">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm text-yellow-200 font-medium mb-1">
+              This appears to be a state or data error.
+            </p>
+            <p className="text-xs text-yellow-300/70">
+              Ensure you check your database, API endpoints, and environment variables.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Root Cause */}
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
+          Root Cause Hypothesis
+        </h4>
+        <p className="text-slate-200 leading-relaxed">
+          {result.root_cause_hypothesis}
+        </p>
+      </div>
+
+      {/* Fix Suggestions */}
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+          Fix Suggestions
+        </h4>
+        <div className="space-y-3">
+          {result.fix_suggestions.map((suggestion, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-xs text-blue-300 font-bold">{i + 1}</span>
+              </div>
+              <p className="text-sm text-slate-300 leading-relaxed">{suggestion}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Verification Steps */}
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+          Verification Steps
+        </h4>
+        <div className="space-y-3">
+          {result.verification_steps.map((step, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-xs text-green-300 font-bold">{i + 1}</span>
+              </div>
+              <p className="text-sm text-slate-300 leading-relaxed">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Feedback */}
+      <div className="flex items-center justify-center gap-4 pt-4 pb-2">
+        <span className="text-xs text-slate-500 uppercase tracking-wider">
+          Was this helpful?
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFeedback("up")}
+            className={`p-2 rounded-lg border transition-all ${
+              feedback === "up"
+                ? "bg-green-500/20 border-green-500/40 text-green-400"
+                : "bg-white/5 border-white/10 text-slate-400 hover:text-green-400"
+            }`}
+          >
+            <ThumbsUp className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setFeedback("down")}
+            className={`p-2 rounded-lg border transition-all ${
+              feedback === "down"
+                ? "bg-red-500/20 border-red-500/40 text-red-400"
+                : "bg-white/5 border-white/10 text-slate-400 hover:text-red-400"
+            }`}
+          >
+            <ThumbsDown className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+</file>
+
+<file path="components/debug/LoadingSkeleton.tsx">
+"use client";
+
+import { motion } from "framer-motion";
+
+export function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header Skeleton */}
+      <div className="flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+        <div className="space-y-2 flex-1">
+          <div className="h-5 bg-white/5 rounded w-48 animate-pulse" />
+          <div className="h-4 bg-white/5 rounded w-32 animate-pulse" />
+        </div>
+      </div>
+
+      {/* Analysis Progress */}
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10 space-y-4">
+        <div className="flex items-center gap-3">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            className="w-5 h-5 rounded-full border-2 border-blue-500 border-t-transparent"
+          />
+          <span className="text-sm text-slate-400">Analyzing crash location...</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 0.3 }}
+            className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent"
+          />
+          <span className="text-sm text-slate-400">Traversing dependency graph...</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 0.6 }}
+            className="w-5 h-5 rounded-full border-2 border-purple-500 border-t-transparent"
+          />
+          <span className="text-sm text-slate-400">Generating diagnosis...</span>
+        </div>
+      </div>
+
+      {/* Content Skeletons */}
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="p-6 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
+            <div className="h-4 bg-white/5 rounded w-1/4 animate-pulse" />
+            <div className="h-3 bg-white/5 rounded w-full animate-pulse" />
+            <div className="h-3 bg-white/5 rounded w-5/6 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="hooks/use-debug.ts">
+import { useState } from "react";
+
+interface DebugResult {
+  root_cause_hypothesis: string;
+  fix_suggestions: string[];
+  verification_steps: string[];
+  confidence: "high" | "medium" | "low";
+  requires_runtime_check: boolean;
+  highlighted_mermaid?: string;
+  crash_node?: { file: string; line: number };
+}
+
+export function useDebugAnalysis(repoUrl: string) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<DebugResult | null>(null);
+
+  const analyzeCrash = async (stackTrace: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/debug/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl, stackTrace }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to analyze crash");
+      }
+
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setResult(null);
+    setError(null);
+  };
+
+  return { analyzeCrash, result, isLoading, error, reset };
+}
+</file>
+
+<file path="lib/debug/cache.ts">
+// lib/debug/cache.ts
+
+import { redis } from "@/lib/ratelimit";
+import { DebugResult } from "./types";
+
+export async function getCachedDebug(
+  analysisId: string,
+  stackTraceHash: string
+): Promise<DebugResult | null> {
+  try {
+    const key = `debug:${analysisId}:${stackTraceHash}`;
+    const cached = await redis.get(key);
+    return cached ? JSON.parse(cached as string) : null;
+  } catch (err) {
+    console.error("Cache fetch error:", err);
+    return null;
+  }
+}
+
+export async function cacheDebug(
+  analysisId: string,
+  stackTraceHash: string,
+  result: DebugResult
+): Promise<void> {
+  try {
+    const key = `debug:${analysisId}:${stackTraceHash}`;
+    await redis.set(key, JSON.stringify(result), { ex: 3600 * 24 }); // 24h TTL
+  } catch (err) {
+    console.error("Cache write error:", err);
+  }
+}
+
+// Hash function for stack traces
+export function hashStackTrace(trace: string): string {
+  // Simple hash using built-in crypto
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(trace).digest("hex").slice(0, 16);
+}
+</file>
+
+<file path="lib/debug/file-fetcher.ts">
+// lib/debug/file-fetcher.ts
+
+import { TraversalNode } from "./types";
+import { fetchFileContent } from "@/lib/github";
+
+export async function fetchMissingFiles(
+  traversalPath: TraversalNode[],
+  existingContents: Map<string, string>,
+  owner: string,
+  repo: string,
+  providerToken?: string
+): Promise<Map<string, string>> {
+  const missing = traversalPath
+    .filter((n) => !existingContents.has(n.file))
+    .slice(0, 10); // Limit to avoid rate limits
+
+  const fetched = new Map(existingContents);
+
+  for (const node of missing) {
+    try {
+      const content = await fetchFileContent(
+        owner,
+        repo,
+        node.file,
+        providerToken
+      );
+      // Truncate to save tokens (first 100 lines)
+      fetched.set(node.file, content.split("\n").slice(0, 100).join("\n"));
+    } catch (err) {
+      console.warn(`Failed to fetch ${node.file}:`, err);
+      // Add placeholder for missing files
+      fetched.set(node.file, "// Content not available");
+    }
+  }
+
+  return fetched;
+}
+
+// Extract relevant lines around crash location
+export function extractLineContext(
+  content: string,
+  crashLine: number,
+  contextLines: number = 10
+): { start: number; end: number; snippet: string } {
+  const lines = content.split("\n");
+  const start = Math.max(0, crashLine - contextLines);
+  const end = Math.min(lines.length, crashLine + contextLines);
+
+  const snippet = lines
+    .slice(start, end)
+    .map((line, i) => {
+      const lineNum = start + i + 1;
+      const marker = lineNum === crashLine ? ">>> " : "    ";
+      return `${marker}${lineNum.toString().padStart(4, " ")} | ${line}`;
+    })
+    .join("\n");
+
+  return { start: start + 1, end, snippet };
+}
+</file>
+
+<file path="lib/debug/graph-traversal.ts">
+// lib/debug/graph-traversal.ts
+
+import { DependencyGraph } from "@/lib/dependency-graph";
+import { TraversalNode } from "./types";
+
+interface TraversalConfig {
+  maxDepth: number;
+  maxNodes: number;
+  prioritizeUpstream: boolean;
+}
+
+export function traverseFromCrash(
+  crashNode: string,
+  graph: DependencyGraph,
+  fanIn: Record<string, number>,
+  config: TraversalConfig = {
+    maxDepth: 3,
+    maxNodes: 15,
+    prioritizeUpstream: true,
+  }
+): TraversalNode[] {
+  const result: TraversalNode[] = [];
+  const visited = new Set<string>();
+
+  // Add crash site
+  result.push({
+    file: crashNode,
+    distance: 0,
+    fan_in: fanIn[crashNode] || 0,
+    relationship: "crash_site",
+    relevance_score: 1000, // Always highest priority
+  });
+  visited.add(crashNode);
+
+  // BFS for downstream (what crash node imports)
+  const downstreamNodes = bfsTraversal(
+    crashNode,
+    graph,
+    fanIn,
+    config.maxDepth,
+    "downstream",
+    visited
+  );
+
+  // BFS for upstream (who imports crash node)
+  const upstreamNodes = bfsTraversal(
+    crashNode,
+    buildReverseGraph(graph),
+    fanIn,
+    config.maxDepth,
+    "upstream",
+    visited
+  );
+
+  result.push(...downstreamNodes, ...upstreamNodes);
+
+  // Sort by relevance score (distance penalty × fan-in boost)
+  result.sort((a, b) => b.relevance_score - a.relevance_score);
+
+  // Limit to maxNodes
+  return result.slice(0, config.maxNodes);
+}
+
+function bfsTraversal(
+  startNode: string,
+  graph: DependencyGraph,
+  fanIn: Record<string, number>,
+  maxDepth: number,
+  relationship: "upstream" | "downstream",
+  visited: Set<string>
+): TraversalNode[] {
+  const queue: { node: string; depth: number }[] = [
+    { node: startNode, depth: 0 },
+  ];
+  const result: TraversalNode[] = [];
+
+  while (queue.length > 0) {
+    const { node, depth } = queue.shift()!;
+
+    if (depth >= maxDepth) continue;
+
+    const neighbors = graph[node] || [];
+
+    for (const neighbor of neighbors) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+
+      const distance = depth + 1;
+      const fanInScore = fanIn[neighbor] || 0;
+
+      // Heuristic: Closer nodes + higher fan-in = more relevant
+      // Formula: relevance = (maxDepth - distance) * (1 + log(fan_in + 1))
+      const relevance_score =
+        (maxDepth - distance) * (1 + Math.log(fanInScore + 1));
+
+      result.push({
+        file: neighbor,
+        distance,
+        fan_in: fanInScore,
+        relationship,
+        relevance_score,
+      });
+
+      queue.push({ node: neighbor, depth: distance });
+    }
+  }
+
+  return result;
+}
+
+function buildReverseGraph(graph: DependencyGraph): DependencyGraph {
+  const reverse: DependencyGraph = {};
+
+  for (const [file, imports] of Object.entries(graph)) {
+    for (const imp of imports) {
+      if (!reverse[imp]) reverse[imp] = [];
+      reverse[imp].push(file);
+    }
+  }
+
+  return reverse;
+}
+</file>
+
+<file path="lib/debug/heuristics.ts">
+// lib/debug/heuristics.ts
+
+import { TraversalNode, CrashNode } from "./types";
+
+export function applyDebugHeuristics(
+  nodes: TraversalNode[],
+  crashNode: CrashNode,
+  errorType: string
+): TraversalNode[] {
+  return nodes.map((node) => {
+    let bonus = 0;
+
+    // Heuristic 1: Upstream nodes more likely to be root cause
+    if (node.relationship === "upstream") {
+      bonus += 2;
+    }
+
+    // Heuristic 2: Files with "config", "setup", "init" in name
+    if (/config|setup|init|bootstrap|env/i.test(node.file)) {
+      bonus += 1.5;
+    }
+
+    // Heuristic 3: Entry points are often misconfigured
+    if (node.file.includes("index.") || node.file.includes("main.")) {
+      bonus += 1;
+    }
+
+    // Heuristic 4: If crash is TypeError/ReferenceError, prioritize data sources
+    if (
+      (errorType === "TypeError" || errorType === "ReferenceError") &&
+      (node.file.includes("api/") ||
+        node.file.includes("service") ||
+        node.file.includes("db") ||
+        node.file.includes("database"))
+    ) {
+      bonus += 1.5;
+    }
+
+    // Heuristic 5: Auth-related errors should prioritize auth files
+    if (
+      errorType.toLowerCase().includes("auth") &&
+      (node.file.includes("auth") ||
+        node.file.includes("login") ||
+        node.file.includes("session"))
+    ) {
+      bonus += 2;
+    }
+
+    // Heuristic 6: Middleware and route handlers are common error sources
+    if (
+      node.file.includes("middleware") ||
+      node.file.includes("route") ||
+      node.file.includes("handler")
+    ) {
+      bonus += 1;
+    }
+
+    return {
+      ...node,
+      relevance_score: node.relevance_score + bonus,
+    };
+  });
+}
+
+// Confidence scoring based on traversal results
+export function calculateConfidence(
+  traversalPath: TraversalNode[],
+  crashNode: CrashNode
+): "high" | "medium" | "low" {
+  const upstreamCount = traversalPath.filter(
+    (n) => n.relationship === "upstream"
+  ).length;
+  const highFanInCount = traversalPath.filter((n) => n.fan_in > 5).length;
+
+  // High confidence: Multiple upstream nodes with high fan-in
+  if (upstreamCount >= 3 && highFanInCount >= 2) {
+    return "high";
+  }
+
+  // Medium confidence: Some upstream nodes
+  if (upstreamCount >= 1) {
+    return "medium";
+  }
+
+  // Low confidence: Only downstream or isolated crash
+  return "low";
+}
+
+// Determine if error likely requires runtime check
+export function requiresRuntimeCheck(
+  errorType: string,
+  errorMessage: string
+): boolean {
+  const runtimeIndicators = [
+    /undefined/i,
+    /null/i,
+    /cannot read/i,
+    /is not a function/i,
+    /missing/i,
+    /not found/i,
+    /failed to fetch/i,
+    /network/i,
+    /timeout/i,
+    /connection/i,
+    /database/i,
+    /authentication/i,
+    /unauthorized/i,
+  ];
+
+  const fullText = `${errorType} ${errorMessage}`;
+
+  return runtimeIndicators.some((pattern) => pattern.test(fullText));
+}
+</file>
+
+<file path="lib/debug/mermaid-highlighter.ts">
+// lib/debug/mermaid-highlighter.ts
+
+import { TraversalNode } from "./types";
+
+export function highlightDebugPath(
+  originalMermaid: string,
+  crashNode: string,
+  traversalPath: TraversalNode[],
+  rootCauseFile?: string
+): string {
+  let enhanced = originalMermaid;
+
+  // Sanitize file paths to match Mermaid IDs
+  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  const crashId = sanitize(crashNode);
+  const traversalIds = traversalPath.map((n) => sanitize(n.file));
+  const rootCauseId = rootCauseFile ? sanitize(rootCauseFile) : null;
+
+  // Add styling at the end of the Mermaid definition
+  const styles: string[] = [];
+
+  // Style 1: Crash node (red)
+  styles.push(
+    `style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
+  );
+
+  // Style 2: Traversal path (orange gradient by distance)
+  traversalPath.forEach((node) => {
+    const id = sanitize(node.file);
+    if (id === crashId) return; // Already styled
+
+    const opacity = Math.max(0.3, 1 - node.distance * 0.2);
+    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
+    styles.push(`style ${id} fill:${color},opacity:${opacity}`);
+  });
+
+  // Style 3: Root cause (if identified and different from crash)
+  if (rootCauseId && rootCauseId !== crashId) {
+    styles.push(
+      `style ${rootCauseId} fill:#ffaa00,stroke:#ff6600,stroke-width:2px`
+    );
+  }
+
+  // Inject styles into Mermaid string
+  enhanced += "\n\n" + styles.join("\n");
+
+  // Add legend
+  enhanced += `
+  
+subgraph Legend
+  direction LR
+  crash["🔴 Crash Site"]
+  upstream["🟠 Upstream Caller"]
+  downstream["🔵 Downstream Dependency"]
+end`;
+
+  return enhanced;
+}
+
+// Generate a simplified error-focused graph (alternative to highlighting)
+export function generateErrorGraph(
+  crashNode: string,
+  traversalPath: TraversalNode[]
+): string {
+  const lines: string[] = ["graph TD"];
+
+  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  // Crash node
+  const crashId = sanitize(crashNode);
+  const crashName = crashNode.split("/").pop() || crashNode;
+  lines.push(`  ${crashId}["🔴 ${crashName}"]`);
+  lines.push(
+    `  style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
+  );
+
+  // Add top 10 nodes
+  const topNodes = traversalPath.slice(0, 10);
+
+  topNodes.forEach((node) => {
+    const id = sanitize(node.file);
+    const name = node.file.split("/").pop() || node.file;
+    const icon = node.relationship === "upstream" ? "⬆️" : "⬇️";
+
+    lines.push(`  ${id}["${icon} ${name}"]`);
+
+    // Add edge
+    if (node.relationship === "upstream") {
+      lines.push(`  ${id} --> ${crashId}`);
+    } else {
+      lines.push(`  ${crashId} --> ${id}`);
+    }
+
+    // Style by relationship
+    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
+    lines.push(`  style ${id} fill:${color},opacity:0.7`);
+  });
+
+  return lines.join("\n");
+}
+</file>
+
+<file path="lib/debug/stack-parser.ts">
+// lib/debug/stack-parser.ts
+
+import { CrashNode } from "./types";
+
+const FRAMEWORK_NOISE = [
+  "node_modules/",
+  "webpack:",
+  "<anonymous>",
+  ".next/",
+  "react-dom/",
+  "next/dist/",
+  "node:internal/",
+  "_middleware",
+  "at eval",
+  "at processTicksAndRejections",
+  "at async",
+  "at Module.",
+  "at Object.",
+];
+
+const REPO_ROOT_PATTERNS = [
+  "/app/",
+  "/src/",
+  "/components/",
+  "/lib/",
+  "/utils/",
+  "/pages/",
+  "/api/",
+  "/hooks/",
+  "/services/",
+  "/features/",
+  "/modules/",
+];
+
+interface StackFrame {
+  file: string;
+  line: number;
+  column: number;
+  function?: string;
+  raw: string;
+}
+
+export function parseStackTrace(
+  trace: string,
+  allFiles: string[]
+): CrashNode | null {
+  const lines = trace.split("\n");
+  const frames: StackFrame[] = [];
+
+  for (const line of lines) {
+    // Skip empty lines and error messages
+    if (!line.trim() || !line.includes("at ")) continue;
+
+    // Extract file path and location
+    // Matches: "at functionName (/path/to/file.ts:42:10)"
+    // Also matches: "at /path/to/file.ts:42:10"
+    const match = line.match(
+      /at\s+(?:(.+?)\s+\()?([^()]+):(\d+):(\d+)\)?/
+    );
+
+    if (!match) continue;
+
+    const functionName = match[1]?.trim();
+    const filePath = match[2];
+    const lineNum = parseInt(match[3]);
+    const colNum = parseInt(match[4]);
+
+    // Filter out framework noise
+    if (FRAMEWORK_NOISE.some((noise) => filePath.includes(noise))) {
+      continue;
+    }
+
+    frames.push({
+      file: filePath,
+      line: lineNum,
+      column: colNum,
+      function: functionName,
+      raw: line,
+    });
+  }
+
+  // Now map extracted paths to actual repository files
+  for (const frame of frames) {
+    const matched = findMatchingFile(frame.file, allFiles);
+
+    if (matched) {
+      return {
+        file: matched,
+        line: frame.line,
+        column: frame.column,
+        function: frame.function,
+      };
+    }
+  }
+
+  return null; // No valid crash node found
+}
+
+function findMatchingFile(framePath: string, allFiles: string[]): string | null {
+  // 1. Try exact match
+  if (allFiles.includes(framePath)) return framePath;
+
+  // 2. Try extracting just the filename
+  const filename = framePath.split("/").pop();
+  if (filename) {
+    const match = allFiles.find((f) => f.endsWith(filename));
+    if (match) return match;
+  }
+
+  // 3. Try partial path matching (last 2 segments)
+  const segments = framePath.split("/");
+  if (segments.length >= 2) {
+    const partial = segments.slice(-2).join("/");
+    const match = allFiles.find((f) => f.endsWith(partial));
+    if (match) return match;
+  }
+
+  // 4. Try matching against repo root patterns
+  for (const pattern of REPO_ROOT_PATTERNS) {
+    const idx = framePath.indexOf(pattern);
+    if (idx !== -1) {
+      const repoPath = framePath.substring(idx + 1); // Remove leading "/"
+      if (allFiles.includes(repoPath)) return repoPath;
+    }
+  }
+
+  return null;
+}
+
+// Extract error type and message from stack trace
+export function extractErrorInfo(trace: string): {
+  error_type: string;
+  error_message: string;
+} {
+  const lines = trace.split("\n");
+  const firstLine = lines[0]?.trim() || "";
+
+  // Try to extract "ErrorType: message"
+  const errorMatch = firstLine.match(/^(\w+Error):\s*(.+)$/);
+
+  if (errorMatch) {
+    return {
+      error_type: errorMatch[1],
+      error_message: errorMatch[2],
+    };
+  }
+
+  // Fallback: use first line as message
+  return {
+    error_type: "UnknownError",
+    error_message: firstLine || "No error message provided",
+  };
+}
+
+// Edge case handler: Multiple errors in one trace
+export function extractAllCrashNodes(
+  trace: string,
+  allFiles: string[]
+): CrashNode[] {
+  const lines = trace.split("\n");
+  const crashes: CrashNode[] = [];
+
+  for (const line of lines) {
+    const node = parseStackTrace(line, allFiles);
+    if (node && !crashes.some((c) => c.file === node.file)) {
+      crashes.push(node);
+    }
+  }
+
+  return crashes;
+}
+</file>
+
+<file path="lib/debug/types.ts">
+// lib/debug/types.ts
+
+export interface CrashNode {
+  file: string;
+  line: number;
+  column?: number;
+  function?: string;
+}
+
+export interface TraversalNode {
+  file: string;
+  distance: number;
+  fan_in: number;
+  relationship: "upstream" | "downstream" | "crash_site";
+  relevance_score: number;
+}
+
+export interface DebugContext {
+  error_type: string;
+  error_message: string;
+  crash_location: CrashNode;
+  traversal_path: TraversalNode[];
+  relevant_code: {
+    file: string;
+    content: string;
+    is_crash_site: boolean;
+    line_context?: { start: number; end: number };
+  }[];
+  repo_context: {
+    repo_name: string;
+    entry_points: string[];
+    tech_stack: { name: string; purpose: string }[];
+  };
+}
+
+export interface DebugResult {
+  root_cause_hypothesis: string;
+  fix_suggestions: string[];
+  verification_steps: string[];
+  confidence: "high" | "medium" | "low";
+  requires_runtime_check: boolean;
+}
+
+export interface DebugAnalysis {
+  debug_id: string;
+  crash_node: CrashNode;
+  traversal_path: TraversalNode[];
+  root_cause_hypothesis: string;
+  fix_suggestions: string[];
+  verification_steps: string[];
+  confidence: "high" | "medium" | "low";
+  requires_runtime_check: boolean;
+  highlighted_mermaid: string;
+}
+</file>
+
+<file path="app/api/debug/analyze/route.ts">
+// app/api/debug/analyze/route.ts
+
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { parseStackTrace, extractErrorInfo } from "@/lib/debug/stack-parser";
+import { traverseFromCrash } from "@/lib/debug/graph-traversal";
+import { analyzeDebugWithGemini } from "@/lib/debug/gemini-debug";
+import { highlightDebugPath } from "@/lib/debug/mermaid-highlighter";
+import { fetchMissingFiles, extractLineContext } from "@/lib/debug/file-fetcher";
+import { getCachedDebug, cacheDebug, hashStackTrace } from "@/lib/debug/cache";
+import { applyDebugHeuristics, calculateConfidence, requiresRuntimeCheck } from "@/lib/debug/heuristics";
+import { parseRepoUrl } from "@/lib/github";
+
+export async function POST(req: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+        },
+      }
+    );
+
+    // 1. SECURITY FIX: Use getUser() instead of getSession()
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id;
+    const providerToken = undefined; // Note: getUser doesn't return provider_token directly. If you need it, you might have to fetch the session specifically for the token, but let's stick to getUser for auth.
+
+    // 2. DEBUG LOG: Let's see exactly what the frontend is sending
+    const body = await req.json();
+    console.log("🚀 Code Doctor Received Payload:", body);
+
+    const { repoUrl, stackTrace } = body;
+
+    // 3. STRICTER VALIDATION: Catch empty strings
+    if (!repoUrl || !stackTrace || stackTrace.trim() === "") {
+      return NextResponse.json(
+        { error: `Missing data. Received repoUrl: ${!!repoUrl}, stackTrace: ${!!stackTrace}` },
+        { status: 400 }
+      );
+    }
+
+    // Extract error info
+    const { error_type, error_message } = extractErrorInfo(stackTrace);
+
+    // Check cache
+    const traceHash = hashStackTrace(stackTrace);
+    const cacheKey = `${repoUrl}:${traceHash}`;
+    const cached = await getCachedDebug(repoUrl, traceHash);
+    
+    if (cached) {
+      return NextResponse.json({ ...cached, cached: true });
+    }
+
+    // Fetch existing analysis from database
+    const parsed = parseRepoUrl(repoUrl);
+    if (!parsed) {
+      return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
+    }
+
+    const { owner, repo } = parsed;
+
+    const { data: analysis, error: dbError } = await supabase
+      .from("analyses")
+      .select("*")
+      .eq("repo_url", repoUrl)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (dbError) {
+      console.error("Database error:", dbError);
+      return NextResponse.json(
+        { error: "Failed to fetch analysis from database" },
+        { status: 500 }
+      );
+    }
+
+    const { result_json } = analysis;
+    const { dependencyGraph, fanIn, mermaidDiagram } = result_json;
+
+    // Get all files from the dependency graph
+    const allFiles = Object.keys(dependencyGraph);
+
+    // Parse stack trace
+    const crashNode = parseStackTrace(stackTrace, allFiles);
+
+    if (!crashNode) {
+      return NextResponse.json(
+        { error: "Could not extract crash location from stack trace. Make sure the file exists in the analyzed repository." },
+        { status: 400 }
+      );
+    }
+
+    // Traverse graph
+    let traversalPath = traverseFromCrash(
+      crashNode.file,
+      dependencyGraph,
+      fanIn
+    );
+
+    // Apply heuristics
+    traversalPath = applyDebugHeuristics(traversalPath, crashNode, error_type);
+
+    // Fetch missing files
+    const fileContents = result_json.fileContents || [];
+    const existingContents = new Map<string, string>(
+      fileContents.map((f: any) => [f.path as string, f.content as string])
+    );
+
+    const allContents = await fetchMissingFiles(
+      traversalPath,
+      existingContents,
+      owner,
+      repo,
+      providerToken
+    );
+
+    // Build debug context
+    const relevantCode = traversalPath.slice(0, 10).map((node) => {
+      const content = allContents.get(node.file) || "// Content not available";
+      const is_crash_site = node.file === crashNode.file;
+
+      // If crash site, extract line context
+      let line_context = undefined;
+      if (is_crash_site) {
+        const ctx = extractLineContext(content, crashNode.line);
+        line_context = { start: ctx.start, end: ctx.end };
+      }
+
+      return {
+        file: node.file,
+        content: is_crash_site 
+          ? extractLineContext(content, crashNode.line).snippet 
+          : content,
+        is_crash_site,
+        line_context,
+      };
+    });
+
+    const debugInput = {
+      error_type,
+      error_message,
+      crash_location: crashNode,
+      traversal_path: traversalPath,
+      relevant_code: relevantCode,
+      repo_context: {
+        repo_name: `${owner}/${repo}`,
+        entry_points: result_json.entryPoints || [],
+        tech_stack: result_json.analysis?.tech_stack || [],
+      },
+    };
+
+    // Call Gemini
+    const debugResult = await analyzeDebugWithGemini(debugInput);
+
+    // Calculate confidence
+    const confidence = calculateConfidence(traversalPath, crashNode);
+    const requires_runtime = requiresRuntimeCheck(error_type, error_message);
+
+    // Highlight Mermaid (use first upstream node as suspected root cause)
+    const suspectedRootCause = traversalPath.find(n => n.relationship === "upstream")?.file;
+    const highlightedMermaid = highlightDebugPath(
+      mermaidDiagram,
+      crashNode.file,
+      traversalPath,
+      suspectedRootCause
+    );
+
+    // Store result in database
+    const { data: stored } = await supabase
+      .from("debug_analyses")
+      .insert({
+        analysis_id: analysis.id,
+        user_id: userId,
+        stack_trace: stackTrace,
+        error_type,
+        error_message,
+        crash_node: crashNode,
+        traversal_path: traversalPath,
+        root_cause_hypothesis: debugResult.root_cause_hypothesis,
+        fix_suggestions: debugResult.fix_suggestions,
+        verification_steps: debugResult.verification_steps,
+        highlighted_mermaid: highlightedMermaid,
+      })
+      .select()
+      .maybeSingle();
+
+    const finalResult = {
+      debug_id: stored?.id || "unknown",
+      crash_node: crashNode,
+      traversal_path: traversalPath,
+      root_cause_hypothesis: debugResult.root_cause_hypothesis,
+      fix_suggestions: debugResult.fix_suggestions,
+      verification_steps: debugResult.verification_steps,
+      confidence: confidence,
+      requires_runtime_check: requires_runtime,
+      highlighted_mermaid: highlightedMermaid,
+    };
+
+    // Cache result
+    await cacheDebug(repoUrl, traceHash, finalResult);
+
+    return NextResponse.json(finalResult);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Debug analysis error:", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "codeautopsy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
+    "@vercel/analytics": "^2.0.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
+    "mermaid": "^11.14.0",
+    "next": "16.2.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-icons": "^5.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next"; 
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "CodeAutopsy | AI-Powered Codebase Visualization",
+  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
+  metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
+  openGraph: {
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
+    url: "https://codeautopsy-lyart.vercel.app",
+    siteName: "CodeAutopsy",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "CodeAutopsy Visual Architecture Analysis",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
+    creator: "@Sidhant07",
+    images: ["/og-image.png"],
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Analytics /> 
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="lib/debug/gemini-debug.ts">
+// lib/debug/gemini-debug.ts
+
+import { DebugContext, DebugResult } from "./types";
+
+export async function analyzeDebugWithGemini(
+  input: DebugContext
+): Promise<DebugResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GEMINI_API_KEY environment variable");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const codeSnippets = input.relevant_code
+    .map((file) => {
+      const marker = file.is_crash_site ? "🔴 CRASH SITE" : "";
+      return `=== ${file.file} ${marker} ===\n${file.content}`;
+    })
+    .join("\n\n");
+
+  const traversalSummary = input.traversal_path
+    .slice(0, 10)
+    .map(
+      (n) =>
+        `- ${n.file} (distance: ${n.distance}, fan-in: ${n.fan_in}, ${n.relationship})`
+    )
+    .join("\n");
+
+  const prompt = `
+You are a debugging assistant analyzing a crash in a codebase.
+
+CRITICAL CONSTRAINTS:
+- You ONLY have access to static code dependencies, NOT runtime state.
+- If the error suggests missing data (undefined, null), your FIRST suggestion must involve checking:
+  1. Database queries
+  2. API responses
+  3. Environment variables (.env)
+  4. Authentication state
+
+ERROR DETAILS:
+Type: ${input.error_type}
+Message: ${input.error_message}
+Crash Location: ${input.crash_location.file}:${input.crash_location.line}
+${input.crash_location.function ? `Function: ${input.crash_location.function}` : ""}
+
+DEPENDENCY ANALYSIS:
+Files analyzed (ordered by relevance):
+${traversalSummary}
+
+CODE SNIPPETS:
+${codeSnippets}
+
+REPOSITORY CONTEXT:
+Name: ${input.repo_context.repo_name}
+Entry Points: ${input.repo_context.entry_points.join(", ")}
+Tech Stack: ${input.repo_context.tech_stack.map((t) => t.name).join(", ")}
+
+TASK:
+Analyze the crash and return ONLY a valid JSON object with this structure:
+{
+  "root_cause_hypothesis": "Your best guess at the root cause (2-3 sentences)",
+  "fix_suggestions": ["concrete fix 1", "concrete fix 2", "concrete fix 3"],
+  "verification_steps": ["step to verify fix 1", "step 2", "step 3"],
+  "confidence": "high | medium | low",
+  "requires_runtime_check": true | false
+}
+
+Rules:
+- Be specific: Reference exact file names and line numbers when possible
+- Prioritize UPSTREAM files (callers) over DOWNSTREAM (callees)
+- If confidence is low, say so and suggest what additional info you'd need
+- Set requires_runtime_check=true if the error is likely env/state/data-related
+- Return ONLY the JSON, no markdown, no backticks, no extra text
+`;
+
+  let res: Response | undefined;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2 },
+      }),
+    });
+
+    if (res.ok) break;
+
+    if ((res.status === 503 || res.status === 429) && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 3000 * attempt));
+      continue;
+    }
+
+    throw new Error(`Gemini API error: ${res.status}`);
+  }
+
+  if (!res || !res.ok) throw new Error("Gemini API failed after retries");
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Empty response from Gemini");
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("Gemini returned invalid JSON");
+  }
+
+  const clean = text.slice(jsonStart, jsonEnd + 1);
+  return JSON.parse(clean) as DebugResult;
+}
+</file>
+
+<file path="lib/dependency-graph.ts">
+export interface DependencyGraph {
+  [file: string]: string[];
+}
+
+function extractHtmlDependencies(content: string): string[] {
+  const deps: string[] = [];
+  const scriptRegex = /<script[^>]*src=["']([^"']+)["']/g;
+  const cssRegex = /<link\s+[^>]*href=["']([^"']+)["']/g;
+  let match;
+
+  while ((match = scriptRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  while ((match = cssRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  return deps;
+}
+
+function extractImports(content: string, currentFile: string): string[] {
+  const imports: string[] = [];
+  const dir = currentFile.split("/").slice(0, -1).join("/");
+
+  // ES6 imports - NOW SUPPORTS PATH ALIASES
+  const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
+  const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
+
+  let match;
+
+  while ((match = es6Regex.exec(content)) !== null) {
+    const importPath = match[1];
+    
+    // Handle relative imports
+    if (importPath.startsWith(".")) {
+      imports.push(resolveImport(importPath, dir));
+    }
+    // Handle path aliases (@/, ~/, etc.)
+    else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    }
+    else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
+    }
+    // Skip node_modules
+    else if (!importPath.includes("/")) {
+      continue;
+    }
+  }
+
+  while ((match = cjsRegex.exec(content)) !== null) {
+    const importPath = match[1];
+    
+    if (importPath.startsWith(".")) {
+      imports.push(resolveImport(importPath, dir));
+    }
+    else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    }
+    else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
+    }
+  }
+
+  return imports;
+}
+
+function resolveImport(importPath: string, dir: string): string {
+  const parts = (dir ? dir + "/" + importPath : importPath).split("/");
+  const resolved: string[] = [];
+
+  for (const part of parts) {
+    if (part === "..") resolved.pop();
+    else if (part !== ".") resolved.push(part);
+  }
+
+  return resolved.join("/");
+}
+
+function resolveToActualFile(
+  importPath: string,
+  allFiles: string[]
+): string | null {
+  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".py", ".go", ".css", ".html"];
+
+  if (allFiles.includes(importPath)) return importPath;
+
+  for (const ext of extensions) {
+    if (allFiles.includes(importPath + ext)) return importPath + ext;
+  }
+
+  for (const ext of extensions) {
+    const indexPath = importPath + "/index" + ext;
+    if (allFiles.includes(indexPath)) return indexPath;
+  }
+
+  return null;
+}
+
+export function buildDependencyGraph(
+  fileContents: { path: string; content: string }[],
+  allFiles: string[]
+): DependencyGraph {
+  const graph: DependencyGraph = {};
+
+  for (const file of fileContents) {
+    let imports: string[] = [];
+
+    if (file.path.endsWith(".html") || file.path.endsWith(".htm")) {
+      imports = extractHtmlDependencies(file.content);
+    } else {
+      imports = extractImports(file.content, file.path);
+    }
+
+    const resolved = imports
+      .map((imp) => resolveToActualFile(imp, allFiles))
+      .filter((imp): imp is string => imp !== null);
+
+    graph[file.path] = [...new Set(resolved)];
+  }
+
+  return graph;
+}
+
+export function computeFanIn(graph: DependencyGraph): Record<string, number> {
+  const fanIn: Record<string, number> = {};
+
+  for (const imports of Object.values(graph)) {
+    for (const imp of imports) {
+      fanIn[imp] = (fanIn[imp] || 0) + 1;
+    }
+  }
+
+  return fanIn;
+}
+
+export function graphToMermaid(
+  graph: DependencyGraph,
+  entryPoints: string[]
+): string {
+  const lines: string[] = ["graph TD"];
+  const seen = new Set<string>();
+  const queue = [...entryPoints];
+  let nodes = 0;
+
+  // IMPROVED: Auto-detect entry points if none provided
+  if (entryPoints.length === 0) {
+    // Find files with zero dependencies or high fan-in
+    const fanIn = computeFanIn(graph);
+    const potentialEntries = Object.keys(graph).filter(file => {
+      const hasNoDeps = graph[file].length === 0;
+      const isHighFanIn = (fanIn[file] || 0) > 2;
+      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.");
+      return hasNoDeps || isHighFanIn || isEntry;
+    });
+    
+    queue.push(...potentialEntries.slice(0, 3));
+  }
+
+  // ENTRY SUBGRAPH
+  if (queue.length > 0) {
+    lines.push("subgraph Entry");
+    queue.forEach((entry) => {
+      const id = sanitize(entry);
+      const name = entry.split("/").pop() || entry;
+      lines.push(`  ${id}["${name}"]`);
+    });
+    lines.push("end");
+  }
+
+  // DEPENDENCY GRAPH
+  while (queue.length > 0 && nodes < 30) {
+    const current = queue.shift()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+
+    const deps = graph[current] || [];
+
+    for (const dep of deps.slice(0, 5)) {
+      const fromId = sanitize(current);
+      const toId = sanitize(dep);
+
+      lines.push(`  ${fromId} --> ${toId}`);
+
+      queue.push(dep);
+    }
+
+    nodes++;
+  }
+
+  if (lines.length === 2) {
+    lines.push(`  A["No dependency relationships detected"]`);
+  }
+
+  return lines.join("\n");
+}
+
+function sanitize(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+</file>
+
+<file path="app/api/analyze/route.ts">
+export const maxDuration = 60;
+
+import { NextRequest, NextResponse } from "next/server";
+import { cookies, headers } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent } from "@/lib/github";
+import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
+import { analyzeWithGemini } from "@/lib/gemini";
+import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
+import { ratelimit } from "@/lib/ratelimit";
+
+const ANALYSIS_VERSION = 2;
+
+export async function POST(req: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const headerList = await headers();
+
+    const ip =
+      headerList.get("x-forwarded-for")?.split(",")[0] ||
+      headerList.get("x-real-ip") ||
+      "127.0.0.1";
+
+    const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
+        cookieStore.set(name, value, options);
+      },
+      remove(name: string) {
+        cookieStore.delete(name);
+      }
+    }
+  }
+);
+
+const { data: { session } } = await supabase.auth.getSession();
+
+const providerToken = session?.provider_token ?? undefined;
+const userId = session?.user?.id ?? undefined;
+
+const { repoUrl } = await req.json();
+
+const parsed = parseRepoUrl(repoUrl);
+
+if (!parsed) {
+  return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
+}
+
+const { owner, repo } = parsed;
+
+const meta = await fetchRepoMeta(owner, repo, providerToken);
+const commitSha = meta.default_branch;
+
+// ✅ CHECK CACHE FIRST (before rate limiting)
+const { data: cached } = await supabase
+  .from("analyses")
+  .select("result_json")
+  .eq("repo_url", repoUrl)
+  .eq("commit_sha", commitSha)
+  .eq("analysis_version", ANALYSIS_VERSION)
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (cached?.result_json) {
+  return NextResponse.json({ ...cached.result_json, cached: true });
+}
+
+// ✅ ONLY rate limit if cache miss
+const { success, limit, reset, remaining } = await ratelimit.limit(ip);
+
+if (!success) {
+  return NextResponse.json(
+    { error: "Daily limit reached.", limit, remaining, reset },
+    { status: 429 }
+  );
+}
+
+    const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
+
+    const IGNORE = [
+      "node_modules",
+      "dist",
+      "build",
+      ".next",
+      ".git",
+      "coverage",
+      "__pycache__",
+      ".yarn",
+      "vendor"
+    ];
+
+    const IGNORE_EXTENSIONS = [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".svg",
+      ".ico",
+      ".lock",
+      ".min.js",
+      ".map",
+      ".woff",
+      ".woff2"
+    ];
+
+    type RepoTreeItem = { type: string; path: string };
+
+    const filteredPaths: string[] = (treeData.tree as RepoTreeItem[])
+      .filter((file) => {
+        if (file.type !== "blob") return false;
+        if (IGNORE.some((ig) => file.path.includes(ig))) return false;
+        if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
+        return true;
+      })
+      .map((file) => file.path);
+
+    const scoredFiles = classifyAndScoreFiles(filteredPaths);
+
+    scoredFiles.forEach(file => {
+      if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
+        file.role = "entry";
+        file.score += 500;
+      }
+    });
+
+const topFiles = getTopFiles(scoredFiles, 20);
+const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
+
+// Fetch top 30 files once
+const allFileContents: { path: string; content: string }[] = [];
+
+for (const file of topFiles.slice(0, 30)) {
+  try {
+    const content = await fetchFileContent(owner, repo, file.path, providerToken);
+    allFileContents.push({
+      path: file.path,
+      content: content.split("\n").slice(0, 500).join("\n")
+    });
+  } catch {}
+}
+
+const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+const fanIn = computeFanIn(dependencyGraph);
+const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+
+const analysis = await analyzeWithGemini(
+  `${owner}/${repo}`,
+  meta.description || "No description provided",
+  entryPoints,
+  topFiles.map((f) => ({ path: f.path, role: f.role })),
+  allFileContents.slice(0, 15)  // Use first 15 for Gemini
+);
+
+    const result = {
+      owner,
+      repo,
+      branch: commitSha,
+      description: meta.description,
+      stars: meta.stargazers_count,
+      language: meta.language,
+      totalFiles: filteredPaths.length,
+      entryPoints,
+      dependencyGraph,
+      fanIn,
+      mermaidDiagram,
+      analysis,
+      fileContents: allFileContents.slice(0, 15)
+    };
+
+    await supabase.from("analyses").insert({
+      repo_url: repoUrl,
+      repo_name: `${owner}/${repo}`.toLowerCase(),
+      commit_sha: commitSha,
+      analysis_version: ANALYSIS_VERSION,
+      result_json: result,
+      user_id: userId
+    });
+
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+</file>
+
+</files>
