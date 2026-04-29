@@ -130,32 +130,33 @@ if (!success) {
       }
     });
 
-    const topFiles = getTopFiles(scoredFiles, 20);
-    const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
+const topFiles = getTopFiles(scoredFiles, 20);
+const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
 
-    const fileContents: { path: string; content: string }[] = [];
+// Fetch top 30 files once
+const allFileContents: { path: string; content: string }[] = [];
 
-    for (const file of topFiles.slice(0, 15)) {
-      try {
-        const content = await fetchFileContent(owner, repo, file.path, providerToken);
-        fileContents.push({
-          path: file.path,
-          content: content.split("\n").slice(0, 500).join("\n")
-        });
-      } catch {}
-    }
+for (const file of topFiles.slice(0, 30)) {
+  try {
+    const content = await fetchFileContent(owner, repo, file.path, providerToken);
+    allFileContents.push({
+      path: file.path,
+      content: content.split("\n").slice(0, 500).join("\n")
+    });
+  } catch {}
+}
 
-    const dependencyGraph = buildDependencyGraph(fileContents, filteredPaths);
-    const fanIn = computeFanIn(dependencyGraph);
-    const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+const fanIn = computeFanIn(dependencyGraph);
+const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
 
-    const analysis = await analyzeWithGemini(
-      `${owner}/${repo}`,
-      meta.description || "No description provided",
-      entryPoints,
-      topFiles.map((f) => ({ path: f.path, role: f.role })),
-      fileContents
-    );
+const analysis = await analyzeWithGemini(
+  `${owner}/${repo}`,
+  meta.description || "No description provided",
+  entryPoints,
+  topFiles.map((f) => ({ path: f.path, role: f.role })),
+  allFileContents.slice(0, 15)  // Use first 15 for Gemini
+);
 
     const result = {
       owner,
@@ -170,7 +171,7 @@ if (!success) {
       fanIn,
       mermaidDiagram,
       analysis,
-      fileContents
+      fileContents: allFileContents.slice(0, 15)
     };
 
     await supabase.from("analyses").insert({
