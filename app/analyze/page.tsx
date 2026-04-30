@@ -71,9 +71,13 @@ function AnalyzeContent() {
   const [loading, setLoading] = useState(true);
 
   // States for Tabs and Feedback
-  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
+    "overview",
+  );
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-  const [feedback, setFeedback] = useState<'helpful' | 'not-helpful' | null>(null);
+  const [feedback, setFeedback] = useState<"helpful" | "not-helpful" | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!repoUrl) return;
@@ -81,10 +85,14 @@ function AnalyzeContent() {
     async function analyze() {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push(`/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`);
+          router.push(
+            `/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`,
+          );
           return;
         }
 
@@ -105,17 +113,33 @@ function AnalyzeContent() {
     analyze();
   }, [repoUrl, router]);
 
+  // ✨ FIX 1: Removed the aggressive window.scrollTo that was hijacking the page
   const handleTabSwitch = (tab: "overview" | "diagnostics") => {
     setActiveTab(tab);
-    // Smoothly scroll slightly down to center the tab content after a very brief delay to allow DOM to render
-    setTimeout(() => {
-      window.scrollTo({ top: 300, behavior: "smooth" });
-    }, 50);
   };
 
-  const handleFeedback = (isHelpful: boolean) => {
-    setFeedback(isHelpful ? 'helpful' : 'not-helpful');
+  const handleFeedback = async (isHelpful: boolean) => {
+    setFeedback(isHelpful ? "helpful" : "not-helpful");
     setFeedbackSubmitted(true);
+
+    try {
+      const supabase = createClient();
+
+      const { error } = await supabase.from("debug_feedback").insert([
+        {
+          debug_id: data.id || repoUrl,
+          is_helpful: isHelpful,
+        },
+      ]);
+
+      if (error) {
+        console.error("Database error saving feedback:", error.message);
+      } else {
+        console.log("Feedback successfully inserted into debug_feedback.");
+      }
+    } catch (err) {
+      console.error("Unexpected error saving feedback:", err);
+    }
   };
 
   if (loading)
@@ -198,13 +222,11 @@ function AnalyzeContent() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-[#f1f5f9] relative overflow-x-hidden font-satoshi pb-32">
-      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-[50vh] pointer-events-none">
         <div className="absolute top-[-20%] left-[10%] w-[40%] h-[100%] bg-white/[0.015] blur-[120px] rounded-full" />
       </div>
 
       <div className="max-w-6xl mx-auto px-6 pt-12 relative z-10">
-        {/* Back Button */}
         <button
           onClick={() => router.push("/")}
           className="group flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors mb-12"
@@ -214,7 +236,6 @@ function AnalyzeContent() {
         </button>
 
         <motion.div variants={staggerContainer} initial="hidden" animate="show">
-          {/* Header Section */}
           <motion.div variants={fadeUp} className="mb-12">
             <div className="flex items-start justify-between gap-8 flex-col md:flex-row">
               <div>
@@ -250,7 +271,6 @@ function AnalyzeContent() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex-shrink-0 mt-2 md:mt-0 flex flex-col items-end gap-3 w-full md:w-auto">
                 <ShareButton owner={data.owner} repo={data.repo} />
 
@@ -273,11 +293,10 @@ function AnalyzeContent() {
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* LEFT COLUMN: Main content area (Spans 8 or 12) */}
+            {/* ✨ FIX 2: Added min-h-[1000px] to act as a structural pillar so the page doesn't collapse */}
             <div
-              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-12 transition-all duration-500`}
+              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-12 transition-all duration-500 min-h-[1000px]`}
             >
-              {/* Segmented Tab Control */}
               <div className="flex items-center justify-center">
                 <div className="inline-flex items-center p-1 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md shadow-2xl">
                   <button
@@ -336,14 +355,12 @@ function AnalyzeContent() {
                 </div>
               </div>
 
-              {/* TAB CONTENT: Overview */}
               {activeTab === "overview" && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-8"
                 >
-                  {/* System Purpose */}
                   <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-6">
                       <Layers className="w-5 h-5 text-slate-400" />
@@ -356,7 +373,6 @@ function AnalyzeContent() {
                     </p>
                   </div>
 
-                  {/* Execution Flow */}
                   <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-8">
                       <GitMerge className="w-5 h-5 text-slate-400" />
@@ -379,7 +395,6 @@ function AnalyzeContent() {
                     </div>
                   </div>
 
-                  {/* Onboarding Guide */}
                   <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-6">
                       <CheckCircle2 className="w-5 h-5 text-slate-400" />
@@ -408,7 +423,6 @@ function AnalyzeContent() {
                 </motion.div>
               )}
 
-              {/* TAB CONTENT: Diagnostics */}
               {activeTab === "diagnostics" && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -424,7 +438,6 @@ function AnalyzeContent() {
                 </motion.div>
               )}
 
-              {/* CHAT INTERFACE: Always available at bottom of Left Column */}
               <div className="pt-12 mt-12 border-t border-white/10">
                 <div
                   className={`${activeTab === "diagnostics" ? "max-w-4xl mx-auto" : "w-full"}`}
@@ -448,7 +461,6 @@ function AnalyzeContent() {
                 </div>
               </div>
 
-              {/* FEEDBACK SECTION: Your exact requested structure and placement[cite: 5] */}
               <motion.section
                 variants={fadeUp}
                 className="relative overflow-hidden pt-12"
@@ -519,10 +531,8 @@ function AnalyzeContent() {
               </motion.section>
             </div>
 
-            {/* RIGHT COLUMN: Static sidebar (Hidden in Diagnostics mode) */}
             {activeTab === "overview" && (
               <div className="lg:col-span-4 space-y-8 mt-12 lg:mt-0 transition-opacity duration-300">
-                {/* Tech Stack Section */}
                 <motion.section variants={fadeUp}>
                   <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
                     Tech Stack
@@ -544,7 +554,6 @@ function AnalyzeContent() {
                   </div>
                 </motion.section>
 
-                {/* Key Modules Section */}
                 <motion.section variants={fadeUp}>
                   <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
                     Key Modules
