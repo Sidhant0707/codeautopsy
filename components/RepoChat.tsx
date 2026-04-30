@@ -101,7 +101,7 @@ export default function RepoChat({
           content: data.answer || "No response received.",
         },
       ]);
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
