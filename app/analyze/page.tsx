@@ -18,7 +18,7 @@ import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
 import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
-import DebugInterface from "@/components/debug/DebugInterface"; // ✨ ADDED IMPORT
+import DebugInterface from "@/components/debug/DebugInterface";
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -68,6 +68,10 @@ function AnalyzeContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
+    "overview",
+  );
+
   useEffect(() => {
     if (!repoUrl) return;
 
@@ -103,9 +107,19 @@ function AnalyzeContent() {
     analyze();
   }, [repoUrl, router]);
 
+  // ✨ NEW: Auto-scroll fix
+  const handleTabSwitch = (tab: "overview" | "diagnostics") => {
+    setActiveTab(tab);
+    // Smoothly scroll slightly down to center the tab content after a very brief delay to allow DOM to render
+    setTimeout(() => {
+      window.scrollTo({ top: 300, behavior: "smooth" });
+    }, 50);
+  };
+
   if (loading)
     return (
       <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative overflow-hidden">
+        {/* Loading UI stays exactly the same... */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/[0.02] rounded-full blur-[100px] animate-pulse [animation-duration:4s]" />
         <motion.div
           variants={staggerContainer}
@@ -197,8 +211,7 @@ function AnalyzeContent() {
         </button>
 
         <motion.div variants={staggerContainer} initial="hidden" animate="show">
-          {/* Header */}
-          <motion.div variants={fadeUp} className="mb-16">
+          <motion.div variants={fadeUp} className="mb-12">
             <div className="flex items-start justify-between gap-8 flex-col md:flex-row">
               <div>
                 <div className="flex items-center gap-4 mb-4">
@@ -239,163 +252,251 @@ function AnalyzeContent() {
                 </div>
               </div>
 
-              <div className="flex-shrink-0 mt-2 md:mt-0">
+              <div className="flex-shrink-0 mt-2 md:mt-0 flex flex-col items-end gap-3 w-full md:w-auto">
                 <ShareButton owner={data.owner} repo={data.repo} />
+
+                {activeTab !== "diagnostics" && (
+                  // ✨ NEW: Professional, non-AI-looking metallic pulse button
+                  <button
+                    onClick={() => handleTabSwitch("diagnostics")}
+                    className="w-full relative group overflow-hidden rounded-lg p-[1px] bg-white/10 hover:bg-white/20 transition-colors"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                    <div className="relative flex items-center justify-center gap-2 bg-[#0a0a0a] px-6 py-3 rounded-lg transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)] group-hover:shadow-[0_0_20px_rgba(255,255,255,0.1)]">
+                      <Cpu className="w-4 h-4 text-slate-300" />
+                      <span className="text-xs font-bold text-slate-100 font-mono uppercase tracking-widest">
+                        Launch Engine
+                      </span>
+                    </div>
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left column */}
-            <div className="lg:col-span-8 space-y-8">
-              {/* System Purpose */}
-              <motion.section
+            {/* 
+              ✨ NEW: Dynamic Column Sizing 
+              If overview, span 8 and leave room for the right sidebar.
+              If diagnostics, span all 12 columns for a massive workspace.
+            */}
+            <div
+              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-8 transition-all duration-500`}
+            >
+              <motion.div
                 variants={fadeUp}
-                className="glass-card p-8 rounded-3xl"
+                className="flex items-center justify-center mb-8"
               >
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                    <Layers className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <h2 className="cabinet text-2xl font-bold text-white">
-                    System Purpose
-                  </h2>
-                </div>
-                <p className="text-slate-300 leading-relaxed text-sm md:text-base">
-                  {data.analysis.what_it_does}
-                </p>
-              </motion.section>
+                <div className="inline-flex items-center p-1 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md shadow-2xl">
+                  <button
+                    onClick={() => handleTabSwitch("overview")}
+                    className={`relative px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-widest font-mono transition-all duration-300 ${
+                      activeTab === "overview"
+                        ? "text-white shadow-lg"
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    {activeTab === "overview" && (
+                      <motion.div
+                        layoutId="activeTabPill"
+                        className="absolute inset-0 bg-white/10 border border-white/20 rounded-lg"
+                        initial={false}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
+                        }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                      <FileCode className="w-4 h-4" />
+                      Read_Docs
+                    </span>
+                  </button>
 
-              {/* Execution Flow */}
-              <motion.section
-                variants={fadeUp}
-                className="glass-card p-8 rounded-3xl"
-              >
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                    <GitMerge className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <h2 className="cabinet text-2xl font-bold text-white">
-                    Execution Flow
-                  </h2>
+                  <button
+                    onClick={() => handleTabSwitch("diagnostics")}
+                    className={`relative px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-widest font-mono transition-all duration-300 ${
+                      activeTab === "diagnostics"
+                        ? "text-slate-100 shadow-lg"
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    {activeTab === "diagnostics" && (
+                      <motion.div
+                        layoutId="activeTabPill"
+                        className="absolute inset-0 bg-white/5 border border-white/10 rounded-lg"
+                        initial={false}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
+                        }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full ${activeTab === "diagnostics" ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-600"}`}
+                      />
+                      Terminal
+                    </span>
+                  </button>
                 </div>
-                <div className="relative pl-4 border-l border-white/10 ml-4 space-y-8 pb-4">
-                  {data.analysis.execution_flow.map((step, i) => (
-                    <div key={i} className="relative pl-6">
-                      <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0e0e0e]" />
-                      <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-2">
-                        STEP 0{i + 1}
-                      </span>
-                      <p className="text-sm text-slate-300 leading-relaxed">
-                        {step}
-                      </p>
+              </motion.div>
+
+              {activeTab === "overview" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  {/* System Purpose */}
+                  <div className="glass-card p-8 rounded-3xl">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
+                        <Layers className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <h2 className="cabinet text-2xl font-bold text-white">
+                        System Purpose
+                      </h2>
                     </div>
-                  ))}
-                </div>
-              </motion.section>
+                    <p className="text-slate-300 leading-relaxed text-sm md:text-base">
+                      {data.analysis.what_it_does}
+                    </p>
+                  </div>
 
-              {/* ✨ NEW: Code Doctor & Interactive Dependency Graph ✨ */}
-              {data.mermaidDiagram && (
-                <motion.section variants={fadeUp}>
-                  <DebugInterface
-                    initialChart={data.mermaidDiagram}
-                    repoUrl={`https://github.com/${data.owner}/${data.repo}`}
-                  />
-                </motion.section>
+                  {/* Execution Flow */}
+                  <div className="glass-card p-8 rounded-3xl">
+                    <div className="flex items-center gap-3 mb-8">
+                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
+                        <GitMerge className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <h2 className="cabinet text-2xl font-bold text-white">
+                        Execution Flow
+                      </h2>
+                    </div>
+                    <div className="relative pl-4 border-l border-white/10 ml-4 space-y-8 pb-4">
+                      {data.analysis.execution_flow.map((step, i) => (
+                        <div key={i} className="relative pl-6">
+                          <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0e0e0e]" />
+                          <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-2">
+                            STEP 0{i + 1}
+                          </span>
+                          <p className="text-sm text-slate-300 leading-relaxed">
+                            {step}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Onboarding Guide */}
+                  <div className="glass-card p-8 rounded-3xl">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <h2 className="cabinet text-2xl font-bold text-white">
+                        Developer Onboarding
+                      </h2>
+                    </div>
+                    <div className="space-y-4">
+                      {data.analysis.onboarding_guide.map((tip, i) => (
+                        <div
+                          key={i}
+                          className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-[#141414] border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="mono text-[10px] text-white">
+                              {i + 1}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-300 leading-relaxed">
+                            {tip}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
               )}
 
-              {/* Onboarding Guide */}
-              <motion.section
-                variants={fadeUp}
-                className="glass-card p-8 rounded-3xl"
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-slate-400" />
+              {activeTab === "diagnostics" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  {data.mermaidDiagram && (
+                    <DebugInterface
+                      initialChart={data.mermaidDiagram}
+                      repoUrl={`https://github.com/${data.owner}/${data.repo}`}
+                    />
+                  )}
+                  <div className="max-w-4xl mx-auto">
+                    <RepoChat repoContext={data} />
                   </div>
-                  <h2 className="cabinet text-2xl font-bold text-white">
-                    Developer Onboarding
+                </motion.div>
+              )}
+            </div>
+
+            {/* 
+              ✨ NEW: Conditional Rendering of the Sidebar
+              It ONLY shows if the user is on the "overview" tab.
+            */}
+            {activeTab === "overview" && (
+              <div className="lg:col-span-4 space-y-8 mt-12 lg:mt-0">
+                <motion.section variants={fadeUp}>
+                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
+                    Tech Stack
                   </h2>
-                </div>
-                <div className="space-y-4">
-                  {data.analysis.onboarding_guide.map((tip, i) => (
-                    <div
-                      key={i}
-                      className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-[#141414] border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="mono text-[10px] text-white">
-                          {i + 1}
-                        </span>
+                  <div className="space-y-3">
+                    {data.analysis.tech_stack.map((tech, i) => (
+                      <div
+                        key={i}
+                        className="glass-card hover-depth-card p-5 rounded-2xl"
+                      >
+                        <p className="cabinet font-bold text-white mb-2">
+                          {tech.name}
+                        </p>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          {tech.purpose}
+                        </p>
                       </div>
-                      <p className="text-sm text-slate-300 leading-relaxed">
-                        {tip}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </motion.section>
+                    ))}
+                  </div>
+                </motion.section>
 
-              {/* Ask the Repo */}
-              <motion.section variants={fadeUp}>
-                <RepoChat repoContext={data} />
-              </motion.section>
-            </div>
-
-            {/* Right column */}
-            <div className="lg:col-span-4 space-y-8">
-              {/* Tech Stack */}
-              <motion.section variants={fadeUp}>
-                <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
-                  Tech Stack
-                </h2>
-                <div className="space-y-3">
-                  {data.analysis.tech_stack.map((tech, i) => (
-                    <div
-                      key={i}
-                      className="glass-card hover-depth-card p-5 rounded-2xl"
-                    >
-                      <p className="cabinet font-bold text-white mb-2">
-                        {tech.name}
-                      </p>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        {tech.purpose}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </motion.section>
-
-              {/* Key Modules */}
-              <motion.section variants={fadeUp}>
-                <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
-                  Key Modules
-                </h2>
-                <div className="space-y-3">
-                  {data.analysis.key_modules.map((mod, i) => (
-                    <div
-                      key={i}
-                      className="glass-card p-5 rounded-2xl bg-[#0a0a0a]"
-                    >
-                      <div className="flex items-center justify-between gap-4 mb-4">
-                        <code
-                          className="mono text-[11px] text-slate-300 truncate"
-                          title={mod.file}
-                        >
-                          {mod.file.split("/").pop()}
-                        </code>
-                        <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-2 py-1 rounded">
-                          {mod.role}
-                        </span>
+                <motion.section variants={fadeUp}>
+                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
+                    Key Modules
+                  </h2>
+                  <div className="space-y-3">
+                    {data.analysis.key_modules.map((mod, i) => (
+                      <div
+                        key={i}
+                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a]"
+                      >
+                        <div className="flex items-center justify-between gap-4 mb-4">
+                          <code
+                            className="mono text-[11px] text-slate-300 truncate"
+                            title={mod.file}
+                          >
+                            {mod.file.split("/").pop()}
+                          </code>
+                          <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-2 py-1 rounded">
+                            {mod.role}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
+                          {mod.why_it_exists}
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
-                        {mod.why_it_exists}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </motion.section>
-            </div>
+                    ))}
+                  </div>
+                </motion.section>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
