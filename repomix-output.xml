@@ -59,79 +59,13 @@ lib/debug/mermaid-highlighter.ts
 lib/debug/stack-parser.ts
 lib/debug/types.ts
 lib/dependency-graph.ts
+middleware.ts
 package.json
 public/codeautopsy-logo1.png
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="components/debug/CodeDoctorPanel.tsx">
-"use client";
-
-import { useEffect } from "react";
-import { useDebugAnalysis } from "@/hooks/use-debug";
-import { DebugForm } from "./DebugForm";
-import { DebugResults } from "./DebugResults";
-import { LoadingSkeleton } from "./LoadingSkeleton";
-
-interface CodeDoctorPanelProps {
-  repoUrl: string;
-  onUpdateGraph?: (newMermaidString: string) => void;
-}
-
-export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps) {
-  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
-
-  useEffect(() => {
-    if (result?.highlighted_mermaid && onUpdateGraph) {
-      onUpdateGraph(result.highlighted_mermaid);
-    }
-  }, [result, onUpdateGraph]);
-
-  return (
-    <div className="w-full bg-black/40 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-indigo-500/10 blur-[100px] pointer-events-none" />
-
-      <div className="mb-8 relative z-10">
-        <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 mb-2">
-          Code Doctor
-        </h2>
-        <p className="text-gray-400 text-sm">
-          Paste a stack trace. The engine will traverse your architecture graph to pinpoint the root cause.
-        </p>
-      </div>
-
-      <div className="relative z-10">
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start">
-            <span className="text-lg">❌</span>
-            <div className="flex-1">
-              <p className="font-medium mb-1">Diagnosis Failed</p>
-              <p className="text-xs text-red-300/70">{error}</p>
-              <button
-                onClick={reset}
-                className="mt-3 text-xs text-red-400 hover:text-red-300 underline"
-              >
-                Try again
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isLoading ? (
-          <LoadingSkeleton />
-        ) : result ? (
-          <DebugResults result={result} onReset={reset} />
-        ) : (
-          <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
-        )}
-      </div>
-    </div>
-  );
-}
-</file>
 
 <file path="components/debug/DebugForm.tsx">
 "use client";
@@ -262,234 +196,6 @@ export default function DebugInterface({ initialChart, repoUrl }: { initialChart
 }
 </file>
 
-<file path="components/debug/DebugResults.tsx">
-"use client";
-
-import { useState } from "react";
-import { Check, Copy, Download, ThumbsUp, ThumbsDown, RotateCcw } from "lucide-react";
-import { motion } from "framer-motion";
-
-interface DebugResultsProps {
-  result: {
-    root_cause_hypothesis: string;
-    fix_suggestions: string[];
-    verification_steps: string[];
-    confidence: "high" | "medium" | "low";
-    requires_runtime_check: boolean;
-    crash_node?: { file: string; line: number };
-  };
-  onReset: () => void;
-}
-
-export function DebugResults({ result, onReset }: DebugResultsProps) {
-  const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
-
-  const confidenceColors = {
-    high: "bg-green-500/10 border-green-500/20 text-green-400",
-    medium: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
-    low: "bg-red-500/10 border-red-500/20 text-red-400",
-  };
-
-  const copyDiagnosis = () => {
-    const text = `
-CODE DOCTOR DIAGNOSIS
-=====================
-
-CONFIDENCE: ${result.confidence.toUpperCase()}
-
-ROOT CAUSE:
-${result.root_cause_hypothesis}
-
-FIX SUGGESTIONS:
-${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
-VERIFICATION STEPS:
-${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
-${result.requires_runtime_check ? "⚠️ This appears to be a runtime/state error. Check database, API, and environment variables." : ""}
-    `.trim();
-
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const exportMarkdown = () => {
-    const markdown = `# Code Doctor Diagnosis
-
-**Confidence:** ${result.confidence.toUpperCase()}  
-**Crash Location:** \`${result.crash_node?.file}:${result.crash_node?.line}\`
-
-## Root Cause Hypothesis
-
-${result.root_cause_hypothesis}
-
-${result.requires_runtime_check ? "> ⚠️ **Warning:** This appears to be a runtime/state error. Ensure you check database queries, API responses, and environment variables.\n" : ""}
-
-## Fix Suggestions
-
-${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
-## Verification Steps
-
-${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
----
-*Generated by CodeAutopsy Code Doctor*
-`;
-
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `diagnosis-${Date.now()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
-      {/* Header with Actions */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center">
-            <span className="text-2xl">🩺</span>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">Code Doctor Diagnosis</h3>
-            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${confidenceColors[result.confidence]}`}>
-              {result.confidence} Confidence
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Copy Button */}
-          <button
-            onClick={copyDiagnosis}
-            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied!" : "Copy"}
-          </button>
-
-          {/* Export Button */}
-          <button
-            onClick={exportMarkdown}
-            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-
-          {/* Reset Button */}
-          <button
-            onClick={onReset}
-            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
-          >
-            <RotateCcw className="w-4 h-4" />
-            New Diagnosis
-          </button>
-        </div>
-      </div>
-
-      {/* Runtime Check Warning */}
-      {result.requires_runtime_check && (
-        <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-start gap-3">
-          <span className="text-xl">⚠️</span>
-          <div className="flex-1">
-            <p className="text-sm text-yellow-200 font-medium mb-1">
-              This appears to be a state or data error.
-            </p>
-            <p className="text-xs text-yellow-300/70">
-              Ensure you check your database, API endpoints, and environment variables.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Root Cause */}
-      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
-        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
-          Root Cause Hypothesis
-        </h4>
-        <p className="text-slate-200 leading-relaxed">
-          {result.root_cause_hypothesis}
-        </p>
-      </div>
-
-      {/* Fix Suggestions */}
-      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
-        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-          Fix Suggestions
-        </h4>
-        <div className="space-y-3">
-          {result.fix_suggestions.map((suggestion, i) => (
-            <div key={i} className="flex gap-3">
-              <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs text-blue-300 font-bold">{i + 1}</span>
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed">{suggestion}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Verification Steps */}
-      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
-        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-          Verification Steps
-        </h4>
-        <div className="space-y-3">
-          {result.verification_steps.map((step, i) => (
-            <div key={i} className="flex gap-3">
-              <div className="w-6 h-6 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs text-green-300 font-bold">{i + 1}</span>
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed">{step}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Feedback */}
-      <div className="flex items-center justify-center gap-4 pt-4 pb-2">
-        <span className="text-xs text-slate-500 uppercase tracking-wider">
-          Was this helpful?
-        </span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFeedback("up")}
-            className={`p-2 rounded-lg border transition-all ${
-              feedback === "up"
-                ? "bg-green-500/20 border-green-500/40 text-green-400"
-                : "bg-white/5 border-white/10 text-slate-400 hover:text-green-400"
-            }`}
-          >
-            <ThumbsUp className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setFeedback("down")}
-            className={`p-2 rounded-lg border transition-all ${
-              feedback === "down"
-                ? "bg-red-500/20 border-red-500/40 text-red-400"
-                : "bg-white/5 border-white/10 text-slate-400 hover:text-red-400"
-            }`}
-          >
-            <ThumbsDown className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-</file>
-
 <file path="components/debug/LoadingSkeleton.tsx">
 "use client";
 
@@ -599,47 +305,6 @@ export function useDebugAnalysis(repoUrl: string) {
   };
 
   return { analyzeCrash, result, isLoading, error, reset };
-}
-</file>
-
-<file path="lib/debug/cache.ts">
-// lib/debug/cache.ts
-
-import { redis } from "@/lib/ratelimit";
-import { DebugResult } from "./types";
-
-export async function getCachedDebug(
-  analysisId: string,
-  stackTraceHash: string
-): Promise<DebugResult | null> {
-  try {
-    const key = `debug:${analysisId}:${stackTraceHash}`;
-    const cached = await redis.get(key);
-    return cached ? JSON.parse(cached as string) : null;
-  } catch (err) {
-    console.error("Cache fetch error:", err);
-    return null;
-  }
-}
-
-export async function cacheDebug(
-  analysisId: string,
-  stackTraceHash: string,
-  result: DebugResult
-): Promise<void> {
-  try {
-    const key = `debug:${analysisId}:${stackTraceHash}`;
-    await redis.set(key, JSON.stringify(result), { ex: 3600 * 24 }); // 24h TTL
-  } catch (err) {
-    console.error("Cache write error:", err);
-  }
-}
-
-// Hash function for stack traces
-export function hashStackTrace(trace: string): string {
-  // Simple hash using built-in crypto
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(trace).digest("hex").slice(0, 16);
 }
 </file>
 
@@ -946,6 +611,576 @@ export function requiresRuntimeCheck(
 }
 </file>
 
+<file path="lib/debug/types.ts">
+// lib/debug/types.ts
+
+export interface CrashNode {
+  file: string;
+  line: number;
+  column?: number;
+  function?: string;
+}
+
+export interface TraversalNode {
+  file: string;
+  distance: number;
+  fan_in: number;
+  relationship: "upstream" | "downstream" | "crash_site";
+  relevance_score: number;
+}
+
+export interface DebugContext {
+  error_type: string;
+  error_message: string;
+  crash_location: CrashNode;
+  traversal_path: TraversalNode[];
+  relevant_code: {
+    file: string;
+    content: string;
+    is_crash_site: boolean;
+    line_context?: { start: number; end: number };
+  }[];
+  repo_context: {
+    repo_name: string;
+    entry_points: string[];
+    tech_stack: { name: string; purpose: string }[];
+  };
+}
+
+export interface DebugResult {
+  root_cause_hypothesis: string;
+  fix_suggestions: string[];
+  verification_steps: string[];
+  confidence: "high" | "medium" | "low";
+  requires_runtime_check: boolean;
+}
+
+export interface DebugAnalysis {
+  debug_id: string;
+  crash_node: CrashNode;
+  traversal_path: TraversalNode[];
+  root_cause_hypothesis: string;
+  fix_suggestions: string[];
+  verification_steps: string[];
+  confidence: "high" | "medium" | "low";
+  requires_runtime_check: boolean;
+  highlighted_mermaid: string;
+}
+</file>
+
+<file path="middleware.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // This safely refreshes the token if expired, and writes the new cookie to the response.
+  // We use getUser() here because it's the most secure way to validate a session server-side.
+  await supabase.auth.getUser();
+
+  return supabaseResponse;
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+</file>
+
+<file path="components/debug/CodeDoctorPanel.tsx">
+"use client";
+
+import { useEffect } from "react";
+import { useDebugAnalysis } from "@/hooks/use-debug";
+import { DebugForm } from "./DebugForm";
+import { DebugResults } from "./DebugResults";
+import { LoadingSkeleton } from "./LoadingSkeleton";
+
+interface CodeDoctorPanelProps {
+  repoUrl: string;
+  onUpdateGraph?: (newMermaidString: string) => void;
+}
+
+export function CodeDoctorPanel({
+  repoUrl,
+  onUpdateGraph,
+}: CodeDoctorPanelProps) {
+  const { analyzeCrash, result, isLoading, error, reset } =
+    useDebugAnalysis(repoUrl);
+
+  useEffect(() => {
+    if (result?.highlighted_mermaid && onUpdateGraph) {
+      onUpdateGraph(result.highlighted_mermaid);
+    }
+  }, [result, onUpdateGraph]);
+
+  return (
+    <div className="w-full bg-black/40 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-indigo-500/10 blur-[100px] pointer-events-none" />
+
+      <div className="mb-8 relative z-10">
+        <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 mb-2">
+          Code Doctor
+        </h2>
+        <p className="text-gray-400 text-sm">
+          Paste a stack trace. The engine will traverse your architecture graph
+          to pinpoint the root cause.
+        </p>
+      </div>
+
+      <div className="relative z-10">
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start">
+            <span className="text-lg">❌</span>
+            <div className="flex-1">
+              <p className="font-medium mb-1">Diagnosis Failed</p>
+              <p className="text-xs text-red-300/70">{error}</p>
+              <button
+                onClick={reset}
+                className="mt-3 text-xs text-red-400 hover:text-red-300 underline"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <LoadingSkeleton />
+        ) : result ? (
+          <DebugResults result={result} onReset={reset} />
+        ) : (
+          <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="components/debug/DebugResults.tsx">
+"use client";
+
+import { useState } from "react";
+import {
+  Check,
+  Copy,
+  Download,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+} from "lucide-react";
+import { motion } from "framer-motion";
+
+interface DebugResultsProps {
+  result: {
+    root_cause_hypothesis: string;
+    fix_suggestions: string[];
+    verification_steps: string[];
+    confidence: "high" | "medium" | "low";
+    requires_runtime_check: boolean;
+    crash_node?: { file: string; line: number };
+  };
+  onReset: () => void;
+}
+
+export function DebugResults({ result, onReset }: DebugResultsProps) {
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+
+  const confidenceColors = {
+    high: "bg-green-500/10 border-green-500/20 text-green-400",
+    medium: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+    low: "bg-red-500/10 border-red-500/20 text-red-400",
+  };
+
+  const copyDiagnosis = () => {
+    const text = `
+CODE DOCTOR DIAGNOSIS
+=====================
+
+CONFIDENCE: ${result.confidence.toUpperCase()}
+
+ROOT CAUSE:
+${result.root_cause_hypothesis}
+
+FIX SUGGESTIONS:
+${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+VERIFICATION STEPS:
+${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+${result.requires_runtime_check ? "⚠️ This appears to be a runtime/state error. Check database, API, and environment variables." : ""}
+    `.trim();
+
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const exportMarkdown = () => {
+    const markdown = `# Code Doctor Diagnosis
+
+**Confidence:** ${result.confidence.toUpperCase()}  
+**Crash Location:** \`${result.crash_node?.file}:${result.crash_node?.line}\`
+
+## Root Cause Hypothesis
+
+${result.root_cause_hypothesis}
+
+${result.requires_runtime_check ? "> ⚠️ **Warning:** This appears to be a runtime/state error. Ensure you check database queries, API responses, and environment variables.\n" : ""}
+
+## Fix Suggestions
+
+${result.fix_suggestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+## Verification Steps
+
+${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+---
+*Generated by CodeAutopsy Code Doctor*
+`;
+
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `diagnosis-${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center">
+            <span className="text-2xl">🩺</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              Code Doctor Diagnosis
+            </h3>
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${confidenceColors[result.confidence]}`}
+            >
+              {result.confidence} Confidence
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={copyDiagnosis}
+            title={copied ? "Copied diagnosis" : "Copy diagnosis"}
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            {copied ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+            {copied ? "Copied!" : "Copy"}
+          </button>
+
+          <button
+            onClick={exportMarkdown}
+            title="Export diagnosis as markdown"
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+
+          <button
+            onClick={onReset}
+            title="Start new diagnosis"
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
+          >
+            <RotateCcw className="w-4 h-4" />
+            New Diagnosis
+          </button>
+        </div>
+      </div>
+
+      {result.requires_runtime_check && (
+        <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-start gap-3">
+          <span className="text-xl">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm text-yellow-200 font-medium mb-1">
+              This appears to be a state or data error.
+            </p>
+            <p className="text-xs text-yellow-300/70">
+              Ensure you check your database, API endpoints, and environment
+              variables.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
+          Root Cause Hypothesis
+        </h4>
+        <p className="text-slate-200 leading-relaxed">
+          {result.root_cause_hypothesis}
+        </p>
+      </div>
+
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+          Fix Suggestions
+        </h4>
+        <div className="space-y-3">
+          {result.fix_suggestions.map((suggestion, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-xs text-blue-300 font-bold">{i + 1}</span>
+              </div>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                {suggestion}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
+        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+          Verification Steps
+        </h4>
+        <div className="space-y-3">
+          {result.verification_steps.map((step, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-xs text-green-300 font-bold">
+                  {i + 1}
+                </span>
+              </div>
+              <p className="text-sm text-slate-300 leading-relaxed">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-center gap-4 pt-4 pb-2">
+        <span className="text-xs text-slate-500 uppercase tracking-wider">
+          Was this helpful?
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFeedback("up")}
+            title="Helpful"
+            aria-label="Mark diagnosis as helpful"
+            className={`p-2 rounded-lg border transition-all ${
+              feedback === "up"
+                ? "bg-green-500/20 border-green-500/40 text-green-400"
+                : "bg-white/5 border-white/10 text-slate-400 hover:text-green-400"
+            }`}
+          >
+            <ThumbsUp className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setFeedback("down")}
+            title="Not helpful"
+            aria-label="Mark diagnosis as not helpful"
+            className={`p-2 rounded-lg border transition-all ${
+              feedback === "down"
+                ? "bg-red-500/20 border-red-500/40 text-red-400"
+                : "bg-white/5 border-white/10 text-slate-400 hover:text-red-400"
+            }`}
+          >
+            <ThumbsDown className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+</file>
+
+<file path="lib/debug/cache.ts">
+// lib/debug/cache.ts
+import crypto from "crypto";
+import { redis } from "@/lib/ratelimit";
+import { DebugResult } from "./types";
+
+export async function getCachedDebug(
+  repoUrl: string,
+  stackTraceHash: string
+): Promise<DebugResult | null> {
+  try {
+    const key = `debug:${repoUrl}:${stackTraceHash}`;
+    const cached = await redis.get(key);
+    return cached ? JSON.parse(cached as string) : null;
+  } catch (err) {
+    console.error("Cache fetch error:", err);
+    return null;
+  }
+}
+
+export async function cacheDebug(
+  repoUrl: string,
+  stackTraceHash: string,
+  result: DebugResult
+): Promise<void> {
+  try {
+    const key = `debug:${repoUrl}:${stackTraceHash}`;
+    await redis.set(key, JSON.stringify(result), { ex: 3600 * 24 }); // 24h TTL
+  } catch (err) {
+    console.error("Cache write error:", err);
+  }
+}
+
+// Hash function for stack traces
+export function hashStackTrace(trace: string): string {
+  // Simple hash using built-in crypto
+  return crypto.createHash("sha256").update(trace).digest("hex").slice(0, 16);
+}
+</file>
+
+<file path="lib/debug/mermaid-highlighter.ts">
+// lib/debug/mermaid-highlighter.ts
+
+import { TraversalNode } from "./types";
+
+export function highlightDebugPath(
+  originalMermaid: string,
+  crashNode: string,
+  traversalPath: TraversalNode[],
+  rootCauseFile?: string
+): string {
+  let enhanced = originalMermaid;
+
+  // Sanitize file paths to match Mermaid IDs
+  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  const crashId = sanitize(crashNode);
+  const rootCauseId = rootCauseFile ? sanitize(rootCauseFile) : null;
+
+  // Add styling at the end of the Mermaid definition
+  const styles: string[] = [];
+
+  // Style 1: Crash node (red)
+  styles.push(
+    `style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
+  );
+
+  // Style 2: Traversal path (orange gradient by distance)
+  traversalPath.forEach((node) => {
+    const id = sanitize(node.file);
+    if (id === crashId) return; // Already styled
+
+    const opacity = Math.max(0.3, 1 - node.distance * 0.2);
+    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
+    styles.push(`style ${id} fill:${color},opacity:${opacity}`);
+  });
+
+  // Style 3: Root cause (if identified and different from crash)
+  if (rootCauseId && rootCauseId !== crashId) {
+    styles.push(
+      `style ${rootCauseId} fill:#ffaa00,stroke:#ff6600,stroke-width:2px`
+    );
+  }
+
+  // Inject styles into Mermaid string
+  enhanced += "\n\n" + styles.join("\n");
+
+  // Add legend
+  enhanced += `
+  
+subgraph Legend
+  direction LR
+  crash["🔴 Crash Site"]
+  upstream["🟠 Upstream Caller"]
+  downstream["🔵 Downstream Dependency"]
+end`;
+
+  return enhanced;
+}
+
+// Generate a simplified error-focused graph (alternative to highlighting)
+export function generateErrorGraph(
+  crashNode: string,
+  traversalPath: TraversalNode[]
+): string {
+  const lines: string[] = ["graph TD"];
+
+  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  // Crash node
+  const crashId = sanitize(crashNode);
+  const crashName = crashNode.split("/").pop() || crashNode;
+  lines.push(`  ${crashId}["🔴 ${crashName}"]`);
+  lines.push(
+    `  style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
+  );
+
+  // Add top 10 nodes
+  const topNodes = traversalPath.slice(0, 10);
+
+  topNodes.forEach((node) => {
+    const id = sanitize(node.file);
+    const name = node.file.split("/").pop() || node.file;
+    const icon = node.relationship === "upstream" ? "⬆️" : "⬇️";
+
+    lines.push(`  ${id}["${icon} ${name}"]`);
+
+    // Add edge
+    if (node.relationship === "upstream") {
+      lines.push(`  ${id} --> ${crashId}`);
+    } else {
+      lines.push(`  ${crashId} --> ${id}`);
+    }
+
+    // Style by relationship
+    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
+    lines.push(`  style ${id} fill:${color},opacity:0.7`);
+  });
+
+  return lines.join("\n");
+}
+</file>
+
 <file path="lib/debug/stack-parser.ts">
 // lib/debug/stack-parser.ts
 
@@ -1085,7 +1320,8 @@ export function extractErrorInfo(trace: string): {
   const firstLine = lines[0]?.trim() || "";
 
   // Try to extract "ErrorType: message"
-  const errorMatch = firstLine.match(/^(\w+Error):\s*(.+)$/);
+  // Try to extract "ErrorType: message" (allows prefixes like "Uncaught ")
+  const errorMatch = firstLine.match(/(?:.*\s)?(\w+Error):\s*(.+)$/);
 
   if (errorMatch) {
     return {
@@ -1117,166 +1353,6 @@ export function extractAllCrashNodes(
   }
 
   return crashes;
-}
-</file>
-
-<file path="lib/debug/types.ts">
-// lib/debug/types.ts
-
-export interface CrashNode {
-  file: string;
-  line: number;
-  column?: number;
-  function?: string;
-}
-
-export interface TraversalNode {
-  file: string;
-  distance: number;
-  fan_in: number;
-  relationship: "upstream" | "downstream" | "crash_site";
-  relevance_score: number;
-}
-
-export interface DebugContext {
-  error_type: string;
-  error_message: string;
-  crash_location: CrashNode;
-  traversal_path: TraversalNode[];
-  relevant_code: {
-    file: string;
-    content: string;
-    is_crash_site: boolean;
-    line_context?: { start: number; end: number };
-  }[];
-  repo_context: {
-    repo_name: string;
-    entry_points: string[];
-    tech_stack: { name: string; purpose: string }[];
-  };
-}
-
-export interface DebugResult {
-  root_cause_hypothesis: string;
-  fix_suggestions: string[];
-  verification_steps: string[];
-  confidence: "high" | "medium" | "low";
-  requires_runtime_check: boolean;
-}
-
-export interface DebugAnalysis {
-  debug_id: string;
-  crash_node: CrashNode;
-  traversal_path: TraversalNode[];
-  root_cause_hypothesis: string;
-  fix_suggestions: string[];
-  verification_steps: string[];
-  confidence: "high" | "medium" | "low";
-  requires_runtime_check: boolean;
-  highlighted_mermaid: string;
-}
-</file>
-
-<file path="lib/debug/mermaid-highlighter.ts">
-// lib/debug/mermaid-highlighter.ts
-
-import { TraversalNode } from "./types";
-
-export function highlightDebugPath(
-  originalMermaid: string,
-  crashNode: string,
-  traversalPath: TraversalNode[],
-  rootCauseFile?: string
-): string {
-  let enhanced = originalMermaid;
-
-  // Sanitize file paths to match Mermaid IDs
-  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
-
-  const crashId = sanitize(crashNode);
-  const rootCauseId = rootCauseFile ? sanitize(rootCauseFile) : null;
-
-  // Add styling at the end of the Mermaid definition
-  const styles: string[] = [];
-
-  // Style 1: Crash node (red)
-  styles.push(
-    `style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
-  );
-
-  // Style 2: Traversal path (orange gradient by distance)
-  traversalPath.forEach((node) => {
-    const id = sanitize(node.file);
-    if (id === crashId) return; // Already styled
-
-    const opacity = Math.max(0.3, 1 - node.distance * 0.2);
-    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
-    styles.push(`style ${id} fill:${color},opacity:${opacity}`);
-  });
-
-  // Style 3: Root cause (if identified and different from crash)
-  if (rootCauseId && rootCauseId !== crashId) {
-    styles.push(
-      `style ${rootCauseId} fill:#ffaa00,stroke:#ff6600,stroke-width:2px`
-    );
-  }
-
-  // Inject styles into Mermaid string
-  enhanced += "\n\n" + styles.join("\n");
-
-  // Add legend
-  enhanced += `
-  
-subgraph Legend
-  direction LR
-  crash["🔴 Crash Site"]
-  upstream["🟠 Upstream Caller"]
-  downstream["🔵 Downstream Dependency"]
-end`;
-
-  return enhanced;
-}
-
-// Generate a simplified error-focused graph (alternative to highlighting)
-export function generateErrorGraph(
-  crashNode: string,
-  traversalPath: TraversalNode[]
-): string {
-  const lines: string[] = ["graph TD"];
-
-  const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_]/g, "_");
-
-  // Crash node
-  const crashId = sanitize(crashNode);
-  const crashName = crashNode.split("/").pop() || crashNode;
-  lines.push(`  ${crashId}["🔴 ${crashName}"]`);
-  lines.push(
-    `  style ${crashId} fill:#ff4444,stroke:#cc0000,stroke-width:3px,color:#fff`
-  );
-
-  // Add top 10 nodes
-  const topNodes = traversalPath.slice(0, 10);
-
-  topNodes.forEach((node) => {
-    const id = sanitize(node.file);
-    const name = node.file.split("/").pop() || node.file;
-    const icon = node.relationship === "upstream" ? "⬆️" : "⬇️";
-
-    lines.push(`  ${id}["${icon} ${name}"]`);
-
-    // Add edge
-    if (node.relationship === "upstream") {
-      lines.push(`  ${id} --> ${crashId}`);
-    } else {
-      lines.push(`  ${crashId} --> ${id}`);
-    }
-
-    // Style by relationship
-    const color = node.relationship === "upstream" ? "#ff9933" : "#3399ff";
-    lines.push(`  style ${id} fill:${color},opacity:0.7`);
-  });
-
-  return lines.join("\n");
 }
 </file>
 
@@ -1319,6 +1395,70 @@ export function generateErrorGraph(
 }
 </file>
 
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next"; 
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "CodeAutopsy | AI-Powered Codebase Visualization",
+  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
+  metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
+  openGraph: {
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
+    url: "https://codeautopsy-lyart.vercel.app",
+    siteName: "CodeAutopsy",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "CodeAutopsy Visual Architecture Analysis",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
+    creator: "@Sidhant07",
+    images: ["/og-image.png"],
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Analytics /> 
+      </body>
+    </html>
+  );
+}
+</file>
+
 <file path="app/api/debug/analyze/route.ts">
 // app/api/debug/analyze/route.ts
 
@@ -1349,11 +1489,19 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    // 1. SECURITY FIX: Use getUser() instead of getSession()
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id;
-    const { data: { session } } = await supabase.auth.getSession();
-const providerToken = session?.provider_token ?? undefined;
+    
+    let userId = undefined;
+    let providerToken = undefined;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      providerToken = session?.provider_token ?? undefined;
+    } catch (error) {
+      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
+    }
 
     // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
@@ -1374,7 +1522,6 @@ const providerToken = session?.provider_token ?? undefined;
 
     // Check cache
     const traceHash = hashStackTrace(stackTrace);
-    const cacheKey = `${repoUrl}:${traceHash}`;
     const cached = await getCachedDebug(repoUrl, traceHash);
     
     if (cached) {
@@ -1547,70 +1694,6 @@ const { result_json } = analysis;
 }
 </file>
 
-<file path="app/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next"; 
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "CodeAutopsy | AI-Powered Codebase Visualization",
-  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
-  metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
-  openGraph: {
-    title: "CodeAutopsy | Dissect Any Codebase",
-    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
-    url: "https://codeautopsy-lyart.vercel.app",
-    siteName: "CodeAutopsy",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "CodeAutopsy Visual Architecture Analysis",
-      },
-    ],
-    locale: "en_US",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "CodeAutopsy | Dissect Any Codebase",
-    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
-    creator: "@Sidhant07",
-    images: ["/og-image.png"],
-  },
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        {children}
-        <Analytics /> 
-      </body>
-    </html>
-  );
-}
-</file>
-
 <file path="lib/debug/gemini-debug.ts">
 // lib/debug/gemini-debug.ts
 
@@ -1624,7 +1707,9 @@ export async function analyzeDebugWithGemini(
     throw new Error("Missing GEMINI_API_KEY environment variable");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`;
+  // Default to a stable production model, but allow environment overrides
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const codeSnippets = input.relevant_code
     .map((file) => {
@@ -1831,7 +1916,7 @@ function resolveToActualFile(
   importPath: string,
   allFiles: string[]
 ): string | null {
-  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".py", ".go", ".css", ".html"];
+  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
 
   if (allFiles.includes(importPath)) return importPath;
 
@@ -1973,70 +2058,81 @@ export async function POST(req: NextRequest) {
       "127.0.0.1";
 
     const supabase = createServerClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
-      },
-      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
-        cookieStore.set(name, value, options);
-      },
-      remove(name: string) {
-        cookieStore.delete(name);
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
+            cookieStore.set(name, value, options);
+          },
+          remove(name: string) {
+            cookieStore.delete(name);
+          }
+        }
       }
+    );
+
+    let session = null;
+
+    try {
+      // Try to get the session. If the token is dead and refresh fails, 
+      // it will throw an AuthApiError, which we will now catch.
+      const { data } = await supabase.auth.getSession();
+      session = data?.session;
+    } catch (error) {
+      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
+      // We swallow the error so the API route can continue processing 
+      // public GitHub repos without crashing.
     }
-  }
-);
 
-const { data: { session } } = await supabase.auth.getSession();
+    const providerToken = session?.provider_token ?? undefined;
+    const userId = session?.user?.id ?? undefined;
 
-const providerToken = session?.provider_token ?? undefined;
-const userId = session?.user?.id ?? undefined;
+    const body = await req.json();
+    const { repoUrl } = body;
 
-const body = await req.json();
-const { repoUrl } = body;
+    if (!repoUrl || typeof repoUrl !== 'string') {
+      return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
+    }
 
-if (!repoUrl || typeof repoUrl !== 'string') {
-  return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
-}
+    const parsed = parseRepoUrl(repoUrl);
 
-const parsed = parseRepoUrl(repoUrl);
+    if (!parsed) {
+      return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
+    }
 
-if (!parsed) {
-  return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
-}
+    const { owner, repo } = parsed;
 
-const { owner, repo } = parsed;
+    const meta = await fetchRepoMeta(owner, repo, providerToken);
+    const commitSha = meta.default_branch;
 
-const meta = await fetchRepoMeta(owner, repo, providerToken);
-const commitSha = meta.default_branch;
+    // ✅ CHECK CACHE FIRST (before rate limiting)
+    const { data: cached } = await supabase
+      .from("analyses")
+      .select("result_json")
+      .eq("repo_url", repoUrl)
+      .eq("commit_sha", commitSha)
+      .eq("analysis_version", ANALYSIS_VERSION)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-// ✅ CHECK CACHE FIRST (before rate limiting)
-const { data: cached } = await supabase
-  .from("analyses")
-  .select("result_json")
-  .eq("repo_url", repoUrl)
-  .eq("commit_sha", commitSha)
-  .eq("analysis_version", ANALYSIS_VERSION)
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
+    if (cached?.result_json) {
+      return NextResponse.json({ ...cached.result_json, cached: true });
+    }
 
-if (cached?.result_json) {
-  return NextResponse.json({ ...cached.result_json, cached: true });
-}
+    // ✅ ONLY rate limit if cache miss
+    const { success, limit, reset, remaining } = await ratelimit.limit(ip);
 
-// ✅ ONLY rate limit if cache miss
-const { success, limit, reset, remaining } = await ratelimit.limit(ip);
-
-if (!success) {
-  return NextResponse.json(
-    { error: "Daily limit reached.", limit, remaining, reset },
-    { status: 429 }
-  );
-}
+    if (!success) {
+      return NextResponse.json(
+        { error: "Daily limit reached.", limit, remaining, reset },
+        { status: 429 }
+      );
+    }
 
     const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
 
@@ -2086,42 +2182,56 @@ if (!success) {
       }
     });
 
-const topFiles = getTopFiles(scoredFiles, 20);
-const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
+    const topFiles = getTopFiles(scoredFiles, 20);
+    const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
 
-// Fetch top 30 files once
-const allFileContents: { path: string; content: string }[] = [];
+    // Fetch top 30 files once
+    const allFileContents: { path: string; content: string }[] = [];
 
-let fetchErrors = 0;
-for (const file of topFiles.slice(0, 30)) {
-  try {
-    const content = await fetchFileContent(owner, repo, file.path, providerToken);
-    allFileContents.push({
-      path: file.path,
-      content: content.split("\n").slice(0, 500).join("\n")
-    });
-  } catch (err) {
-    fetchErrors++;
-    console.warn(`Failed to fetch ${file.path}:`, err);
-  }
-}
+    let fetchErrors = 0;
+    for (const file of topFiles.slice(0, 30)) {
+      try {
+        const content = await fetchFileContent(owner, repo, file.path, providerToken);
+        
+        // MINIFICATION FIX: Strip whitespace and comments so Groq doesn't choke on tokens
+        const minifiedContent = content
+          .split("\n")
+          .map(line => line.trim())
+          .filter(line => 
+            line.length > 0 && 
+            !line.startsWith("//") && 
+            !line.startsWith("/*") && 
+            !line.startsWith("*")
+          )
+          .slice(0, 300) // Keeps the top 300 meaningful lines
+          .join("\n");
 
-// If too many failures, warn the user
-if (fetchErrors > 10) {
-  console.error(`Warning: Failed to fetch ${fetchErrors} files`);
-}
+        allFileContents.push({
+          path: file.path,
+          content: minifiedContent
+        });
+      } catch (err) {
+        fetchErrors++;
+        console.warn(`Failed to fetch ${file.path}:`, err);
+      }
+    }
 
-const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
-const fanIn = computeFanIn(dependencyGraph);
-const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+    // If too many failures, warn the user
+    if (fetchErrors > 10) {
+      console.error(`Warning: Failed to fetch ${fetchErrors} files`);
+    }
 
-const analysis = await analyzeWithGemini(
-  `${owner}/${repo}`,
-  meta.description || "No description provided",
-  entryPoints,
-  topFiles.map((f) => ({ path: f.path, role: f.role })),
-  allFileContents.slice(0, 15)  // Use first 15 for Gemini
-);
+    const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+    const fanIn = computeFanIn(dependencyGraph);
+    const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+
+    const analysis = await analyzeWithGemini(
+      `${owner}/${repo}`,
+      meta.description || "No description provided",
+      entryPoints,
+      topFiles.map((f) => ({ path: f.path, role: f.role })),
+      allFileContents.slice(0, 15)  // Use first 15 for Groq
+    );
 
     const result = {
       owner,

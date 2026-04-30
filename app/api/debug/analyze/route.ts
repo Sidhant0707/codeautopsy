@@ -1,5 +1,3 @@
-// app/api/debug/analyze/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -27,7 +25,6 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    
     let userId = undefined;
     let providerToken = undefined;
 
@@ -38,16 +35,12 @@ export async function POST(req: NextRequest) {
       const { data: { session } } = await supabase.auth.getSession();
       providerToken = session?.provider_token ?? undefined;
     } catch (error) {
-      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
     }
 
-    // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
-    console.log("🚀 Code Doctor Received Payload:", body);
 
     const { repoUrl, stackTrace } = body;
 
-    // 3. STRICTER VALIDATION: Catch empty strings
     if (!repoUrl || !stackTrace || stackTrace.trim() === "") {
       return NextResponse.json(
         { error: `Missing data. Received repoUrl: ${!!repoUrl}, stackTrace: ${!!stackTrace}` },
@@ -55,10 +48,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract error info
     const { error_type, error_message } = extractErrorInfo(stackTrace);
 
-    // Check cache
     const traceHash = hashStackTrace(stackTrace);
     const cached = await getCachedDebug(repoUrl, traceHash);
     
@@ -66,7 +57,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ...cached, cached: true });
     }
 
-    // Fetch existing analysis from database
     const parsed = parseRepoUrl(repoUrl);
     if (!parsed) {
       return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
@@ -84,7 +74,6 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (dbError) {
-      console.error("Database error:", dbError);
       return NextResponse.json(
         { error: "Failed to fetch analysis from database" },
         { status: 500 }
@@ -92,19 +81,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!analysis || !analysis.result_json) {
-  return NextResponse.json(
-    { error: "Repository not analyzed yet. Please analyze it first." },
-    { status: 404 }
-  );
-}
+      return NextResponse.json(
+        { error: "Repository not analyzed yet. Please analyze it first." },
+        { status: 404 }
+      );
+    }
 
-const { result_json } = analysis;
+    const { result_json } = analysis;
     const { dependencyGraph, fanIn, mermaidDiagram } = result_json;
 
-    // Get all files from the dependency graph
     const allFiles = Object.keys(dependencyGraph);
 
-    // Parse stack trace
     const crashNode = parseStackTrace(stackTrace, allFiles);
 
     if (!crashNode) {
@@ -114,17 +101,14 @@ const { result_json } = analysis;
       );
     }
 
-    // Traverse graph
     let traversalPath = traverseFromCrash(
       crashNode.file,
       dependencyGraph,
       fanIn
     );
 
-    // Apply heuristics
     traversalPath = applyDebugHeuristics(traversalPath, crashNode, error_type);
 
-    // Fetch missing files
     const fileContents = result_json.fileContents || [];
     const existingContents = new Map<string, string>(
       fileContents.map((f: { path: string; content: string }) => [f.path, f.content])
@@ -138,12 +122,27 @@ const { result_json } = analysis;
       providerToken
     );
 
-    // Build debug context
     const relevantCode = traversalPath.slice(0, 10).map((node) => {
-      const content = allContents.get(node.file) || "// Content not available";
+      const content = allContents.get(node.file) || "";
       const is_crash_site = node.file === crashNode.file;
 
-      // If crash site, extract line context
+      let finalContent = "";
+      if (is_crash_site) {
+        finalContent = extractLineContext(content, crashNode.line).snippet;
+      } else {
+        finalContent = content
+          .split("\n")
+          .map(line => line.trim())
+          .filter(line => 
+            line.length > 0 && 
+            !line.startsWith("//") && 
+            !line.startsWith("/*") && 
+            !line.startsWith("*")
+          )
+          .slice(0, 300)
+          .join("\n");
+      }
+
       let line_context = undefined;
       if (is_crash_site) {
         const ctx = extractLineContext(content, crashNode.line);
@@ -152,9 +151,7 @@ const { result_json } = analysis;
 
       return {
         file: node.file,
-        content: is_crash_site 
-          ? extractLineContext(content, crashNode.line).snippet 
-          : content,
+        content: finalContent,
         is_crash_site,
         line_context,
       };
@@ -173,14 +170,11 @@ const { result_json } = analysis;
       },
     };
 
-    // Call Gemini
     const debugResult = await analyzeDebugWithGemini(debugInput);
 
-    // Calculate confidence
     const confidence = calculateConfidence(traversalPath, crashNode);
     const requires_runtime = requiresRuntimeCheck(error_type, error_message);
 
-    // Highlight Mermaid (use first upstream node as suspected root cause)
     const suspectedRootCause = traversalPath.find(n => n.relationship === "upstream")?.file;
     const highlightedMermaid = highlightDebugPath(
       mermaidDiagram,
@@ -189,7 +183,6 @@ const { result_json } = analysis;
       suspectedRootCause
     );
 
-    // Store result in database
     const { data: stored } = await supabase
       .from("debug_analyses")
       .insert({
@@ -220,13 +213,11 @@ const { result_json } = analysis;
       highlighted_mermaid: highlightedMermaid,
     };
 
-    // Cache result
     await cacheDebug(repoUrl, traceHash, finalResult);
 
     return NextResponse.json(finalResult);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("Debug analysis error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

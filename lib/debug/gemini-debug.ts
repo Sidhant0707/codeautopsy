@@ -1,18 +1,19 @@
-// lib/debug/gemini-debug.ts
-
 import { DebugContext, DebugResult } from "./types";
 
 export async function analyzeDebugWithGemini(
   input: DebugContext
 ): Promise<DebugResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY environment variable");
+  // Ensure we are strictly using the new Groq pipeline
+  if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
+    throw new Error("Gemini is currently disabled. Please use Groq.");
   }
 
-  // Default to a stable production model, but allow environment overrides
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GROQ_API_KEY environment variable");
+  }
+
+  const url = "https://api.groq.com/openai/v1/chat/completions";
 
   const codeSnippets = input.relevant_code
     .map((file) => {
@@ -29,8 +30,7 @@ export async function analyzeDebugWithGemini(
     )
     .join("\n");
 
-  const prompt = `
-You are a debugging assistant analyzing a crash in a codebase.
+  const systemPrompt = `You are a debugging assistant analyzing a crash in a codebase.
 
 CRITICAL CONSTRAINTS:
 - You ONLY have access to static code dependencies, NOT runtime state.
@@ -59,58 +59,53 @@ Entry Points: ${input.repo_context.entry_points.join(", ")}
 Tech Stack: ${input.repo_context.tech_stack.map((t) => t.name).join(", ")}
 
 TASK:
-Analyze the crash and return ONLY a valid JSON object with this structure:
+Analyze the crash and return ONLY a valid JSON object with this exact structure:
 {
   "root_cause_hypothesis": "Your best guess at the root cause (2-3 sentences)",
   "fix_suggestions": ["concrete fix 1", "concrete fix 2", "concrete fix 3"],
   "verification_steps": ["step to verify fix 1", "step 2", "step 3"],
   "confidence": "high | medium | low",
   "requires_runtime_check": true | false
-}
-
-Rules:
-- Be specific: Reference exact file names and line numbers when possible
-- Prioritize UPSTREAM files (callers) over DOWNSTREAM (callees)
-- If confidence is low, say so and suggest what additional info you'd need
-- Set requires_runtime_check=true if the error is likely env/state/data-related
-- Return ONLY the JSON, no markdown, no backticks, no extra text
-`;
+}`;
 
   let res: Response | undefined;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 },
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Analyze this crash and return only the JSON." },
+        ],
+        temperature: 0.2,
+        response_format: { type: "json_object" },
       }),
     });
 
     if (res.ok) break;
 
     if ((res.status === 503 || res.status === 429) && attempt < 3) {
-      await new Promise((r) => setTimeout(r, 3000 * attempt));
+      // 5-second exponential backoff
+      await new Promise((r) => setTimeout(r, 5000 * attempt));
       continue;
     }
 
-    throw new Error(`Gemini API error: ${res.status}`);
+    const error = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${error}`);
   }
 
-  if (!res || !res.ok) throw new Error("Gemini API failed after retries");
+  if (!res || !res.ok) throw new Error("Groq API failed after retries");
 
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty response from Gemini");
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error("Empty response from Groq");
 
-  const jsonStart = text.indexOf("{");
-  const jsonEnd = text.lastIndexOf("}");
-
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("Gemini returned invalid JSON");
-  }
-
-  const clean = text.slice(jsonStart, jsonEnd + 1);
-  return JSON.parse(clean) as DebugResult;
+  // Groq's response_format guarantees JSON, so we can parse directly
+  return JSON.parse(text) as DebugResult;
 }
