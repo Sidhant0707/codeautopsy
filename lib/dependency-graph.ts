@@ -100,7 +100,7 @@ function resolveToActualFile(
   importPath: string,
   allFiles: string[]
 ): string | null {
-  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".py", ".go", ".css", ".html"];
+  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
 
   if (allFiles.includes(importPath)) return importPath;
 

@@ -19,7 +19,8 @@ export async function analyzeWithGemini(
   if (!apiKey) {
   throw new Error("Missing GEMINI_API_KEY environment variable");
   }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`;
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const fileContentText = fileContents
   .map((f) => {

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name: string, value: string, options?: any) {
+      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
         cookieStore.set(name, value, options);
       },
       remove(name: string) {

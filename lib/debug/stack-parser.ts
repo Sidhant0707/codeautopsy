@@ -136,7 +136,8 @@ export function extractErrorInfo(trace: string): {
   const firstLine = lines[0]?.trim() || "";
 
   // Try to extract "ErrorType: message"
-  const errorMatch = firstLine.match(/^(\w+Error):\s*(.+)$/);
+  // Try to extract "ErrorType: message" (allows prefixes like "Uncaught ")
+  const errorMatch = firstLine.match(/(?:.*\s)?(\w+Error):\s*(.+)$/);
 
   if (errorMatch) {
     return {

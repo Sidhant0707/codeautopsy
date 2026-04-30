@@ -120,7 +120,7 @@ const { result_json } = analysis;
     // Fetch missing files
     const fileContents = result_json.fileContents || [];
     const existingContents = new Map<string, string>(
-      fileContents.map((f: any) => [f.path as string, f.content as string])
+      fileContents.map((f: { path: string; content: string }) => [f.path, f.content])
     );
 
     const allContents = await fetchMissingFiles(
