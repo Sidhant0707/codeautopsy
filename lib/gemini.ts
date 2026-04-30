@@ -15,22 +15,33 @@ export async function analyzeWithGemini(
   topFiles: { path: string; role: string }[],
   fileContents: { path: string; content: string }[]
 ): Promise<AnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-  throw new Error("Missing GEMINI_API_KEY environment variable");
+  
+  if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
+    throw new Error("Gemini is currently disabled. Please use Groq. Check Vercel Env Variables.");
   }
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GROQ_API_KEY environment variable");
+  }
+
+  const url = "https://api.groq.com/openai/v1/chat/completions";
+
+  // Strip whitespace/comments to maximize token density before truncating
   const fileContentText = fileContents
-  .map((f) => {
-    const trimmed = f.content.slice(0, 1500);
-    return `=== ${f.path} ===\n${trimmed}`;
-  })
-  .join("\n\n");
+    .map((f) => {
+      const optimized = f.content
+        .replace(/\/\*[\s\S]*?\*\//g, '') // remove multi-line comments
+        .replace(/\/\/.*/g, '')           // remove single-line comments
+        .replace(/\s+/g, ' ')             // collapse whitespace
+        .trim();
+      
+      const trimmed = optimized.slice(0, 2000); 
+      return `=== ${f.path} ===\n${trimmed}`;
+    })
+    .join("\n\n");
 
-  const prompt = `
-You are a senior software engineer analyzing a GitHub repository.
+  const systemPrompt = `You are a senior software engineer analyzing a GitHub repository.
 
 Repository: ${repoName}
 Description: ${description}
@@ -49,51 +60,45 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
   "key_modules": [{ "file": "exact filename from the list above", "role": "short role name", "why_it_exists": "one sentence explanation" }],
   "onboarding_guide": ["first thing a new dev should know", "second thing", "third thing"],
   "evidence_paths": ["list of files you actually used to draw your conclusions"]
-}
-
-Rules:
-- Only reference files I provided above
-- Do not invent filenames
-- Return only the JSON, no markdown, no backticks, no extra text
-`;
+}`;
 
   let res: Response | undefined;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 }
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Analyze this codebase and return ONLY the required JSON." }
+        ],
+        temperature: 0.2,
+        response_format: { type: "json_object" }
       }),
     });
 
     if (res.ok) break;
 
     if ((res.status === 503 || res.status === 429) && attempt < 3) {
-      await new Promise((r) => setTimeout(r, 3000 * attempt));
+      await new Promise((r) => setTimeout(r, 5000 * attempt));
       continue;
     }
 
-    throw new Error(`Gemini API error: ${res.status}`);
+    const errorText = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${errorText}`);
   }
 
-  if (!res || !res.ok) throw new Error("Gemini API failed after retries");
+  if (!res || !res.ok) throw new Error("Groq API failed after retries");
 
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty response from Gemini");
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error("Empty response from Groq");
 
-  const jsonStart = text.indexOf("{");
-const jsonEnd = text.lastIndexOf("}");
-
-if (jsonStart === -1 || jsonEnd === -1) {
-  throw new Error("Gemini returned invalid JSON");
+  // Groq's response_format guarantees JSON, so we can parse directly
+  return JSON.parse(text) as AnalysisResult;
 }
-
-const clean = text.slice(jsonStart, jsonEnd + 1);
-return JSON.parse(clean)  as AnalysisResult;
-}
-
-
