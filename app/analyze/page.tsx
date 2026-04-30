@@ -60,15 +60,6 @@ interface RepoData {
   entryPoints: string[];
   mermaidDiagram: string;
   analysis: Analysis;
-  // allow extra properties coming from backend (e.g., id, raw fields)
-  [key: string]:
-    | string
-    | number
-    | boolean
-    | string[]
-    | Analysis
-    | null
-    | undefined;
 }
 
 function AnalyzeContent() {
@@ -79,7 +70,6 @@ function AnalyzeContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // States for Tabs and Feedback
   const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
     "overview",
   );
@@ -122,7 +112,7 @@ function AnalyzeContent() {
     analyze();
   }, [repoUrl, router]);
 
-  // ✨ FIX 1: Removed the aggressive window.scrollTo that was hijacking the page
+  // ✨ FIX: Removed window.scrollTo hijack[cite: 3]
   const handleTabSwitch = (tab: "overview" | "diagnostics") => {
     setActiveTab(tab);
   };
@@ -133,19 +123,12 @@ function AnalyzeContent() {
 
     try {
       const supabase = createClient();
-
-      const { error } = await supabase.from("debug_feedback").insert([
+      await supabase.from("debug_feedback").insert([
         {
-          debug_id: data?.id ?? repoUrl,
+          debug_id: data.id || repoUrl,
           is_helpful: isHelpful,
         },
       ]);
-
-      if (error) {
-        console.error("Database error saving feedback:", error.message);
-      } else {
-        console.log("Feedback successfully inserted into debug_feedback.");
-      }
     } catch (err) {
       console.error("Unexpected error saving feedback:", err);
     }
@@ -194,11 +177,7 @@ function AnalyzeContent() {
                 <div className="w-4 h-4 rounded flex items-center justify-center bg-white/5 border border-white/10">
                   <div
                     className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-ping"
-                    style={
-                      {
-                        "--animation-delay": `${i * 0.2}s`,
-                      } as React.CSSProperties
-                    }
+                    style={{ animationDelay: `${i * 0.2}s` }}
                   />
                 </div>
                 <span className="mono text-xs text-slate-400">{step}</span>
@@ -306,7 +285,7 @@ function AnalyzeContent() {
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ✨ FIX 2: Added min-h-[1000px] to act as a structural pillar so the page doesn't collapse */}
+            {/* ✨ FIX: Added min-h-[1000px] as a structural pillar[cite: 3] */}
             <div
               className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-12 transition-all duration-500 min-h-[1000px]`}
             >
@@ -470,13 +449,7 @@ function AnalyzeContent() {
                       <span className="text-indigo-400/50">Llama 3.3</span>
                     </p>
                   </div>
-                  <RepoChat
-                    repoContext={{
-                      repo: `${data.owner}/${data.repo}`,
-                      description: data.description,
-                      language: data.language,
-                    }}
-                  />
+                  <RepoChat repoContext={data} />
                 </div>
               </div>
 
@@ -497,8 +470,7 @@ function AnalyzeContent() {
                       </div>
                       <p className="text-slate-400 text-sm mb-6 leading-relaxed">
                         Your feedback helps us improve the quality of our code
-                        analysis. Let us know if this autopsy was useful for
-                        understanding the codebase.
+                        analysis.
                       </p>
                       <div className="flex gap-4">
                         <button
@@ -541,8 +513,8 @@ function AnalyzeContent() {
                       </h4>
                       <p className="text-slate-400 text-sm">
                         {feedback === "helpful"
-                          ? "We're glad this analysis was useful. Keep building!"
-                          : "We appreciate your honesty. We'll work on improving our analysis quality."}
+                          ? "We're glad this analysis was useful."
+                          : "We appreciate your honesty."}
                       </p>
                     </motion.div>
                   )}
