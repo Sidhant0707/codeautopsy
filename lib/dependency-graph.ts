@@ -160,21 +160,18 @@ export function graphToMermaid(
   const lines: string[] = ["graph TD"];
   const seen = new Set<string>();
   const queue = [...entryPoints];
+  const fanIn = computeFanIn(graph);
   let nodes = 0;
 
   // IMPROVED: Auto-detect entry points if none provided
   if (entryPoints.length === 0) {
-    // Find files with zero dependencies or high fan-in
-    const fanIn = computeFanIn(graph);
-    const potentialEntries = Object.keys(graph).filter(file => {
-      const hasNoDeps = graph[file].length === 0;
-      const isHighFanIn = (fanIn[file] || 0) > 2;
-      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.");
-      return hasNoDeps || isHighFanIn || isEntry;
-    });
-    
-    queue.push(...potentialEntries.slice(0, 3));
-  }
+  const potentialEntries = Object.keys(graph).filter(file => {
+    const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
+    const isHighFanIn = (fanIn[file] || 0) > 2;
+    return isEntry || isHighFanIn;  // Removed hasNoDeps
+  });
+  queue.push(...potentialEntries.slice(0, 3));
+}
 
   // ENTRY SUBGRAPH
   if (queue.length > 0) {
@@ -189,7 +186,8 @@ export function graphToMermaid(
 
   // DEPENDENCY GRAPH
   while (queue.length > 0 && nodes < 30) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+if (!current) continue;
     if (seen.has(current)) continue;
     seen.add(current);
 

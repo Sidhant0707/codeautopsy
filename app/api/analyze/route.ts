@@ -9,7 +9,7 @@ import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimit } from "@/lib/ratelimit";
 
-const ANALYSIS_VERSION = 2;
+const ANALYSIS_VERSION = 3;
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
+      set(name: string, value: string, options?: any) {
         cookieStore.set(name, value, options);
       },
       remove(name: string) {
@@ -44,7 +44,12 @@ const { data: { session } } = await supabase.auth.getSession();
 const providerToken = session?.provider_token ?? undefined;
 const userId = session?.user?.id ?? undefined;
 
-const { repoUrl } = await req.json();
+const body = await req.json();
+const { repoUrl } = body;
+
+if (!repoUrl || typeof repoUrl !== 'string') {
+  return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
+}
 
 const parsed = parseRepoUrl(repoUrl);
 
@@ -136,6 +141,7 @@ const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.p
 // Fetch top 30 files once
 const allFileContents: { path: string; content: string }[] = [];
 
+let fetchErrors = 0;
 for (const file of topFiles.slice(0, 30)) {
   try {
     const content = await fetchFileContent(owner, repo, file.path, providerToken);
@@ -143,7 +149,15 @@ for (const file of topFiles.slice(0, 30)) {
       path: file.path,
       content: content.split("\n").slice(0, 500).join("\n")
     });
-  } catch {}
+  } catch (err) {
+    fetchErrors++;
+    console.warn(`Failed to fetch ${file.path}:`, err);
+  }
+}
+
+// If too many failures, warn the user
+if (fetchErrors > 10) {
+  console.error(`Warning: Failed to fetch ${fetchErrors} files`);
 }
 
 const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);

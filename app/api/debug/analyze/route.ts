@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
     // 1. SECURITY FIX: Use getUser() instead of getSession()
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
-    const providerToken = undefined; // Note: getUser doesn't return provider_token directly. If you need it, you might have to fetch the session specifically for the token, but let's stick to getUser for auth.
+    const { data: { session } } = await supabase.auth.getSession();
+const providerToken = session?.provider_token ?? undefined;
 
     // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
       .from("analyses")
       .select("*")
       .eq("repo_url", repoUrl)
+      .eq("analysis_version", 3)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -82,7 +84,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { result_json } = analysis;
+    if (!analysis || !analysis.result_json) {
+  return NextResponse.json(
+    { error: "Repository not analyzed yet. Please analyze it first." },
+    { status: 404 }
+  );
+}
+
+const { result_json } = analysis;
     const { dependencyGraph, fanIn, mermaidDiagram } = result_json;
 
     // Get all files from the dependency graph
