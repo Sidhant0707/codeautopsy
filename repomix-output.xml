@@ -1280,6 +1280,45 @@ export function generateErrorGraph(
 }
 </file>
 
+<file path="package.json">
+{
+  "name": "codeautopsy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
+    "@vercel/analytics": "^2.0.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
+    "mermaid": "^11.14.0",
+    "next": "16.2.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-icons": "^5.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
 <file path="app/api/debug/analyze/route.ts">
 // app/api/debug/analyze/route.ts
 
@@ -1313,7 +1352,8 @@ export async function POST(req: NextRequest) {
     // 1. SECURITY FIX: Use getUser() instead of getSession()
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
-    const providerToken = undefined; // Note: getUser doesn't return provider_token directly. If you need it, you might have to fetch the session specifically for the token, but let's stick to getUser for auth.
+    const { data: { session } } = await supabase.auth.getSession();
+const providerToken = session?.provider_token ?? undefined;
 
     // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
@@ -1353,6 +1393,7 @@ export async function POST(req: NextRequest) {
       .from("analyses")
       .select("*")
       .eq("repo_url", repoUrl)
+      .eq("analysis_version", 3)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1365,7 +1406,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { result_json } = analysis;
+    if (!analysis || !analysis.result_json) {
+  return NextResponse.json(
+    { error: "Repository not analyzed yet. Please analyze it first." },
+    { status: 404 }
+  );
+}
+
+const { result_json } = analysis;
     const { dependencyGraph, fanIn, mermaidDiagram } = result_json;
 
     // Get all files from the dependency graph
@@ -1394,7 +1442,7 @@ export async function POST(req: NextRequest) {
     // Fetch missing files
     const fileContents = result_json.fileContents || [];
     const existingContents = new Map<string, string>(
-      fileContents.map((f: any) => [f.path as string, f.content as string])
+      fileContents.map((f: { path: string; content: string }) => [f.path, f.content])
     );
 
     const allContents = await fetchMissingFiles(
@@ -1495,45 +1543,6 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("Debug analysis error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "codeautopsy",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@supabase/auth-helpers-nextjs": "^0.15.0",
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.103.0",
-    "@upstash/ratelimit": "^2.0.8",
-    "@upstash/redis": "^1.37.0",
-    "@vercel/analytics": "^2.0.1",
-    "framer-motion": "^12.38.0",
-    "lucide-react": "^1.7.0",
-    "mermaid": "^11.14.0",
-    "next": "16.2.2",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-icons": "^5.6.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.2",
-    "tailwindcss": "^4",
-    "typescript": "^5"
   }
 }
 </file>
@@ -1882,21 +1891,18 @@ export function graphToMermaid(
   const lines: string[] = ["graph TD"];
   const seen = new Set<string>();
   const queue = [...entryPoints];
+  const fanIn = computeFanIn(graph);
   let nodes = 0;
 
   // IMPROVED: Auto-detect entry points if none provided
   if (entryPoints.length === 0) {
-    // Find files with zero dependencies or high fan-in
-    const fanIn = computeFanIn(graph);
-    const potentialEntries = Object.keys(graph).filter(file => {
-      const hasNoDeps = graph[file].length === 0;
-      const isHighFanIn = (fanIn[file] || 0) > 2;
-      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.");
-      return hasNoDeps || isHighFanIn || isEntry;
-    });
-    
-    queue.push(...potentialEntries.slice(0, 3));
-  }
+  const potentialEntries = Object.keys(graph).filter(file => {
+    const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
+    const isHighFanIn = (fanIn[file] || 0) > 2;
+    return isEntry || isHighFanIn;  // Removed hasNoDeps
+  });
+  queue.push(...potentialEntries.slice(0, 3));
+}
 
   // ENTRY SUBGRAPH
   if (queue.length > 0) {
@@ -1911,7 +1917,8 @@ export function graphToMermaid(
 
   // DEPENDENCY GRAPH
   while (queue.length > 0 && nodes < 30) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+if (!current) continue;
     if (seen.has(current)) continue;
     seen.add(current);
 
@@ -1953,7 +1960,7 @@ import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimit } from "@/lib/ratelimit";
 
-const ANALYSIS_VERSION = 2;
+const ANALYSIS_VERSION = 3;
 
 export async function POST(req: NextRequest) {
   try {
@@ -1988,7 +1995,12 @@ const { data: { session } } = await supabase.auth.getSession();
 const providerToken = session?.provider_token ?? undefined;
 const userId = session?.user?.id ?? undefined;
 
-const { repoUrl } = await req.json();
+const body = await req.json();
+const { repoUrl } = body;
+
+if (!repoUrl || typeof repoUrl !== 'string') {
+  return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
+}
 
 const parsed = parseRepoUrl(repoUrl);
 
@@ -2080,6 +2092,7 @@ const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.p
 // Fetch top 30 files once
 const allFileContents: { path: string; content: string }[] = [];
 
+let fetchErrors = 0;
 for (const file of topFiles.slice(0, 30)) {
   try {
     const content = await fetchFileContent(owner, repo, file.path, providerToken);
@@ -2087,7 +2100,15 @@ for (const file of topFiles.slice(0, 30)) {
       path: file.path,
       content: content.split("\n").slice(0, 500).join("\n")
     });
-  } catch {}
+  } catch (err) {
+    fetchErrors++;
+    console.warn(`Failed to fetch ${file.path}:`, err);
+  }
+}
+
+// If too many failures, warn the user
+if (fetchErrors > 10) {
+  console.error(`Warning: Failed to fetch ${fetchErrors} files`);
 }
 
 const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
