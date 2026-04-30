@@ -44,53 +44,55 @@ export default function RepoChat({ repoContext }: Props) {
   }, [messages]);
 
   async function sendMessage(question: string) {
-  if (!question.trim() || loading) return;
+    if (!question.trim() || loading) return;
 
-  const userMessage: Message = { role: "user", content: question };
-  setMessages((prev) => [...prev, userMessage]);
-  setInput("");
-  setLoading(true);
+    const userMessage: Message = { role: "user", content: question };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
 
-  // Strip heavy fields before sending
-  const lightContext = {
-    owner: repoContext.owner,
-    repo: repoContext.repo,
-    description: repoContext.description,
-    language: repoContext.language,
-    entryPoints: repoContext.entryPoints,
-    analysis: repoContext.analysis,
-  };
+    // Strip heavy fields before sending
+    const lightContext = {
+      owner: repoContext.owner,
+      repo: repoContext.repo,
+      description: repoContext.description,
+      language: repoContext.language,
+      entryPoints: repoContext.entryPoints,
+      analysis: repoContext.analysis,
+    };
 
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, repoContext: lightContext }),
-    });
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, repoContext: lightContext }),
+      });
 
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
 
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: data.answer },
-    ]);
-  } catch (err) {
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "Sorry, I couldn't process that question. Please try again.",
-      },
-    ]);
-  } finally {
-    setLoading(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I couldn't process that question. Please try again.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   return (
-    <div className="glass-card rounded-3xl overflow-hidden flex flex-col" style={{ height: "600px" }}>
-      
+    <div
+      className="glass-card rounded-3xl overflow-hidden flex flex-col"
+      style={{ height: "600px" }}
+    >
       {/* Header */}
       <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
@@ -116,8 +118,13 @@ export default function RepoChat({ repoContext }: Props) {
               <div className="w-12 h-12 rounded-2xl bg-[#141414] border border-white/5 flex items-center justify-center mx-auto mb-4">
                 <Bot className="w-6 h-6 text-slate-400" />
               </div>
-              <p className="text-slate-400 text-sm mb-1">Ask anything about this codebase</p>
-              <p className="mono text-[10px] text-slate-600">Powered by Gemini AI</p>
+              <p className="text-slate-400 text-sm mb-1">
+                Ask anything about this codebase
+              </p>
+              <p className="mono text-[10px] text-slate-600 uppercase tracking-widest">
+                Powered by Groq{" "}
+                <span className="text-indigo-400/50">Llama 3.3</span>
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
               {SUGGESTED_QUESTIONS.map((q) => (
@@ -143,7 +150,9 @@ export default function RepoChat({ repoContext }: Props) {
                 transition={{ duration: 0.3 }}
                 className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
               >
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white" : "bg-[#141414] border border-white/10"}`}>
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white" : "bg-[#141414] border border-white/10"}`}
+                >
                   {msg.role === "user" ? (
                     <User className="w-3.5 h-3.5 text-black" />
                   ) : (
@@ -175,7 +184,9 @@ export default function RepoChat({ repoContext }: Props) {
             </div>
             <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-[#141414] border border-white/5 flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
-              <span className="mono text-[10px] text-slate-500">Analyzing...</span>
+              <span className="mono text-[10px] text-slate-500">
+                Analyzing...
+              </span>
             </div>
           </motion.div>
         )}
@@ -205,7 +216,6 @@ export default function RepoChat({ repoContext }: Props) {
           </button>
         </div>
       </div>
-
     </div>
   );
 }

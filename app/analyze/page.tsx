@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Star,
@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Box,
   Layers,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -68,9 +70,10 @@ function AnalyzeContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
-    "overview",
-  );
+  // States for Tabs and Feedback
+  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">("overview");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedback, setFeedback] = useState<'helpful' | 'not-helpful' | null>(null);
 
   useEffect(() => {
     if (!repoUrl) return;
@@ -78,14 +81,10 @@ function AnalyzeContent() {
     async function analyze() {
       try {
         const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push(
-            `/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`,
-          );
+          router.push(`/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`);
           return;
         }
 
@@ -103,11 +102,9 @@ function AnalyzeContent() {
         setLoading(false);
       }
     }
-
     analyze();
   }, [repoUrl, router]);
 
-  // ✨ NEW: Auto-scroll fix
   const handleTabSwitch = (tab: "overview" | "diagnostics") => {
     setActiveTab(tab);
     // Smoothly scroll slightly down to center the tab content after a very brief delay to allow DOM to render
@@ -116,11 +113,15 @@ function AnalyzeContent() {
     }, 50);
   };
 
+  const handleFeedback = (isHelpful: boolean) => {
+    setFeedback(isHelpful ? 'helpful' : 'not-helpful');
+    setFeedbackSubmitted(true);
+  };
+
   if (loading)
     return (
       <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative overflow-hidden">
-        {/* Loading UI stays exactly the same... */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/[0.02] rounded-full blur-[100px] animate-pulse [animation-duration:4s]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/[0.02] rounded-full blur-[100px] animate-pulse" />
         <motion.div
           variants={staggerContainer}
           initial="hidden"
@@ -197,11 +198,13 @@ function AnalyzeContent() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-[#f1f5f9] relative overflow-x-hidden font-satoshi pb-32">
+      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-[50vh] pointer-events-none">
         <div className="absolute top-[-20%] left-[10%] w-[40%] h-[100%] bg-white/[0.015] blur-[120px] rounded-full" />
       </div>
 
       <div className="max-w-6xl mx-auto px-6 pt-12 relative z-10">
+        {/* Back Button */}
         <button
           onClick={() => router.push("/")}
           className="group flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors mb-12"
@@ -211,6 +214,7 @@ function AnalyzeContent() {
         </button>
 
         <motion.div variants={staggerContainer} initial="hidden" animate="show">
+          {/* Header Section */}
           <motion.div variants={fadeUp} className="mb-12">
             <div className="flex items-start justify-between gap-8 flex-col md:flex-row">
               <div>
@@ -225,19 +229,13 @@ function AnalyzeContent() {
                   {data.description}
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2">
+                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2 border border-white/5">
                     <Star className="w-4 h-4 text-slate-400" />
                     <span className="mono text-xs font-bold text-white">
                       {data.stars.toLocaleString()}
                     </span>
                   </div>
-                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2">
-                    <FileCode className="w-4 h-4 text-slate-400" />
-                    <span className="mono text-xs font-bold text-white">
-                      {data.totalFiles} files
-                    </span>
-                  </div>
-                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2">
+                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2 border border-white/5">
                     <Terminal className="w-4 h-4 text-slate-400" />
                     <span className="mono text-xs font-bold text-white">
                       {data.language}
@@ -245,18 +243,18 @@ function AnalyzeContent() {
                   </div>
                   <div className="bg-white text-black px-4 py-2 rounded-lg flex items-center gap-2">
                     <Box className="w-4 h-4" />
-                    <span className="mono text-xs font-bold">
+                    <span className="mono text-xs font-bold uppercase tracking-wider">
                       {data.analysis.architecture_pattern}
                     </span>
                   </div>
                 </div>
               </div>
 
+              {/* Action Buttons */}
               <div className="flex-shrink-0 mt-2 md:mt-0 flex flex-col items-end gap-3 w-full md:w-auto">
                 <ShareButton owner={data.owner} repo={data.repo} />
 
                 {activeTab !== "diagnostics" && (
-                  // ✨ NEW: Professional, non-AI-looking metallic pulse button
                   <button
                     onClick={() => handleTabSwitch("diagnostics")}
                     className="w-full relative group overflow-hidden rounded-lg p-[1px] bg-white/10 hover:bg-white/20 transition-colors"
@@ -275,18 +273,12 @@ function AnalyzeContent() {
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* 
-              ✨ NEW: Dynamic Column Sizing 
-              If overview, span 8 and leave room for the right sidebar.
-              If diagnostics, span all 12 columns for a massive workspace.
-            */}
+            {/* LEFT COLUMN: Main content area (Spans 8 or 12) */}
             <div
-              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-8 transition-all duration-500`}
+              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-12 transition-all duration-500`}
             >
-              <motion.div
-                variants={fadeUp}
-                className="flex items-center justify-center mb-8"
-              >
+              {/* Segmented Tab Control */}
+              <div className="flex items-center justify-center">
                 <div className="inline-flex items-center p-1 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md shadow-2xl">
                   <button
                     onClick={() => handleTabSwitch("overview")}
@@ -342,8 +334,9 @@ function AnalyzeContent() {
                     </span>
                   </button>
                 </div>
-              </motion.div>
+              </div>
 
+              {/* TAB CONTENT: Overview */}
               {activeTab === "overview" && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -351,26 +344,22 @@ function AnalyzeContent() {
                   className="space-y-8"
                 >
                   {/* System Purpose */}
-                  <div className="glass-card p-8 rounded-3xl">
+                  <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                        <Layers className="w-4 h-4 text-slate-400" />
-                      </div>
+                      <Layers className="w-5 h-5 text-slate-400" />
                       <h2 className="cabinet text-2xl font-bold text-white">
                         System Purpose
                       </h2>
                     </div>
-                    <p className="text-slate-300 leading-relaxed text-sm md:text-base">
+                    <p className="text-slate-300 leading-relaxed text-base">
                       {data.analysis.what_it_does}
                     </p>
                   </div>
 
                   {/* Execution Flow */}
-                  <div className="glass-card p-8 rounded-3xl">
+                  <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-8">
-                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                        <GitMerge className="w-4 h-4 text-slate-400" />
-                      </div>
+                      <GitMerge className="w-5 h-5 text-slate-400" />
                       <h2 className="cabinet text-2xl font-bold text-white">
                         Execution Flow
                       </h2>
@@ -379,8 +368,8 @@ function AnalyzeContent() {
                       {data.analysis.execution_flow.map((step, i) => (
                         <div key={i} className="relative pl-6">
                           <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0e0e0e]" />
-                          <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-2">
-                            STEP 0{i + 1}
+                          <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-2 uppercase">
+                            Step 0{i + 1}
                           </span>
                           <p className="text-sm text-slate-300 leading-relaxed">
                             {step}
@@ -391,11 +380,9 @@ function AnalyzeContent() {
                   </div>
 
                   {/* Onboarding Guide */}
-                  <div className="glass-card p-8 rounded-3xl">
+                  <div className="glass-card p-8 rounded-3xl border border-white/5">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center">
-                        <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                      </div>
+                      <CheckCircle2 className="w-5 h-5 text-slate-400" />
                       <h2 className="cabinet text-2xl font-bold text-white">
                         Developer Onboarding
                       </h2>
@@ -404,10 +391,10 @@ function AnalyzeContent() {
                       {data.analysis.onboarding_guide.map((tip, i) => (
                         <div
                           key={i}
-                          className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5"
+                          className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 transition-colors hover:bg-white/[0.04]"
                         >
                           <div className="w-6 h-6 rounded-full bg-[#141414] border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="mono text-[10px] text-white">
+                            <span className="mono text-[10px] text-white font-bold">
                               {i + 1}
                             </span>
                           </div>
@@ -421,6 +408,7 @@ function AnalyzeContent() {
                 </motion.div>
               )}
 
+              {/* TAB CONTENT: Diagnostics */}
               {activeTab === "diagnostics" && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -433,19 +421,108 @@ function AnalyzeContent() {
                       repoUrl={`https://github.com/${data.owner}/${data.repo}`}
                     />
                   )}
-                  <div className="max-w-4xl mx-auto">
-                    <RepoChat repoContext={data} />
-                  </div>
                 </motion.div>
               )}
+
+              {/* CHAT INTERFACE: Always available at bottom of Left Column */}
+              <div className="pt-12 mt-12 border-t border-white/10">
+                <div
+                  className={`${activeTab === "diagnostics" ? "max-w-4xl mx-auto" : "w-full"}`}
+                >
+                  <div className="flex flex-col mb-8">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Terminal className="w-4 h-4 text-white" />
+                      <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">
+                        Active_Query_Terminal
+                      </h3>
+                    </div>
+                    <p className="text-slate-400 text-sm mb-1 ml-7">
+                      Ask anything about this codebase
+                    </p>
+                    <p className="mono text-[10px] text-slate-600 uppercase tracking-widest ml-7">
+                      Powered by Groq{" "}
+                      <span className="text-indigo-400/50">Llama 3.3</span>
+                    </p>
+                  </div>
+                  <RepoChat repoContext={data} />
+                </div>
+              </div>
+
+              {/* FEEDBACK SECTION: Your exact requested structure and placement[cite: 5] */}
+              <motion.section
+                variants={fadeUp}
+                className="relative overflow-hidden pt-12"
+              >
+                <div className="glass-card p-8 rounded-3xl border-2 border-white/10 bg-gradient-to-br from-white/[0.03] to-white/[0.01]">
+                  {!feedbackSubmitted ? (
+                    <>
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+                          <span className="text-xl">💬</span>
+                        </div>
+                        <h3 className="cabinet text-xl font-bold text-white">
+                          Was this analysis helpful?
+                        </h3>
+                      </div>
+                      <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                        Your feedback helps us improve the quality of our code
+                        analysis. Let us know if this autopsy was useful for
+                        understanding the codebase.
+                      </p>
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => handleFeedback(true)}
+                          className="flex-1 group relative overflow-hidden px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="relative flex items-center justify-center gap-3">
+                            <ThumbsUp className="w-5 h-5 text-slate-400 group-hover:text-green-400 transition-colors" />
+                            <span className="font-bold text-sm text-white">
+                              Yes, helpful!
+                            </span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(false)}
+                          className="flex-1 group relative overflow-hidden px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="relative flex items-center justify-center gap-3">
+                            <ThumbsDown className="w-5 h-5 text-slate-400 group-hover:text-red-400 transition-colors" />
+                            <span className="font-bold text-sm text-white">
+                              Not quite
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="text-center py-4"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle2 className="w-6 h-6 text-green-400" />
+                      </div>
+                      <h4 className="cabinet text-lg font-bold text-white mb-2">
+                        Thank you for your feedback!
+                      </h4>
+                      <p className="text-slate-400 text-sm">
+                        {feedback === "helpful"
+                          ? "We're glad this analysis was useful. Keep building!"
+                          : "We appreciate your honesty. We'll work on improving our analysis quality."}
+                      </p>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.section>
             </div>
 
-            {/* 
-              ✨ NEW: Conditional Rendering of the Sidebar
-              It ONLY shows if the user is on the "overview" tab.
-            */}
+            {/* RIGHT COLUMN: Static sidebar (Hidden in Diagnostics mode) */}
             {activeTab === "overview" && (
-              <div className="lg:col-span-4 space-y-8 mt-12 lg:mt-0">
+              <div className="lg:col-span-4 space-y-8 mt-12 lg:mt-0 transition-opacity duration-300">
+                {/* Tech Stack Section */}
                 <motion.section variants={fadeUp}>
                   <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
                     Tech Stack
@@ -454,7 +531,7 @@ function AnalyzeContent() {
                     {data.analysis.tech_stack.map((tech, i) => (
                       <div
                         key={i}
-                        className="glass-card hover-depth-card p-5 rounded-2xl"
+                        className="glass-card p-5 rounded-2xl border border-white/5 transition-all hover:bg-white/[0.04]"
                       >
                         <p className="cabinet font-bold text-white mb-2">
                           {tech.name}
@@ -467,6 +544,7 @@ function AnalyzeContent() {
                   </div>
                 </motion.section>
 
+                {/* Key Modules Section */}
                 <motion.section variants={fadeUp}>
                   <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
                     Key Modules
@@ -475,7 +553,7 @@ function AnalyzeContent() {
                     {data.analysis.key_modules.map((mod, i) => (
                       <div
                         key={i}
-                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a]"
+                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a] border border-white/5"
                       >
                         <div className="flex items-center justify-between gap-4 mb-4">
                           <code
@@ -506,7 +584,13 @@ function AnalyzeContent() {
 
 export default function AnalyzePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[var(--bg-deep)]" />}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[var(--bg-deep)] flex items-center justify-center text-white font-mono">
+          LOADING_ANALYSIS...
+        </div>
+      }
+    >
       <AnalyzeContent />
     </Suspense>
   );
