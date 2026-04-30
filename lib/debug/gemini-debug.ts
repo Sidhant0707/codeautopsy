@@ -5,7 +5,7 @@ export async function analyzeDebugWithGemini(
 ): Promise<DebugResult> {
   // Ensure we are strictly using the new Groq pipeline
   if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
-    throw new Error("Gemini is currently disabled. Please use Groq.");
+    throw new Error("Gemini is currently disabled. Please use Groq. Check Vercel Env Variables.");
   }
 
   const apiKey = process.env.GROQ_API_KEY;
@@ -91,7 +91,6 @@ Analyze the crash and return ONLY a valid JSON object with this exact structure:
     if (res.ok) break;
 
     if ((res.status === 503 || res.status === 429) && attempt < 3) {
-      // 5-second exponential backoff
       await new Promise((r) => setTimeout(r, 5000 * attempt));
       continue;
     }
@@ -106,6 +105,5 @@ Analyze the crash and return ONLY a valid JSON object with this exact structure:
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error("Empty response from Groq");
 
-  // Groq's response_format guarantees JSON, so we can parse directly
   return JSON.parse(text) as DebugResult;
 }
