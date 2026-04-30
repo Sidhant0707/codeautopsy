@@ -60,6 +60,15 @@ interface RepoData {
   entryPoints: string[];
   mermaidDiagram: string;
   analysis: Analysis;
+  // allow extra properties coming from backend (e.g., id, raw fields)
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | string[]
+    | Analysis
+    | null
+    | undefined;
 }
 
 function AnalyzeContent() {
@@ -127,7 +136,7 @@ function AnalyzeContent() {
 
       const { error } = await supabase.from("debug_feedback").insert([
         {
-          debug_id: data.id || repoUrl,
+          debug_id: data?.id ?? repoUrl,
           is_helpful: isHelpful,
         },
       ]);
@@ -185,7 +194,11 @@ function AnalyzeContent() {
                 <div className="w-4 h-4 rounded flex items-center justify-center bg-white/5 border border-white/10">
                   <div
                     className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-ping"
-                    style={{ animationDelay: `${i * 0.2}s` }}
+                    style={
+                      {
+                        "--animation-delay": `${i * 0.2}s`,
+                      } as React.CSSProperties
+                    }
                   />
                 </div>
                 <span className="mono text-xs text-slate-400">{step}</span>
@@ -457,7 +470,13 @@ function AnalyzeContent() {
                       <span className="text-indigo-400/50">Llama 3.3</span>
                     </p>
                   </div>
-                  <RepoChat repoContext={data} />
+                  <RepoChat
+                    repoContext={{
+                      repo: `${data.owner}/${data.repo}`,
+                      description: data.description,
+                      language: data.language,
+                    }}
+                  />
                 </div>
               </div>
 
