@@ -22,70 +22,81 @@ export async function POST(req: NextRequest) {
       "127.0.0.1";
 
     const supabase = createServerClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
-      },
-      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
-        cookieStore.set(name, value, options);
-      },
-      remove(name: string) {
-        cookieStore.delete(name);
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
+            cookieStore.set(name, value, options);
+          },
+          remove(name: string) {
+            cookieStore.delete(name);
+          }
+        }
       }
+    );
+
+    let session = null;
+
+    try {
+      // Try to get the session. If the token is dead and refresh fails, 
+      // it will throw an AuthApiError, which we will now catch.
+      const { data } = await supabase.auth.getSession();
+      session = data?.session;
+    } catch (error) {
+      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
+      // We swallow the error so the API route can continue processing 
+      // public GitHub repos without crashing.
     }
-  }
-);
 
-const { data: { session } } = await supabase.auth.getSession();
+    const providerToken = session?.provider_token ?? undefined;
+    const userId = session?.user?.id ?? undefined;
 
-const providerToken = session?.provider_token ?? undefined;
-const userId = session?.user?.id ?? undefined;
+    const body = await req.json();
+    const { repoUrl } = body;
 
-const body = await req.json();
-const { repoUrl } = body;
+    if (!repoUrl || typeof repoUrl !== 'string') {
+      return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
+    }
 
-if (!repoUrl || typeof repoUrl !== 'string') {
-  return NextResponse.json({ error: "Missing or invalid repoUrl" }, { status: 400 });
-}
+    const parsed = parseRepoUrl(repoUrl);
 
-const parsed = parseRepoUrl(repoUrl);
+    if (!parsed) {
+      return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
+    }
 
-if (!parsed) {
-  return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
-}
+    const { owner, repo } = parsed;
 
-const { owner, repo } = parsed;
+    const meta = await fetchRepoMeta(owner, repo, providerToken);
+    const commitSha = meta.default_branch;
 
-const meta = await fetchRepoMeta(owner, repo, providerToken);
-const commitSha = meta.default_branch;
+    // ✅ CHECK CACHE FIRST (before rate limiting)
+    const { data: cached } = await supabase
+      .from("analyses")
+      .select("result_json")
+      .eq("repo_url", repoUrl)
+      .eq("commit_sha", commitSha)
+      .eq("analysis_version", ANALYSIS_VERSION)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-// ✅ CHECK CACHE FIRST (before rate limiting)
-const { data: cached } = await supabase
-  .from("analyses")
-  .select("result_json")
-  .eq("repo_url", repoUrl)
-  .eq("commit_sha", commitSha)
-  .eq("analysis_version", ANALYSIS_VERSION)
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
+    if (cached?.result_json) {
+      return NextResponse.json({ ...cached.result_json, cached: true });
+    }
 
-if (cached?.result_json) {
-  return NextResponse.json({ ...cached.result_json, cached: true });
-}
+    // ✅ ONLY rate limit if cache miss
+    const { success, limit, reset, remaining } = await ratelimit.limit(ip);
 
-// ✅ ONLY rate limit if cache miss
-const { success, limit, reset, remaining } = await ratelimit.limit(ip);
-
-if (!success) {
-  return NextResponse.json(
-    { error: "Daily limit reached.", limit, remaining, reset },
-    { status: 429 }
-  );
-}
+    if (!success) {
+      return NextResponse.json(
+        { error: "Daily limit reached.", limit, remaining, reset },
+        { status: 429 }
+      );
+    }
 
     const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
 
@@ -135,42 +146,56 @@ if (!success) {
       }
     });
 
-const topFiles = getTopFiles(scoredFiles, 20);
-const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
+    const topFiles = getTopFiles(scoredFiles, 20);
+    const entryPoints = scoredFiles.filter((f) => f.role === "entry").map((f) => f.path);
 
-// Fetch top 30 files once
-const allFileContents: { path: string; content: string }[] = [];
+    // Fetch top 30 files once
+    const allFileContents: { path: string; content: string }[] = [];
 
-let fetchErrors = 0;
-for (const file of topFiles.slice(0, 30)) {
-  try {
-    const content = await fetchFileContent(owner, repo, file.path, providerToken);
-    allFileContents.push({
-      path: file.path,
-      content: content.split("\n").slice(0, 500).join("\n")
-    });
-  } catch (err) {
-    fetchErrors++;
-    console.warn(`Failed to fetch ${file.path}:`, err);
-  }
-}
+    let fetchErrors = 0;
+    for (const file of topFiles.slice(0, 30)) {
+      try {
+        const content = await fetchFileContent(owner, repo, file.path, providerToken);
+        
+        // MINIFICATION FIX: Strip whitespace and comments so Groq doesn't choke on tokens
+        const minifiedContent = content
+          .split("\n")
+          .map(line => line.trim())
+          .filter(line => 
+            line.length > 0 && 
+            !line.startsWith("//") && 
+            !line.startsWith("/*") && 
+            !line.startsWith("*")
+          )
+          .slice(0, 300) // Keeps the top 300 meaningful lines
+          .join("\n");
 
-// If too many failures, warn the user
-if (fetchErrors > 10) {
-  console.error(`Warning: Failed to fetch ${fetchErrors} files`);
-}
+        allFileContents.push({
+          path: file.path,
+          content: minifiedContent
+        });
+      } catch (err) {
+        fetchErrors++;
+        console.warn(`Failed to fetch ${file.path}:`, err);
+      }
+    }
 
-const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
-const fanIn = computeFanIn(dependencyGraph);
-const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+    // If too many failures, warn the user
+    if (fetchErrors > 10) {
+      console.error(`Warning: Failed to fetch ${fetchErrors} files`);
+    }
 
-const analysis = await analyzeWithGemini(
-  `${owner}/${repo}`,
-  meta.description || "No description provided",
-  entryPoints,
-  topFiles.map((f) => ({ path: f.path, role: f.role })),
-  allFileContents.slice(0, 15)  // Use first 15 for Gemini
-);
+    const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+    const fanIn = computeFanIn(dependencyGraph);
+    const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
+
+    const analysis = await analyzeWithGemini(
+      `${owner}/${repo}`,
+      meta.description || "No description provided",
+      entryPoints,
+      topFiles.map((f) => ({ path: f.path, role: f.role })),
+      allFileContents.slice(0, 15)  // Use first 15 for Groq
+    );
 
     const result = {
       owner,

@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Download, ThumbsUp, ThumbsDown, RotateCcw } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+} from "lucide-react";
 import { motion } from "framer-motion";
 
 interface DebugResultsProps {
@@ -89,42 +96,49 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      {/* Header with Actions */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center">
             <span className="text-2xl">🩺</span>
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Code Doctor Diagnosis</h3>
-            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${confidenceColors[result.confidence]}`}>
+            <h3 className="text-lg font-bold text-white">
+              Code Doctor Diagnosis
+            </h3>
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${confidenceColors[result.confidence]}`}
+            >
               {result.confidence} Confidence
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Copy Button */}
           <button
             onClick={copyDiagnosis}
+            title={copied ? "Copied diagnosis" : "Copy diagnosis"}
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
           >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
             {copied ? "Copied!" : "Copy"}
           </button>
 
-          {/* Export Button */}
           <button
             onClick={exportMarkdown}
+            title="Export diagnosis as markdown"
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
           >
             <Download className="w-4 h-4" />
             Export
           </button>
 
-          {/* Reset Button */}
           <button
             onClick={onReset}
+            title="Start new diagnosis"
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-sm"
           >
             <RotateCcw className="w-4 h-4" />
@@ -133,7 +147,6 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         </div>
       </div>
 
-      {/* Runtime Check Warning */}
       {result.requires_runtime_check && (
         <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-start gap-3">
           <span className="text-xl">⚠️</span>
@@ -142,13 +155,13 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
               This appears to be a state or data error.
             </p>
             <p className="text-xs text-yellow-300/70">
-              Ensure you check your database, API endpoints, and environment variables.
+              Ensure you check your database, API endpoints, and environment
+              variables.
             </p>
           </div>
         </div>
       )}
 
-      {/* Root Cause */}
       <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
         <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
           Root Cause Hypothesis
@@ -158,7 +171,6 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         </p>
       </div>
 
-      {/* Fix Suggestions */}
       <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
         <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
           Fix Suggestions
@@ -169,13 +181,14 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
               <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <span className="text-xs text-blue-300 font-bold">{i + 1}</span>
               </div>
-              <p className="text-sm text-slate-300 leading-relaxed">{suggestion}</p>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                {suggestion}
+              </p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Verification Steps */}
       <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10">
         <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
           Verification Steps
@@ -184,7 +197,9 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
           {result.verification_steps.map((step, i) => (
             <div key={i} className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs text-green-300 font-bold">{i + 1}</span>
+                <span className="text-xs text-green-300 font-bold">
+                  {i + 1}
+                </span>
               </div>
               <p className="text-sm text-slate-300 leading-relaxed">{step}</p>
             </div>
@@ -192,7 +207,6 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         </div>
       </div>
 
-      {/* Feedback */}
       <div className="flex items-center justify-center gap-4 pt-4 pb-2">
         <span className="text-xs text-slate-500 uppercase tracking-wider">
           Was this helpful?
@@ -200,6 +214,8 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         <div className="flex gap-2">
           <button
             onClick={() => setFeedback("up")}
+            title="Helpful"
+            aria-label="Mark diagnosis as helpful"
             className={`p-2 rounded-lg border transition-all ${
               feedback === "up"
                 ? "bg-green-500/20 border-green-500/40 text-green-400"
@@ -210,6 +226,8 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
           </button>
           <button
             onClick={() => setFeedback("down")}
+            title="Not helpful"
+            aria-label="Mark diagnosis as not helpful"
             className={`p-2 rounded-lg border transition-all ${
               feedback === "down"
                 ? "bg-red-500/20 border-red-500/40 text-red-400"

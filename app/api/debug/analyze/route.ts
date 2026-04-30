@@ -27,11 +27,19 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    // 1. SECURITY FIX: Use getUser() instead of getSession()
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id;
-    const { data: { session } } = await supabase.auth.getSession();
-const providerToken = session?.provider_token ?? undefined;
+    
+    let userId = undefined;
+    let providerToken = undefined;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      providerToken = session?.provider_token ?? undefined;
+    } catch (error) {
+      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
+    }
 
     // 2. DEBUG LOG: Let's see exactly what the frontend is sending
     const body = await req.json();
@@ -52,7 +60,6 @@ const providerToken = session?.provider_token ?? undefined;
 
     // Check cache
     const traceHash = hashStackTrace(stackTrace);
-    const cacheKey = `${repoUrl}:${traceHash}`;
     const cached = await getCachedDebug(repoUrl, traceHash);
     
     if (cached) {

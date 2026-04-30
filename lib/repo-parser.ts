@@ -5,8 +5,12 @@ export interface RepoFile {
 }
 
 const ENTRY_PATTERNS = [
-  "index.js", "index.ts", "main.js", "main.ts",
-  "app.js", "app.ts", "server.js", "server.ts",
+  "index.js", "index.ts", "index.jsx", "index.tsx",
+  "main.js", "main.ts", "main.jsx", "main.tsx",
+  "app.js", "app.ts", "app.jsx", "app.tsx",
+  "server.js", "server.ts",
+  "page.js", "page.ts", "page.jsx", "page.tsx",
+  "layout.js", "layout.ts", "layout.jsx", "layout.tsx",
   "main.py", "app.py", "manage.py", "wsgi.py",
   "main.go", "cmd/main.go",
 ];

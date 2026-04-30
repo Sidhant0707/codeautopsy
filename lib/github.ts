@@ -17,10 +17,21 @@ function getHeaders(userToken?: string) {
 
 export function parseRepoUrl(url: string): { owner: string; repo: string } | null {
   try {
+    // 1. Handle shorthand "owner/repo" format
+    if (!url.startsWith("http") && url.includes("/")) {
+      const parts = url.split("/");
+      if (parts.length >= 2) {
+        return { owner: parts[0], repo: parts[1].replace(/\.git$/, "") };
+      }
+    }
+
+    // 2. Handle standard URLs
     const parsed = new URL(url);
     const parts = parsed.pathname.replace(/^\//, "").replace(/\/$/, "").split("/");
     if (parts.length < 2) return null;
-    return { owner: parts[0], repo: parts[1] };
+    
+    // Strip .git just in case they copied the clone URL
+    return { owner: parts[0], repo: parts[1].replace(/\.git$/, "") };
   } catch {
     return null;
   }

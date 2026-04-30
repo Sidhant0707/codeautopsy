@@ -11,8 +11,12 @@ interface CodeDoctorPanelProps {
   onUpdateGraph?: (newMermaidString: string) => void;
 }
 
-export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps) {
-  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
+export function CodeDoctorPanel({
+  repoUrl,
+  onUpdateGraph,
+}: CodeDoctorPanelProps) {
+  const { analyzeCrash, result, isLoading, error, reset } =
+    useDebugAnalysis(repoUrl);
 
   useEffect(() => {
     if (result?.highlighted_mermaid && onUpdateGraph) {
@@ -22,7 +26,6 @@ export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps
 
   return (
     <div className="w-full bg-black/40 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative overflow-hidden">
-      {/* Background glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-indigo-500/10 blur-[100px] pointer-events-none" />
 
       <div className="mb-8 relative z-10">
@@ -30,7 +33,8 @@ export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps
           Code Doctor
         </h2>
         <p className="text-gray-400 text-sm">
-          Paste a stack trace. The engine will traverse your architecture graph to pinpoint the root cause.
+          Paste a stack trace. The engine will traverse your architecture graph
+          to pinpoint the root cause.
         </p>
       </div>
 
