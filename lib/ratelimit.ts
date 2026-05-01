@@ -15,7 +15,7 @@ export const ratelimitFree = new Ratelimit({
 
 export const ratelimitAuth = new Ratelimit({
   redis: redis,
-  limiter: Ratelimit.slidingWindow(50, "24 h"), 
+  limiter: Ratelimit.slidingWindow(10, "24 h"), 
   analytics: true,
   prefix: "@upstash/ratelimit/auth",
 });

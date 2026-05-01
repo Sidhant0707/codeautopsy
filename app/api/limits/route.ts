@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const identifier = userId ? userId : ip;
     const limiter = userId ? ratelimitAuth : ratelimitFree;
-    const maxTokens = userId ? 50 : 3;
+    const maxTokens = userId ? 10 : 3;
 
     const limitState = await limiter.getRemaining(identifier);
 

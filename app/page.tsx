@@ -51,14 +51,21 @@ const fadeUp = {
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [maxLimit, setMaxLimit] = useState<number>(3);
   const router = useRouter();
   const [telemetry, setTelemetry] = useState({ successRate: 0, totalScans: 0 });
 
   useEffect(() => {
     fetch("/api/limits")
       .then((res) => res.json())
-      .then((data) => setRemaining(data.remaining))
-      .catch(() => setRemaining(3));
+      .then((data) => {
+        setRemaining(data.remaining);
+        setMaxLimit(data.maxTokens); // Add this line
+      })
+      .catch(() => {
+        setRemaining(3);
+        setMaxLimit(3); // Add this line
+      });
 
     getSystemTelemetry().then((data) => setTelemetry(data));
   }, []);
@@ -291,7 +298,7 @@ export default function Home() {
               />
               <span className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">
                 {remaining !== null
-                  ? `${remaining} / 3 Autopsies Available Today`
+                  ? `${remaining} / ${maxLimit} Autopsies Available Today`
                   : "Initializing Engine..."}
               </span>
             </div>
