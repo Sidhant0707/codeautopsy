@@ -1,26 +1,38 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { Redis } from "@upstash/redis";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { ratelimitFree, ratelimitAuth } from "@/lib/ratelimit"; 
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const headerList = await headers();
-    const ip = headerList.get("x-forwarded-for") ?? "127.0.0.1";
-    
-    // Upstash Ratelimit saves keys in this format: @upstash/ratelimit:<ip>
-    const key = `@upstash/ratelimit:${ip}`;
-    const count = await redis.get<number>(key);
-    
-    // If no key exists, they haven't used any yet, so 3 are remaining
-    const remaining = count !== null ? Math.max(0, 3 - count) : 3;
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) { return cookieStore.get(name)?.value; },
+        },
+      }
+    );
 
-    return NextResponse.json({ remaining });
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id;
+
+    const headerList = await headers();
+    const ip = headerList.get("x-forwarded-for")?.split(",")[0] || "127.0.0.1";
+
+    const identifier = userId ? userId : ip;
+    const limiter = userId ? ratelimitAuth : ratelimitFree;
+    const maxTokens = userId ? 50 : 3;
+
+    const limitState = await limiter.getRemaining(identifier);
+
+    const remaining = limitState ? limitState.remaining : maxTokens;
+
+    return NextResponse.json({ remaining, maxTokens });
   } catch (err) {
-    return NextResponse.json({ remaining: 3 }); // Fallback
+    return NextResponse.json({ remaining: 3, maxTokens: 3 }, { status: 500 }); 
   }
 }

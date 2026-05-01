@@ -1,7 +1,3 @@
-// lib/github.ts
-
-// Helper to create headers dynamically
-// If a user token is provided, we use it. Otherwise, we fall back to the system GITHUB_TOKEN.
 function getHeaders(userToken?: string) {
   const token = userToken || process.env.GITHUB_TOKEN;
   const headers: HeadersInit = {
@@ -9,7 +5,7 @@ function getHeaders(userToken?: string) {
   };
   
   if (token) {
-    headers.Authorization = `token ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
   
   return headers;
@@ -17,7 +13,6 @@ function getHeaders(userToken?: string) {
 
 export function parseRepoUrl(url: string): { owner: string; repo: string } | null {
   try {
-    // 1. Handle shorthand "owner/repo" format
     if (!url.startsWith("http") && url.includes("/")) {
       const parts = url.split("/");
       if (parts.length >= 2) {
@@ -25,19 +20,16 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } | nul
       }
     }
 
-    // 2. Handle standard URLs
     const parsed = new URL(url);
     const parts = parsed.pathname.replace(/^\//, "").replace(/\/$/, "").split("/");
     if (parts.length < 2) return null;
     
-    // Strip .git just in case they copied the clone URL
     return { owner: parts[0], repo: parts[1].replace(/\.git$/, "") };
   } catch {
     return null;
   }
 }
 
-// Added token parameter to all fetch functions
 export async function fetchRepoMeta(owner: string, repo: string, token?: string) {
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { 
     headers: getHeaders(token) 
