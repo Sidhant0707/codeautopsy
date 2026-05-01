@@ -41,19 +41,41 @@ export async function POST(req: NextRequest) {
     );
 
     let session = null;
+    let authUser = null;
 
     try {
-      // Try to get the session. If the token is dead and refresh fails, 
-      // it will throw an AuthApiError, which we will now catch.
-      const { data } = await supabase.auth.getSession();
-      session = data?.session;
+      // 1. Get the session (fast, from cookies)
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      session = currentSession;
+
+      // 2. Securely verify the user (contacts Supabase Auth server)
+      if (session) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          authUser = user;
+        } else {
+          // If the token is invalid/expired, clear the session
+          session = null;
+        }
+      }
     } catch (error) {
-      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.", error);
+      console.warn("Supabase auth check failed. Proceeding as guest.", error);
     }
 
-    const providerToken = session?.provider_token ?? undefined;
-    const userId = session?.user?.id ?? undefined;
-    const provider = session?.user?.app_metadata?.provider;
+    // Now use 'authUser' or 'session' for your logic
+    const userId = authUser?.id ?? undefined;
+    const provider = authUser?.app_metadata?.provider;
+
+    // 🚨 SMART TOKEN ROUTING
+    // Only use the session token if it is actually a GitHub token
+    let githubToken: string | undefined = undefined;
+    
+    if (provider === 'github' && session?.provider_token) {
+      githubToken = session.provider_token;
+    } else {
+      // For Google, Email, or logged-out users, use your system fallback token
+      githubToken = process.env.GITHUB_FALLBACK_TOKEN;
+    }
 
     const body = await req.json();
     const { repoUrl } = body;
@@ -70,12 +92,12 @@ export async function POST(req: NextRequest) {
 
     const { owner, repo } = parsed;
 
-    if (provider === 'google' && !providerToken) {
+    if (provider === 'google' && !githubToken) {
   // If we detect a potential private repo or just want to warn
   console.log("User is on Google Auth, private repos will fail 404/403.");
 }
 
-    const meta = await fetchRepoMeta(owner, repo, providerToken);
+    const meta = await fetchRepoMeta(owner, repo, githubToken);
     const commitSha = meta.default_branch;
 
     // ✅ CHECK CACHE FIRST (before rate limiting)
@@ -106,7 +128,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
+    const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
 
     const IGNORE = [
       "node_modules",
@@ -163,7 +185,7 @@ export async function POST(req: NextRequest) {
     let fetchErrors = 0;
     for (const file of topFiles.slice(0, 30)) {
       try {
-        const content = await fetchFileContent(owner, repo, file.path, providerToken);
+        const content = await fetchFileContent(owner, repo, file.path, githubToken);
         
         // MINIFICATION FIX: Strip whitespace and comments so Groq doesn't choke on tokens
         const minifiedContent = content
@@ -197,12 +219,16 @@ export async function POST(req: NextRequest) {
     const fanIn = computeFanIn(dependencyGraph);
     const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
 
+    const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
+    const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
+
     const analysis = await analyzeWithGemini(
       `${owner}/${repo}`,
       meta.description || "No description provided",
       entryPoints,
       topFiles.map((f) => ({ path: f.path, role: f.role })),
-      allFileContents.slice(0, 15)  // Use first 15 for Groq
+      allFileContents.slice(0, 15),  // Use first 15 for Groq
+      blastRadiusTargets
     );
 
     const result = {

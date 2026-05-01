@@ -15,6 +15,7 @@ import {
   Layers,
   ThumbsUp,
   ThumbsDown,
+  AlertTriangle,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -48,6 +49,13 @@ interface Analysis {
   tech_stack: { name: string; purpose: string }[];
   key_modules: { file: string; role: string; why_it_exists: string }[];
   onboarding_guide: string[];
+  // NEW SPRINT 2 FIELD
+  blast_radius: {
+    file: string;
+    dependents: number;
+    warning: string;
+    safe_refactor_steps: string[];
+  }[];
 }
 
 interface RepoData {
@@ -97,22 +105,22 @@ function AnalyzeContent() {
         }
 
         const res = await fetch("/api/analyze", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ repoUrl }),
-});
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repoUrl }),
+        });
 
-const json = await res.json();
+        const json = await res.json();
 
-// ✨ CHECK FOR AUTH GAP[cite: 2]
-if (json.error === 'REQUIRE_GITHUB_AUTH') {
-  setShowGitHubAuthModal(true);
-  setLoading(false);
-  return;
-}
+        // ✨ CHECK FOR AUTH GAP[cite: 2]
+        if (json.error === "REQUIRE_GITHUB_AUTH") {
+          setShowGitHubAuthModal(true);
+          setLoading(false);
+          return;
+        }
 
-if (json.error) throw new Error(json.error);
-setData(json);
+        if (json.error) throw new Error(json.error);
+        setData(json);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -123,15 +131,15 @@ setData(json);
   }, [repoUrl, router]);
 
   const handleGitHubLogin = async () => {
-  const supabase = createClient();
-  await supabase.auth.signInWithOAuth({
-    provider: 'github',
-    options: {
-      scopes: 'repo', // Mandatory for private repos
-      redirectTo: `${window.location.origin}/analyze?repo=${encodeURIComponent(repoUrl || '')}`
-    }
-  });
-};
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "github",
+      options: {
+        scopes: "repo", // Mandatory for private repos
+        redirectTo: `${window.location.origin}/analyze?repo=${encodeURIComponent(repoUrl || "")}`,
+      },
+    });
+  };
 
   // ✨ FIX: Removed window.scrollTo hijack[cite: 3]
   const handleTabSwitch = (tab: "overview" | "diagnostics") => {
@@ -234,43 +242,44 @@ setData(json);
   if (!data) return null;
 
   if (showGitHubAuthModal) {
-  return (
-    <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="relative z-10 glass-card p-8 rounded-2xl max-w-md mx-4 border-2 border-white/10"
-      >
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-white/20 flex items-center justify-center mb-6">
-          <FaGithub className="w-8 h-8 text-white" />
-        </div>
-        <h2 className="cabinet text-2xl font-bold text-white mb-3 text-center">
-          Private Repository Detected
-        </h2>
-        <p className="text-slate-400 text-sm leading-relaxed mb-8 text-center">
-          To analyze private code, you need to authenticate with GitHub. This grants CodeAutopsy temporary read access to your repositories.
-        </p>
-        <div className="space-y-3">
-          <button
-            onClick={handleGitHubLogin}
-            className="w-full bg-white text-black px-6 py-4 rounded-xl font-bold text-sm hover:bg-white/90 transition-all flex items-center justify-center gap-3"
-          >
-            <FaGithub className="w-5 h-5" />
-            Connect GitHub Account
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="w-full btn-gray px-6 py-4 rounded-xl font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
+    return (
+      <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="relative z-10 glass-card p-8 rounded-2xl max-w-md mx-4 border-2 border-white/10"
+        >
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-white/20 flex items-center justify-center mb-6">
+            <FaGithub className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="cabinet text-2xl font-bold text-white mb-3 text-center">
+            Private Repository Detected
+          </h2>
+          <p className="text-slate-400 text-sm leading-relaxed mb-8 text-center">
+            To analyze private code, you need to authenticate with GitHub. This
+            grants CodeAutopsy temporary read access to your repositories.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={handleGitHubLogin}
+              className="w-full bg-white text-black px-6 py-4 rounded-xl font-bold text-sm hover:bg-white/90 transition-all flex items-center justify-center gap-3"
+            >
+              <FaGithub className="w-5 h-5" />
+              Connect GitHub Account
+            </button>
+            <button
+              onClick={() => router.push("/")}
+              className="w-full btn-gray px-6 py-4 rounded-xl font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Home
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-[#f1f5f9] relative overflow-x-hidden font-satoshi pb-32">
@@ -509,7 +518,14 @@ setData(json);
                       <span className="text-indigo-400/50">Llama 3.3</span>
                     </p>
                   </div>
-                  <RepoChat repoContext={data as unknown as { repo?: string; [key: string]: string | undefined }} />
+                  <RepoChat
+                    repoContext={
+                      data as unknown as {
+                        repo?: string;
+                        [key: string]: string | undefined;
+                      }
+                    }
+                  />
                 </div>
               </div>
 
@@ -629,6 +645,47 @@ setData(json);
                         <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
                           {mod.why_it_exists}
                         </p>
+                      </div>
+                    ))}
+                  </div>
+                </motion.section>
+
+                <motion.section variants={fadeUp}>
+                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
+                    Blast Radius
+                  </h2>
+                  <div className="space-y-3">
+                    {data.analysis.blast_radius?.map((blast, i) => (
+                      <div
+                        key={i}
+                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a] border border-white/5"
+                      >
+                        <div className="flex items-center justify-between gap-4 mb-4">
+                          <code
+                            className="mono text-[11px] text-slate-300 truncate"
+                            title={blast.file}
+                          >
+                            {blast.file.split("/").pop()}
+                          </code>
+                          <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-2 py-1 rounded">
+                            {blast.dependents} dependents
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
+                          {blast.warning}
+                        </p>
+
+                        <div className="mt-3 space-y-2">
+                          {blast.safe_refactor_steps?.map((step, j) => (
+                            <p
+                              key={j}
+                              className="text-[11px] text-slate-400 leading-relaxed flex gap-2"
+                            >
+                              <span className="text-amber-500/60 mt-1">•</span>
+                              {step}
+                            </p>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>

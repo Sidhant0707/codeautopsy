@@ -41,8 +41,8 @@ function extractImports(content: string, currentFile: string): string[] {
   const imports: string[] = [];
   const dir = currentFile.split("/").slice(0, -1).join("/");
 
-  // ES6 imports - NOW SUPPORTS PATH ALIASES
-  const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
+  // FIX: Added support for `export ... from '...'` syntax
+  const es6Regex = /(?:import|export)\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
   const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
 
   let match;
@@ -50,20 +50,17 @@ function extractImports(content: string, currentFile: string): string[] {
   while ((match = es6Regex.exec(content)) !== null) {
     const importPath = match[1];
     
-    // Handle relative imports
     if (importPath.startsWith(".")) {
       imports.push(resolveImport(importPath, dir));
-    }
-    // Handle path aliases (@/, ~/, etc.)
-    else if (importPath.startsWith("@/")) {
+    } else if (importPath.startsWith("@/")) {
       imports.push(importPath.replace("@/", ""));
-    }
-    else if (importPath.startsWith("~/")) {
+    } else if (importPath.startsWith("~/")) {
       imports.push(importPath.replace("~/", ""));
-    }
-    // Skip node_modules
-    else if (!importPath.includes("/")) {
+    } else if (!importPath.includes("/")) {
       continue;
+    } else {
+      // Catch scoped packages or standard full paths
+      imports.push(importPath);
     }
   }
 
@@ -72,11 +69,9 @@ function extractImports(content: string, currentFile: string): string[] {
     
     if (importPath.startsWith(".")) {
       imports.push(resolveImport(importPath, dir));
-    }
-    else if (importPath.startsWith("@/")) {
+    } else if (importPath.startsWith("@/")) {
       imports.push(importPath.replace("@/", ""));
-    }
-    else if (importPath.startsWith("~/")) {
+    } else if (importPath.startsWith("~/")) {
       imports.push(importPath.replace("~/", ""));
     }
   }
@@ -102,15 +97,20 @@ function resolveToActualFile(
 ): string | null {
   const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
 
-  if (allFiles.includes(importPath)) return importPath;
+  // FIX: Check standard path AND the "src/" fallback for Next.js aliases
+  const possibleBasePaths = [importPath, `src/${importPath}`];
 
-  for (const ext of extensions) {
-    if (allFiles.includes(importPath + ext)) return importPath + ext;
-  }
+  for (const basePath of possibleBasePaths) {
+    if (allFiles.includes(basePath)) return basePath;
 
-  for (const ext of extensions) {
-    const indexPath = importPath + "/index" + ext;
-    if (allFiles.includes(indexPath)) return indexPath;
+    for (const ext of extensions) {
+      if (allFiles.includes(basePath + ext)) return basePath + ext;
+    }
+
+    for (const ext of extensions) {
+      const indexPath = basePath + "/index" + ext;
+      if (allFiles.includes(indexPath)) return indexPath;
+    }
   }
 
   return null;
@@ -163,17 +163,15 @@ export function graphToMermaid(
   const fanIn = computeFanIn(graph);
   let nodes = 0;
 
-  // IMPROVED: Auto-detect entry points if none provided
   if (entryPoints.length === 0) {
-  const potentialEntries = Object.keys(graph).filter(file => {
-    const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
-    const isHighFanIn = (fanIn[file] || 0) > 2;
-    return isEntry || isHighFanIn;  // Removed hasNoDeps
-  });
-  queue.push(...potentialEntries.slice(0, 3));
-}
+    const potentialEntries = Object.keys(graph).filter(file => {
+      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
+      const isHighFanIn = (fanIn[file] || 0) > 2;
+      return isEntry || isHighFanIn;  
+    });
+    queue.push(...potentialEntries.slice(0, 3));
+  }
 
-  // ENTRY SUBGRAPH
   if (queue.length > 0) {
     lines.push("subgraph Entry");
     queue.forEach((entry) => {
@@ -184,10 +182,9 @@ export function graphToMermaid(
     lines.push("end");
   }
 
-  // DEPENDENCY GRAPH
   while (queue.length > 0 && nodes < 30) {
     const current = queue.shift();
-if (!current) continue;
+    if (!current) continue;
     if (seen.has(current)) continue;
     seen.add(current);
 
@@ -214,4 +211,17 @@ if (!current) continue;
 
 function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+// ==========================================
+// SPRINT 2: NEW BLAST RADIUS FUNCTION
+// ==========================================
+export function getBlastRadiusTargets(fanIn: Record<string, number>, limit: number = 3): { file: string; dependentsCount: number }[] {
+  return Object.entries(fanIn)
+    .sort(([, countA], [, countB]) => countB - countA)
+    .slice(0, limit)
+    .map(([file, dependentsCount]) => ({
+      file,
+      dependentsCount,
+    }));
 }
