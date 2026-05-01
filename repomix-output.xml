@@ -2447,7 +2447,7 @@ import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent } from "@/
 import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
-import { ratelimit } from "@/lib/ratelimit";
+import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 
 const ANALYSIS_VERSION = 3;
 
@@ -2487,9 +2487,7 @@ export async function POST(req: NextRequest) {
       const { data } = await supabase.auth.getSession();
       session = data?.session;
     } catch (error) {
-      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.");
-      // We swallow the error so the API route can continue processing 
-      // public GitHub repos without crashing.
+      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.", error);
     }
 
     const providerToken = session?.provider_token ?? undefined;
@@ -2529,7 +2527,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ✅ ONLY rate limit if cache miss
-    const { success, limit, reset, remaining } = await ratelimit.limit(ip);
+    const identifier = userId ? userId : ip;
+    const limiter = userId ? ratelimitAuth : ratelimitFree;
+    
+    const { success, limit, reset, remaining } = await limiter.limit(identifier);
 
     if (!success) {
       return NextResponse.json(

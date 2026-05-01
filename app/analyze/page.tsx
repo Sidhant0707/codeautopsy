@@ -69,6 +69,7 @@ function AnalyzeContent() {
   const [data, setData] = useState<RepoData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
     "overview",
@@ -96,13 +97,22 @@ function AnalyzeContent() {
         }
 
         const res = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repoUrl }),
-        });
-        const json = await res.json();
-        if (json.error) throw new Error(json.error);
-        setData(json);
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ repoUrl }),
+});
+
+const json = await res.json();
+
+// ✨ CHECK FOR AUTH GAP[cite: 2]
+if (json.error === 'REQUIRE_GITHUB_AUTH') {
+  setShowGitHubAuthModal(true);
+  setLoading(false);
+  return;
+}
+
+if (json.error) throw new Error(json.error);
+setData(json);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -111,6 +121,17 @@ function AnalyzeContent() {
     }
     analyze();
   }, [repoUrl, router]);
+
+  const handleGitHubLogin = async () => {
+  const supabase = createClient();
+  await supabase.auth.signInWithOAuth({
+    provider: 'github',
+    options: {
+      scopes: 'repo', // Mandatory for private repos
+      redirectTo: `${window.location.origin}/analyze?repo=${encodeURIComponent(repoUrl || '')}`
+    }
+  });
+};
 
   // ✨ FIX: Removed window.scrollTo hijack[cite: 3]
   const handleTabSwitch = (tab: "overview" | "diagnostics") => {
@@ -211,6 +232,45 @@ function AnalyzeContent() {
     );
 
   if (!data) return null;
+
+  if (showGitHubAuthModal) {
+  return (
+    <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-10 glass-card p-8 rounded-2xl max-w-md mx-4 border-2 border-white/10"
+      >
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-white/20 flex items-center justify-center mb-6">
+          <FaGithub className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="cabinet text-2xl font-bold text-white mb-3 text-center">
+          Private Repository Detected
+        </h2>
+        <p className="text-slate-400 text-sm leading-relaxed mb-8 text-center">
+          To analyze private code, you need to authenticate with GitHub. This grants CodeAutopsy temporary read access to your repositories.
+        </p>
+        <div className="space-y-3">
+          <button
+            onClick={handleGitHubLogin}
+            className="w-full bg-white text-black px-6 py-4 rounded-xl font-bold text-sm hover:bg-white/90 transition-all flex items-center justify-center gap-3"
+          >
+            <FaGithub className="w-5 h-5" />
+            Connect GitHub Account
+          </button>
+          <button
+            onClick={() => router.push('/')}
+            className="w-full btn-gray px-6 py-4 rounded-xl font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Home
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-[#f1f5f9] relative overflow-x-hidden font-satoshi pb-32">

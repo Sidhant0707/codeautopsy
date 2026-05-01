@@ -30,11 +30,38 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } | nul
   }
 }
 
-export async function fetchRepoMeta(owner: string, repo: string, token?: string) {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { 
-    headers: getHeaders(token) 
-  });
-  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+export class GitHubAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GitHubAuthError';
+  }
+}
+
+export async function fetchRepoMeta(
+  owner: string,
+  repo: string,
+  token?: string
+): Promise<any> {
+  const url = `https://api.github.com/repos/${owner}/${repo}`;
+  const headers: HeadersInit = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+
+  const res = await fetch(url, { headers });
+
+  if (res.status === 404) {
+    // If 404 AND no token provided, it might be a private repo
+    if (!token) {
+      throw new GitHubAuthError('REQUIRE_GITHUB_AUTH');
+    }
+    // If 404 WITH token, repo genuinely doesn't exist or no access
+    throw new Error('Repository not found or you do not have access');
+  }
+
+  if (!res.ok) {
+    throw new Error(`GitHub API error: ${res.status}`);
+  }
+
   return res.json();
 }
 

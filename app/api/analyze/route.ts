@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent } from "@/lib/github";
+import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent, GitHubAuthError } from "@/lib/github";
 import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       headerList.get("x-forwarded-for")?.split(",")[0] ||
       headerList.get("x-real-ip") ||
       "127.0.0.1";
+      
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
 
     const providerToken = session?.provider_token ?? undefined;
     const userId = session?.user?.id ?? undefined;
+    const provider = session?.user?.app_metadata?.provider;
 
     const body = await req.json();
     const { repoUrl } = body;
@@ -67,6 +69,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { owner, repo } = parsed;
+
+    if (provider === 'google' && !providerToken) {
+  // If we detect a potential private repo or just want to warn
+  console.log("User is on Google Auth, private repos will fail 404/403.");
+}
 
     const meta = await fetchRepoMeta(owner, repo, providerToken);
     const commitSha = meta.default_branch;
@@ -226,6 +233,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
+      return NextResponse.json(
+        { 
+          error: 'REQUIRE_GITHUB_AUTH',
+          message: 'This repository requires GitHub authentication. Please sign in with GitHub to analyze private repositories.'
+        },
+        { status: 403 }
+      );
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
