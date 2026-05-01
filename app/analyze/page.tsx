@@ -125,7 +125,7 @@ function AnalyzeContent() {
       const supabase = createClient();
       await supabase.from("debug_feedback").insert([
         {
-          debug_id: data.id || repoUrl,
+          debug_id: data?.repo || repoUrl,
           is_helpful: isHelpful,
         },
       ]);
@@ -449,7 +449,7 @@ function AnalyzeContent() {
                       <span className="text-indigo-400/50">Llama 3.3</span>
                     </p>
                   </div>
-                  <RepoChat repoContext={data} />
+                  <RepoChat repoContext={data as unknown as { repo?: string; [key: string]: string | undefined }} />
                 </div>
               </div>
 

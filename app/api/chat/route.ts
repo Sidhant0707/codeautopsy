@@ -23,19 +23,25 @@ export async function POST(req: NextRequest) {
 
     console.log(
       "FileContents:",
-      repoContext.fileContents?.slice(0, 10).map((f: any) => f.path)
+      (repoContext.fileContents ?? [])
+  .slice(0, 10)
+  .map((f) => f.path)
     );
 
     /* ================= REAL FIX ================= */
 
     // 🔥 IMPORTANT: use fileContents (not files)
     const fileTree = (repoContext.fileContents || [])
-      .map((f: any) => f.path)
+      (repoContext.fileContents ?? [])
+  .slice(0, 10)
+  .map((f) => f.path)
       .slice(0, 50)
       .join("\n");
 
     const modules = (repoContext.analysis?.key_modules || [])
-      .map((m: any) => `- ${m.file}: ${m.role}`)
+      (repoContext.analysis?.key_modules ?? [])
+  .slice(0, 20)
+  .map((m) => `- ${m.file}: ${m.role}`)
       .join("\n");
 
     const systemPrompt = `
@@ -123,9 +129,9 @@ Only if needed
       lower.includes("style.css") ||
       lower.includes("html project");
 
-    const hasCppFiles = (repoContext.fileContents || []).some((f: any) =>
-      f.path.endsWith(".cpp") || f.path.endsWith(".h")
-    );
+    const hasCppFiles = (repoContext.fileContents ?? []).some(
+  (f) => f.path.endsWith(".cpp") || f.path.endsWith(".h")
+);
 
     if (hasCppFiles && wrongWebGuess) {
       answer =
