@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -29,7 +31,7 @@ export default function RepoChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✨ NEW: Fullscreen State
+  // ✨ Fullscreen State
   const [isMaximized, setIsMaximized] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +52,7 @@ export default function RepoChat({
     }
   }, [messages]);
 
-  // ✨ NEW: Handle Escape key and body scroll locking
+  // ✨ Handle Escape key and body scroll locking
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") setIsMaximized(false);
@@ -137,7 +139,7 @@ export default function RepoChat({
 
   return (
     <>
-      {/* ✨ NEW: Backdrop for maximized mode */}
+      {/* Backdrop for maximized mode */}
       {isMaximized && (
         <div
           className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
@@ -145,7 +147,7 @@ export default function RepoChat({
         />
       )}
 
-      {/* ✨ UPDATED: Dynamic classes for full screen */}
+      {/* Main Terminal Window */}
       <div
         className={`flex flex-col bg-[#020202] border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.8)] group transition-all duration-500 ${
           isMaximized
@@ -153,6 +155,7 @@ export default function RepoChat({
             : "relative w-full h-[600px]"
         }`}
       >
+        {/* 3D Background Grid */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none [perspective:800px] z-0">
           <motion.div
             animate={{ backgroundPosition: ["0px 0px", "0px 60px"] }}
@@ -170,6 +173,7 @@ export default function RepoChat({
           <div className="absolute inset-0 bg-gradient-to-r from-[#020202] via-transparent to-[#020202]" />
         </div>
 
+        {/* Header Section */}
         <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#020202]/80 backdrop-blur-md relative z-10">
           <div className="flex items-center gap-3">
             <Database className="w-4 h-4 text-slate-300" />
@@ -185,22 +189,21 @@ export default function RepoChat({
           <div className="flex items-center gap-4">
             {isLoading ? (
               <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-white font-mono">
-                <Unlock className="w-3 h-3 text-white animate-pulse" />{" "}
+                <Unlock className="w-3 h-3 text-white animate-pulse" />
                 Decrypting...
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-slate-500 font-mono">
-                <Lock className="w-3 h-3 text-slate-500" /> Secure Link
+                <Lock className="w-3 h-3 text-slate-500" />
+                Secure Link
               </span>
             )}
 
-            {/* ✨ NEW: Maximize/Minimize Button */}
             <div className="w-px h-4 bg-white/10 mx-1" />
             <button
               onClick={() => setIsMaximized(!isMaximized)}
               className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 hover:text-white transition-all"
               title={isMaximized ? "Minimize" : "Maximize"}
-              aria-label={isMaximized ? "Minimize chat" : "Maximize chat"}
             >
               {isMaximized ? (
                 <Minimize2 className="w-4 h-4" />
@@ -211,6 +214,7 @@ export default function RepoChat({
           </div>
         </div>
 
+        {/* Message Log Stream */}
         <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 scrollbar-hide"
@@ -235,7 +239,11 @@ export default function RepoChat({
                   className={`flex flex-col w-full ${msg.role === "user" ? "items-end" : "items-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] font-mono text-sm leading-relaxed p-4 rounded-xl backdrop-blur-md shadow-2xl ${msg.role === "user" ? "text-slate-300 bg-white/5 border border-white/10" : "text-slate-200 bg-[#0a0a0a]/80 border-l-4 border-l-slate-400 border-y border-r border-y-white/5 border-r-white/5"}`}
+                    className={`max-w-[85%] font-mono text-sm leading-relaxed p-4 rounded-xl backdrop-blur-md shadow-2xl ${
+                      msg.role === "user"
+                        ? "text-slate-300 bg-white/5 border border-white/10"
+                        : "text-slate-200 bg-[#0a0a0a]/80 border-l-4 border-l-slate-400 border-y border-r border-y-white/5 border-r-white/5"
+                    }`}
                   >
                     {msg.role === "user" && (
                       <span className="block text-[9px] text-slate-500 mb-2 uppercase tracking-widest text-right">
@@ -247,9 +255,23 @@ export default function RepoChat({
                         <ChevronRight className="w-3 h-3" /> Core_Response
                       </span>
                     )}
-                    <span className={msg.role === "user" ? "italic" : ""}>
-                      {msg.content}
-                    </span>
+
+                    {/* ✨ The actual Markdown Render fix */}
+                    {msg.role === "ai" ? (
+                      <div
+                        className="prose prose-sm prose-invert max-w-none 
+                prose-p:mb-4 prose-p:leading-relaxed 
+                prose-headings:mt-6 prose-headings:mb-3 prose-headings:text-white
+                prose-li:my-1 prose-strong:text-white 
+                prose-code:text-white prose-code:bg-white/5 prose-code:px-1 prose-code:rounded"
+                      >
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <span className="italic">{msg.content}</span>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -270,6 +292,7 @@ export default function RepoChat({
           )}
         </div>
 
+        {/* Quick Script Buttons */}
         {messages.length === 0 && (
           <div className="px-6 pb-4 relative z-10 flex flex-wrap gap-2 justify-center">
             {quickScripts.map((script, i) => (
@@ -280,13 +303,14 @@ export default function RepoChat({
               >
                 <span className="text-slate-500 group-hover/script:text-white transition-colors">
                   {">"}
-                </span>{" "}
+                </span>
                 {script.label}
               </button>
             ))}
           </div>
         )}
 
+        {/* Input Bar */}
         <div className="p-4 relative z-10 bg-[#020202]/90 backdrop-blur-xl border-t border-white/5">
           <form onSubmit={(e) => handleSubmit(e)} className="relative">
             <div className="relative flex items-center bg-[#0a0a0a] rounded-xl border border-white/10 p-2 shadow-inner focus-within:border-white/30 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.03)] transition-all">
@@ -304,9 +328,8 @@ export default function RepoChat({
               <button
                 type="submit"
                 disabled={!input.trim() || isLoading}
-                className="mr-1 p-2 bg-white/5 text-slate-400 rounded-lg hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:bg-transparent disabled:text-slate-700 transition-all"
                 title="Send message"
-                aria-label="Send message"
+                className="mr-1 p-2 bg-white/5 text-slate-400 rounded-lg hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:bg-transparent disabled:text-slate-700 transition-all"
               >
                 <Send className="w-4 h-4" />
               </button>
