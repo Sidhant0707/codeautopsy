@@ -670,6 +670,7 @@ export default function Home() {
                   { label: "About", href: "/about" },
                   { label: "Careers", href: "/careers" },
                   { label: "Contact", href: "/contact" },
+                  { label: "Terms of Service", href: "/terms" },
                   { label: "Privacy Policy", href: "/privacy" },
                 ],
               },
