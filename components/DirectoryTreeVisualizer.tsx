@@ -9,12 +9,29 @@ import ReactFlow, {
   Edge,
   useNodesState,
   useEdgesState,
+  Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { hierarchy, tree } from "d3-hierarchy";
 
+
+interface DirectoryNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  color?: string;
+  children?: DirectoryNode[];
+}
+
+interface TreeNodeData {
+  name: string;
+  isFolder: boolean;
+  color?: string;
+  isDimmed: boolean;
+}
+
 // --- CUSTOM NODE ---
-const TreeNode = ({ data }: any) => {
+const TreeNode = ({ data }: { data: TreeNodeData }) => {
   return (
     <div
       className={`flex items-center gap-2 relative transition-all duration-300 cursor-pointer ${
@@ -71,13 +88,19 @@ export default function DirectoryTreeVisualizer({
       return { initialNodes: [], initialEdges: [] };
 
     // 1. Build the nested JSON hierarchy
-    const rootNode = { name: "root", path: "root", children: [] as any[] };
+    const rootNode: DirectoryNode = { 
+      name: "root", 
+      path: "root", 
+      isFolder: true,
+      color: "slate",
+      children: [] 
+    };
     let colorIndex = 0;
     const folderColorMap = new Map<string, string>();
 
     metrics.forEach((metric) => {
       const parts = metric.path.split("/");
-      let currentLevel = rootNode.children;
+      let currentLevel = rootNode.children!;
       let currentPath = "root"; // Base ID matches root
 
       parts.forEach((part, index) => {
@@ -103,7 +126,7 @@ export default function DirectoryTreeVisualizer({
           currentLevel.push(existing);
         }
 
-        if (!isFile) {
+        if (!isFile && existing.children) {
           currentLevel = existing.children;
         }
       });
@@ -111,18 +134,18 @@ export default function DirectoryTreeVisualizer({
 
     // 2. Run D3 Math
     const d3Root = hierarchy(rootNode);
-    const treeLayout = tree<any>().nodeSize([25, 250]);
+    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);;
     treeLayout(d3Root);
 
     // 3. Map D3 output to ReactFlow
-    const rfNodes: any[] = [];
+    const rfNodes: Node<TreeNodeData>[] = [];
     const rfEdges: Edge[] = [];
 
     d3Root.descendants().forEach((node) => {
       rfNodes.push({
         id: node.data.path,
         type: "treeNode",
-        position: { x: node.y, y: node.x },
+        position: { x: node.y ?? 0, y: node.x ?? 0 },
         data: {
           name: node.data.name,
           isFolder: node.data.isFolder,
