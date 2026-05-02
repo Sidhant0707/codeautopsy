@@ -44,8 +44,10 @@ app/actions/feedback.ts
 app/actions/telemetry.ts
 app/api/analyze/route.ts
 app/api/debug/analyze/route.ts
+app/auth/reset-password/page.tsx
 app/favicon.ico
 app/layout.tsx
+app/terms/page.tsx
 components/debug/CodeDoctorPanel.tsx
 components/debug/DebugForm.tsx
 components/debug/DebugInterface.tsx
@@ -154,6 +156,146 @@ export async function getSystemTelemetry() {
     successRate, 
     totalScans: totalVotes 
   };
+}
+</file>
+
+<file path="app/auth/reset-password/page.tsx">
+"use client";
+
+import React, { useState } from "react";
+import { createClient } from "@/lib/supabase-browser";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+
+export default function ResetPasswordPage() {
+  const [newPassword, setNewPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const supabase = createClient();
+  const router = useRouter();
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      router.push("/login");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0e0e0e] flex items-center justify-center p-6">
+      <form
+        onSubmit={handleUpdatePassword}
+        className="glass-card p-8 rounded-2xl w-full max-w-md border border-white/5"
+      >
+        <h2 className="cabinet text-3xl font-bold text-white mb-2">
+          Set New Password
+        </h2>
+        <p className="text-slate-400 mb-8">
+          Enter your new secure password below.
+        </p>
+
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-2 mb-6">
+          <label className="text-xs font-bold uppercase tracking-widest text-slate-500">
+            New Password
+          </label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            minLength={6}
+            className="w-full bg-black/30 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/20 text-sm"
+          />
+        </div>
+
+        <button
+          disabled={loading}
+          className="w-full bg-[#f1f5f9] text-[#0e0e0e] py-3.5 rounded-xl cabinet font-bold text-sm tracking-tight hover:bg-white transition-all transform active:scale-[0.98] flex items-center justify-center"
+        >
+          {loading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            "Update Password"
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}
+</file>
+
+<file path="app/terms/page.tsx">
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
+export default function TermsPage() {
+  return (
+    <div className="min-h-screen bg-[#0e0e0e] text-[#f1f5f9] p-8 md:p-24 font-satoshi">
+      <div className="max-w-3xl mx-auto">
+        <Link
+          href="/login"
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white mb-12 transition-colors w-fit"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Link>
+
+        <h1 className="cabinet text-4xl font-bold text-white mb-8">
+          Terms of Service
+        </h1>
+
+        <div className="glass-card p-8 rounded-3xl border border-white/5 space-y-8">
+          <section>
+            <h2 className="text-white font-bold mb-3 uppercase tracking-wide">
+              1. Acceptance
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              By using CodeAutopsy, you agree to provide read-only access to
+              your public or authorized private repositories for the purpose of
+              architectural analysis.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-bold mb-3 uppercase tracking-wide">
+              2. Usage Limits
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Rate limits apply based on your authentication status to ensure
+              system stability when querying the analysis engine.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-bold mb-3 uppercase tracking-wide">
+              3. Data Privacy
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Code analyzed is processed in real-time. We do not permanently
+              store your codebase data unless explicitly cached for your active
+              session.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -1116,55 +1258,6 @@ export function extractAllCrashNodes(
 }
 </file>
 
-<file path="proxy.ts">
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
-
-export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          // FIX: NextRequest.cookies.set only accepts name and value
-          cookiesToSet.forEach(({ name, value }) => 
-            request.cookies.set(name, value)
-          )
-          
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          
-          // NextResponse still requires the options to properly set the browser cookie
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  // This validates the user and automatically refreshes the session token if it has expired.
-  await supabase.auth.getUser()
-
-  return supabaseResponse
-}
-
-export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
-}
-</file>
-
 <file path="components/debug/DebugInterface.tsx">
 "use client";
 
@@ -1641,6 +1734,63 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 }
 </file>
 
+<file path="proxy.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function proxy(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user && request.nextUrl.pathname.startsWith('/analyze')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search);
+    return NextResponse.redirect(url);
+  }
+
+  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+</file>
+
 <file path="app/layout.tsx">
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -2105,226 +2255,6 @@ export async function POST(req: NextRequest) {
 }
 </file>
 
-<file path="lib/dependency-graph.ts">
-export interface DependencyGraph {
-  [file: string]: string[];
-}
-
-function extractHtmlDependencies(content: string): string[] {
-  const deps: string[] = [];
-  const scriptRegex = /<script[^>]*src=["']([^"']+)["']/g;
-  const cssRegex = /<link\s+[^>]*href=["']([^"']+)["']/g;
-  let match;
-
-  while ((match = scriptRegex.exec(content)) !== null) {
-    const filePath = match[1];
-    if (
-      !filePath.startsWith("http") &&
-      !filePath.startsWith("//") &&
-      !filePath.startsWith("mailto:") &&
-      !filePath.startsWith("tel:") &&
-      !filePath.startsWith("#")
-    ) {
-      deps.push(filePath);
-    }
-  }
-
-  while ((match = cssRegex.exec(content)) !== null) {
-    const filePath = match[1];
-    if (
-      !filePath.startsWith("http") &&
-      !filePath.startsWith("//") &&
-      !filePath.startsWith("mailto:") &&
-      !filePath.startsWith("tel:") &&
-      !filePath.startsWith("#")
-    ) {
-      deps.push(filePath);
-    }
-  }
-
-  return deps;
-}
-
-function extractImports(content: string, currentFile: string): string[] {
-  const imports: string[] = [];
-  const dir = currentFile.split("/").slice(0, -1).join("/");
-
-  // ES6 imports - NOW SUPPORTS PATH ALIASES
-  const es6Regex = /import\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
-  const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
-
-  let match;
-
-  while ((match = es6Regex.exec(content)) !== null) {
-    const importPath = match[1];
-    
-    // Handle relative imports
-    if (importPath.startsWith(".")) {
-      imports.push(resolveImport(importPath, dir));
-    }
-    // Handle path aliases (@/, ~/, etc.)
-    else if (importPath.startsWith("@/")) {
-      imports.push(importPath.replace("@/", ""));
-    }
-    else if (importPath.startsWith("~/")) {
-      imports.push(importPath.replace("~/", ""));
-    }
-    // Skip node_modules
-    else if (!importPath.includes("/")) {
-      continue;
-    }
-  }
-
-  while ((match = cjsRegex.exec(content)) !== null) {
-    const importPath = match[1];
-    
-    if (importPath.startsWith(".")) {
-      imports.push(resolveImport(importPath, dir));
-    }
-    else if (importPath.startsWith("@/")) {
-      imports.push(importPath.replace("@/", ""));
-    }
-    else if (importPath.startsWith("~/")) {
-      imports.push(importPath.replace("~/", ""));
-    }
-  }
-
-  return imports;
-}
-
-function resolveImport(importPath: string, dir: string): string {
-  const parts = (dir ? dir + "/" + importPath : importPath).split("/");
-  const resolved: string[] = [];
-
-  for (const part of parts) {
-    if (part === "..") resolved.pop();
-    else if (part !== ".") resolved.push(part);
-  }
-
-  return resolved.join("/");
-}
-
-function resolveToActualFile(
-  importPath: string,
-  allFiles: string[]
-): string | null {
-  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
-
-  if (allFiles.includes(importPath)) return importPath;
-
-  for (const ext of extensions) {
-    if (allFiles.includes(importPath + ext)) return importPath + ext;
-  }
-
-  for (const ext of extensions) {
-    const indexPath = importPath + "/index" + ext;
-    if (allFiles.includes(indexPath)) return indexPath;
-  }
-
-  return null;
-}
-
-export function buildDependencyGraph(
-  fileContents: { path: string; content: string }[],
-  allFiles: string[]
-): DependencyGraph {
-  const graph: DependencyGraph = {};
-
-  for (const file of fileContents) {
-    let imports: string[] = [];
-
-    if (file.path.endsWith(".html") || file.path.endsWith(".htm")) {
-      imports = extractHtmlDependencies(file.content);
-    } else {
-      imports = extractImports(file.content, file.path);
-    }
-
-    const resolved = imports
-      .map((imp) => resolveToActualFile(imp, allFiles))
-      .filter((imp): imp is string => imp !== null);
-
-    graph[file.path] = [...new Set(resolved)];
-  }
-
-  return graph;
-}
-
-export function computeFanIn(graph: DependencyGraph): Record<string, number> {
-  const fanIn: Record<string, number> = {};
-
-  for (const imports of Object.values(graph)) {
-    for (const imp of imports) {
-      fanIn[imp] = (fanIn[imp] || 0) + 1;
-    }
-  }
-
-  return fanIn;
-}
-
-export function graphToMermaid(
-  graph: DependencyGraph,
-  entryPoints: string[]
-): string {
-  const lines: string[] = ["graph TD"];
-  const seen = new Set<string>();
-  const queue = [...entryPoints];
-  const fanIn = computeFanIn(graph);
-  let nodes = 0;
-
-  // IMPROVED: Auto-detect entry points if none provided
-  if (entryPoints.length === 0) {
-  const potentialEntries = Object.keys(graph).filter(file => {
-    const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
-    const isHighFanIn = (fanIn[file] || 0) > 2;
-    return isEntry || isHighFanIn;  // Removed hasNoDeps
-  });
-  queue.push(...potentialEntries.slice(0, 3));
-}
-
-  // ENTRY SUBGRAPH
-  if (queue.length > 0) {
-    lines.push("subgraph Entry");
-    queue.forEach((entry) => {
-      const id = sanitize(entry);
-      const name = entry.split("/").pop() || entry;
-      lines.push(`  ${id}["${name}"]`);
-    });
-    lines.push("end");
-  }
-
-  // DEPENDENCY GRAPH
-  while (queue.length > 0 && nodes < 30) {
-    const current = queue.shift();
-if (!current) continue;
-    if (seen.has(current)) continue;
-    seen.add(current);
-
-    const deps = graph[current] || [];
-
-    for (const dep of deps.slice(0, 5)) {
-      const fromId = sanitize(current);
-      const toId = sanitize(dep);
-
-      lines.push(`  ${fromId} --> ${toId}`);
-
-      queue.push(dep);
-    }
-
-    nodes++;
-  }
-
-  if (lines.length === 2) {
-    lines.push(`  A["No dependency relationships detected"]`);
-  }
-
-  return lines.join("\n");
-}
-
-function sanitize(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-</file>
-
 <file path="lib/debug/gemini-debug.ts">
 import { DebugContext, DebugResult } from "./types";
 
@@ -2437,13 +2367,243 @@ Analyze the crash and return ONLY a valid JSON object with this exact structure:
 }
 </file>
 
+<file path="lib/dependency-graph.ts">
+export interface DependencyGraph {
+  [file: string]: string[];
+}
+
+function extractHtmlDependencies(content: string): string[] {
+  const deps: string[] = [];
+  const scriptRegex = /<script[^>]*src=["']([^"']+)["']/g;
+  const cssRegex = /<link\s+[^>]*href=["']([^"']+)["']/g;
+  let match;
+
+  while ((match = scriptRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  while ((match = cssRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    if (
+      !filePath.startsWith("http") &&
+      !filePath.startsWith("//") &&
+      !filePath.startsWith("mailto:") &&
+      !filePath.startsWith("tel:") &&
+      !filePath.startsWith("#")
+    ) {
+      deps.push(filePath);
+    }
+  }
+
+  return deps;
+}
+
+function extractImports(content: string, currentFile: string): string[] {
+  const imports: string[] = [];
+  const dir = currentFile.split("/").slice(0, -1).join("/");
+
+  // FIX: Added support for `export ... from '...'` syntax
+  const es6Regex = /(?:import|export)\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
+  const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
+
+  let match;
+
+  while ((match = es6Regex.exec(content)) !== null) {
+    const importPath = match[1];
+    
+    if (importPath.startsWith(".")) {
+      imports.push(resolveImport(importPath, dir));
+    } else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    } else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
+    } else if (!importPath.includes("/")) {
+      continue;
+    } else {
+      // Catch scoped packages or standard full paths
+      imports.push(importPath);
+    }
+  }
+
+  while ((match = cjsRegex.exec(content)) !== null) {
+    const importPath = match[1];
+    
+    if (importPath.startsWith(".")) {
+      imports.push(resolveImport(importPath, dir));
+    } else if (importPath.startsWith("@/")) {
+      imports.push(importPath.replace("@/", ""));
+    } else if (importPath.startsWith("~/")) {
+      imports.push(importPath.replace("~/", ""));
+    }
+  }
+
+  return imports;
+}
+
+function resolveImport(importPath: string, dir: string): string {
+  const parts = (dir ? dir + "/" + importPath : importPath).split("/");
+  const resolved: string[] = [];
+
+  for (const part of parts) {
+    if (part === "..") resolved.pop();
+    else if (part !== ".") resolved.push(part);
+  }
+
+  return resolved.join("/");
+}
+
+function resolveToActualFile(
+  importPath: string,
+  allFiles: string[]
+): string | null {
+  const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
+
+  // FIX: Check standard path AND the "src/" fallback for Next.js aliases
+  const possibleBasePaths = [importPath, `src/${importPath}`];
+
+  for (const basePath of possibleBasePaths) {
+    if (allFiles.includes(basePath)) return basePath;
+
+    for (const ext of extensions) {
+      if (allFiles.includes(basePath + ext)) return basePath + ext;
+    }
+
+    for (const ext of extensions) {
+      const indexPath = basePath + "/index" + ext;
+      if (allFiles.includes(indexPath)) return indexPath;
+    }
+  }
+
+  return null;
+}
+
+export function buildDependencyGraph(
+  fileContents: { path: string; content: string }[],
+  allFiles: string[]
+): DependencyGraph {
+  const graph: DependencyGraph = {};
+
+  for (const file of fileContents) {
+    let imports: string[] = [];
+
+    if (file.path.endsWith(".html") || file.path.endsWith(".htm")) {
+      imports = extractHtmlDependencies(file.content);
+    } else {
+      imports = extractImports(file.content, file.path);
+    }
+
+    const resolved = imports
+      .map((imp) => resolveToActualFile(imp, allFiles))
+      .filter((imp): imp is string => imp !== null);
+
+    graph[file.path] = [...new Set(resolved)];
+  }
+
+  return graph;
+}
+
+export function computeFanIn(graph: DependencyGraph): Record<string, number> {
+  const fanIn: Record<string, number> = {};
+
+  for (const imports of Object.values(graph)) {
+    for (const imp of imports) {
+      fanIn[imp] = (fanIn[imp] || 0) + 1;
+    }
+  }
+
+  return fanIn;
+}
+
+export function graphToMermaid(
+  graph: DependencyGraph,
+  entryPoints: string[]
+): string {
+  const lines: string[] = ["graph TD"];
+  const seen = new Set<string>();
+  const queue = [...entryPoints];
+  const fanIn = computeFanIn(graph);
+  let nodes = 0;
+
+  if (entryPoints.length === 0) {
+    const potentialEntries = Object.keys(graph).filter(file => {
+      const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
+      const isHighFanIn = (fanIn[file] || 0) > 2;
+      return isEntry || isHighFanIn;  
+    });
+    queue.push(...potentialEntries.slice(0, 3));
+  }
+
+  if (queue.length > 0) {
+    lines.push("subgraph Entry");
+    queue.forEach((entry) => {
+      const id = sanitize(entry);
+      const name = entry.split("/").pop() || entry;
+      lines.push(`  ${id}["${name}"]`);
+    });
+    lines.push("end");
+  }
+
+  while (queue.length > 0 && nodes < 30) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (seen.has(current)) continue;
+    seen.add(current);
+
+    const deps = graph[current] || [];
+
+    for (const dep of deps.slice(0, 5)) {
+      const fromId = sanitize(current);
+      const toId = sanitize(dep);
+
+      lines.push(`  ${fromId} --> ${toId}`);
+
+      queue.push(dep);
+    }
+
+    nodes++;
+  }
+
+  if (lines.length === 2) {
+    lines.push(`  A["No dependency relationships detected"]`);
+  }
+
+  return lines.join("\n");
+}
+
+function sanitize(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+// ==========================================
+// SPRINT 2: NEW BLAST RADIUS FUNCTION
+// ==========================================
+export function getBlastRadiusTargets(fanIn: Record<string, number>, limit: number = 3): { file: string; dependentsCount: number }[] {
+  return Object.entries(fanIn)
+    .sort(([, countA], [, countB]) => countB - countA)
+    .slice(0, limit)
+    .map(([file, dependentsCount]) => ({
+      file,
+      dependentsCount,
+    }));
+}
+</file>
+
 <file path="app/api/analyze/route.ts">
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent } from "@/lib/github";
+import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent, GitHubAuthError } from "@/lib/github";
 import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
@@ -2460,6 +2620,7 @@ export async function POST(req: NextRequest) {
       headerList.get("x-forwarded-for")?.split(",")[0] ||
       headerList.get("x-real-ip") ||
       "127.0.0.1";
+      
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2480,18 +2641,41 @@ export async function POST(req: NextRequest) {
     );
 
     let session = null;
+    let authUser = null;
 
     try {
-      // Try to get the session. If the token is dead and refresh fails, 
-      // it will throw an AuthApiError, which we will now catch.
-      const { data } = await supabase.auth.getSession();
-      session = data?.session;
+      // 1. Get the session (fast, from cookies)
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      session = currentSession;
+
+      // 2. Securely verify the user (contacts Supabase Auth server)
+      if (session) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          authUser = user;
+        } else {
+          // If the token is invalid/expired, clear the session
+          session = null;
+        }
+      }
     } catch (error) {
-      console.warn("Supabase auth session dead or unrefreshable. Proceeding as unauthenticated guest.", error);
+      console.warn("Supabase auth check failed. Proceeding as guest.", error);
     }
 
-    const providerToken = session?.provider_token ?? undefined;
-    const userId = session?.user?.id ?? undefined;
+    // Now use 'authUser' or 'session' for your logic
+    const userId = authUser?.id ?? undefined;
+    const provider = authUser?.app_metadata?.provider;
+
+    // 🚨 SMART TOKEN ROUTING
+    // Only use the session token if it is actually a GitHub token
+    let githubToken: string | undefined = undefined;
+    
+    if (provider === 'github' && session?.provider_token) {
+      githubToken = session.provider_token;
+    } else {
+      // For Google, Email, or logged-out users, use your system fallback token
+      githubToken = process.env.GITHUB_FALLBACK_TOKEN;
+    }
 
     const body = await req.json();
     const { repoUrl } = body;
@@ -2508,7 +2692,12 @@ export async function POST(req: NextRequest) {
 
     const { owner, repo } = parsed;
 
-    const meta = await fetchRepoMeta(owner, repo, providerToken);
+    if (provider === 'google' && !githubToken) {
+  // If we detect a potential private repo or just want to warn
+  console.log("User is on Google Auth, private repos will fail 404/403.");
+}
+
+    const meta = await fetchRepoMeta(owner, repo, githubToken);
     const commitSha = meta.default_branch;
 
     // ✅ CHECK CACHE FIRST (before rate limiting)
@@ -2539,7 +2728,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const treeData = await fetchRepoTree(owner, repo, commitSha, providerToken);
+    const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
 
     const IGNORE = [
       "node_modules",
@@ -2596,7 +2785,7 @@ export async function POST(req: NextRequest) {
     let fetchErrors = 0;
     for (const file of topFiles.slice(0, 30)) {
       try {
-        const content = await fetchFileContent(owner, repo, file.path, providerToken);
+        const content = await fetchFileContent(owner, repo, file.path, githubToken);
         
         // MINIFICATION FIX: Strip whitespace and comments so Groq doesn't choke on tokens
         const minifiedContent = content
@@ -2630,12 +2819,16 @@ export async function POST(req: NextRequest) {
     const fanIn = computeFanIn(dependencyGraph);
     const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
 
+    const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
+    const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
+
     const analysis = await analyzeWithGemini(
       `${owner}/${repo}`,
       meta.description || "No description provided",
       entryPoints,
       topFiles.map((f) => ({ path: f.path, role: f.role })),
-      allFileContents.slice(0, 15)  // Use first 15 for Groq
+      allFileContents.slice(0, 15),  // Use first 15 for Groq
+      blastRadiusTargets
     );
 
     const result = {
@@ -2666,6 +2859,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
+      return NextResponse.json(
+        { 
+          error: 'REQUIRE_GITHUB_AUTH',
+          message: 'This repository requires GitHub authentication. Please sign in with GitHub to analyze private repositories.'
+        },
+        { status: 403 }
+      );
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

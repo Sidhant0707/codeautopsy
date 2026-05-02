@@ -26,6 +26,7 @@ import {
 import { SiMeta, SiVercel } from "react-icons/si";
 import { motion } from "framer-motion";
 import Header from "@/components/Header";
+import ZipUploader from "@/components/ZipUploader";
 import { getSystemTelemetry } from "@/app/actions/telemetry";
 import { Activity } from "lucide-react";
 
@@ -64,7 +65,7 @@ export default function Home() {
       })
       .catch(() => {
         setRemaining(3);
-        setMaxLimit(3); // Add this line
+        setMaxLimit(3);
       });
 
     getSystemTelemetry().then((data) => setTelemetry(data));
@@ -317,6 +318,15 @@ export default function Home() {
                 ),
               )}
             </p>
+            <div className="mt-10 mb-6 relative flex items-center w-full max-w-2xl mx-auto">
+              <div className="flex-grow border-t border-white/5"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-600 text-[10px] font-mono uppercase tracking-[0.2em]">
+                Or Analyze Local Code
+              </span>
+              <div className="flex-grow border-t border-white/5"></div>
+            </div>
+
+            <ZipUploader />
           </motion.div>
         </div>
       </motion.section>

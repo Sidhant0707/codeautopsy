@@ -88,6 +88,27 @@ function AnalyzeContent() {
   );
 
   useEffect(() => {
+    // ✨ 1. NEW: CHECK FOR LOCAL UPLOAD FIRST
+    const searchParams = new URLSearchParams(window.location.search);
+    const source = searchParams.get("source");
+
+    if (source === "local") {
+      const localData = sessionStorage.getItem("localAnalysisResult");
+      if (localData) {
+        setData(JSON.parse(localData));
+        setLoading(false);
+        return; // Exit early! Skip the auth check and GitHub API call entirely.
+      } else {
+        setError(
+          "Local analysis data expired or lost. Please return to home and upload again.",
+        );
+        setLoading(false);
+        return;
+      }
+    }
+
+    // ✨ 2. EXISTING: NORMAL GITHUB FLOW
+    // If it's not a local upload, we MUST have a repoUrl to proceed.
     if (!repoUrl) return;
 
     async function analyze() {
@@ -112,7 +133,7 @@ function AnalyzeContent() {
 
         const json = await res.json();
 
-        // ✨ CHECK FOR AUTH GAP[cite: 2]
+        // ✨ CHECK FOR AUTH GAP
         if (json.error === "REQUIRE_GITHUB_AUTH") {
           setShowGitHubAuthModal(true);
           setLoading(false);
