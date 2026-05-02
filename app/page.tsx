@@ -61,7 +61,7 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => {
         setRemaining(data.remaining);
-        setMaxLimit(data.maxTokens); // Add this line
+        setMaxLimit(data.maxTokens); 
       })
       .catch(() => {
         setRemaining(3);
@@ -218,14 +218,14 @@ export default function Home() {
             AI-Powered Code Analysis
           </motion.div>
 
-          {/* NEW TELEMETRY FLEX BANNER */}
+          {/* NEW TELEMETRY FLEX BANNER - Neon Blue Removed */}
           {telemetry.totalScans > 0 && (
             <motion.div
               variants={fadeUp}
-              className="max-w-lg mx-auto mb-8 rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-3 flex items-center justify-between shadow-[0_0_15px_rgba(99,102,241,0.1)]"
+              className="max-w-lg mx-auto mb-8 rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
+                <Activity className="w-4 h-4 text-slate-400 animate-pulse" />
                 <span className="font-mono text-[10px] font-bold text-slate-300 tracking-widest uppercase">
                   Live_Engine_Telemetry
                 </span>
@@ -233,14 +233,14 @@ export default function Home() {
               <div className="flex items-center gap-4 font-mono text-[10px]">
                 <div className="flex flex-col items-end">
                   <span className="text-slate-500">ACCURACY</span>
-                  <span className="text-green-400 font-bold text-sm">
+                  <span className="text-emerald-500/80 font-bold text-sm">
                     {telemetry.successRate}%
                   </span>
                 </div>
                 <div className="w-px h-6 bg-white/10" />
                 <div className="flex flex-col items-end">
                   <span className="text-slate-500">SCANS_LOGGED</span>
-                  <span className="text-indigo-300 font-bold text-sm">
+                  <span className="text-slate-300 font-bold text-sm">
                     {telemetry.totalScans}
                   </span>
                 </div>

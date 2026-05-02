@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import ExportButton from "@/components/ExportButton";
 import {
   ArrowLeft,
   FileCode,
@@ -323,7 +324,6 @@ function AnalyzeContent() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
-          
           {/* ✨ NEW DASHBOARD BUTTON ADDED HERE ✨ */}
           <Link
             href="/dashboard"
@@ -387,6 +387,7 @@ function AnalyzeContent() {
           {source !== "local" && (
             <ShareButton owner={data.owner} repo={data.repo} />
           )}
+          <ExportButton data={data} />
         </div>
       </header>
 
@@ -644,6 +645,8 @@ function AnalyzeContent() {
                 <button
                   onClick={() => setIsChatOpen(false)}
                   className="p-1.5 rounded-md hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                  title="Close chat"
+                  aria-label="Close chat"
                 >
                   <X className="w-4 h-4" />
                 </button>
