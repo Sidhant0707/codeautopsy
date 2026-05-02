@@ -16,6 +16,7 @@
     "@upstash/redis": "^1.37.0",
     "@vercel/analytics": "^2.0.1",
     "@xyflow/react": "^12.10.2",
+    "d3-hierarchy": "^3.1.2",
     "dagre": "^0.8.5",
     "framer-motion": "^12.38.0",
     "jszip": "^3.10.1",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/dagre": "^0.7.54",
     "@types/jszip": "^3.4.0",
     "@types/node": "^20",

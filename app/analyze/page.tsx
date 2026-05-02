@@ -26,6 +26,8 @@ import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
 import DebugInterface from "@/components/debug/DebugInterface";
 import ArchitectureMap from "@/components/ArchitectureMap";
+import TreemapVisualizer from "@/components/TreemapVisualizer";
+import DirectoryTreeVisualizer from "@/components/DirectoryTreeVisualizer";
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -60,6 +62,7 @@ interface RepoData {
   mermaidDiagram: string;
   analysis: Analysis;
   dependencyGraph?: Record<string, string[]>;
+  fileMetrics: { path: string; size: number }[];
 }
 
 function AnalyzeContent() {
@@ -77,6 +80,9 @@ function AnalyzeContent() {
     "overview" | "visualizer" | "doctor"
   >("overview");
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [mapView, setMapView] = useState<"graph" | "treemap" | "directory">(
+    "graph",
+  );
 
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [hideFeedback, setHideFeedback] = useState(false);
@@ -537,24 +543,65 @@ function AnalyzeContent() {
               </div>
             )}
 
-            {activeTab === "visualizer" && (
-              <div className="absolute inset-0 p-4">
-                {data.dependencyGraph &&
-                Object.keys(data.dependencyGraph).length > 0 ? (
-                  <div className="w-full h-full rounded-2xl border border-white/5 overflow-hidden">
-                    <ArchitectureMap
-                      dependencyGraph={data.dependencyGraph}
-                      entryPoints={data.entryPoints}
-                    />
+            {activeTab === "visualizer" && data && (
+              <div className="absolute inset-0 p-4 flex flex-col">
+                <div className="relative flex-1 w-full rounded-2xl border border-white/5 overflow-hidden">
+                  {/* 🛠️ THE VIEW TOGGLE SWITCH - NOW WITH AMBIENT GLOW */}
+                  <div className="absolute top-6 right-6 z-30 flex bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)]">
+                    <button
+                      onClick={() => setMapView("graph")}
+                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "graph"
+                          ? "bg-white/10 text-white font-bold shadow-inner"
+                          : "text-slate-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Dependency Flow
+                    </button>
+                    <button
+                      onClick={() => setMapView("directory")}
+                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "directory"
+                          ? "bg-white/10 text-white font-bold shadow-inner"
+                          : "text-slate-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Folder Structure
+                    </button>
+                    <button
+                      onClick={() => setMapView("treemap")}
+                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "treemap"
+                          ? "bg-white/10 text-white font-bold shadow-inner"
+                          : "text-slate-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Codebase Weight
+                    </button>
                   </div>
-                ) : (
-                  <div className="w-full h-full rounded-2xl border border-white/5 bg-[#0e0e0e] flex flex-col items-center justify-center">
-                    <Layers className="w-10 h-10 text-slate-600 mb-4" />
-                    <p className="text-slate-500 font-mono text-xs">
-                      No blueprint data parsed for this codebase.
-                    </p>
-                  </div>
-                )}
+
+                  {/* 🚀 CONDITIONAL RENDER LOGIC */}
+                  {mapView === "graph" ? (
+                    data.dependencyGraph &&
+                    Object.keys(data.dependencyGraph).length > 0 ? (
+                      <ArchitectureMap
+                        dependencyGraph={data.dependencyGraph}
+                        entryPoints={data.entryPoints}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center">
+                        <Layers className="w-10 h-10 text-slate-600 mb-4" />
+                        <p className="text-slate-500 font-mono text-xs">
+                          No blueprint data parsed for this codebase.
+                        </p>
+                      </div>
+                    )
+                  ) : mapView === "directory" ? (
+                    <DirectoryTreeVisualizer metrics={data.fileMetrics} />
+                  ) : (
+                    <TreemapVisualizer metrics={data.fileMetrics} />
+                  )}
+                </div>
               </div>
             )}
 

@@ -9,7 +9,7 @@ import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 
-const ANALYSIS_VERSION = 3;
+const ANALYSIS_VERSION = 5;
 
 export async function POST(req: NextRequest) {
   try {
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     let stars = 0;
     let language = "Mixed";
     let filteredPaths: string[] = [];
+    let fileMetrics: { path: string; size: number }[] = [];
 
     // ==========================================
     // FLOW A: LOCAL .ZIP UPLOAD
@@ -96,6 +97,11 @@ export async function POST(req: NextRequest) {
       console.log("Processing Local ZIP payload...");
       allFileContents = localFiles;
       filteredPaths = localFiles.map((f: { path: string }) => f.path);
+
+      fileMetrics = localFiles.map((f: { path: string; content: string }) => ({
+        path: f.path,
+        size: f.content.length 
+      }));
       
     // ==========================================
     // FLOW B: GITHUB REPOSITORY
@@ -147,17 +153,39 @@ export async function POST(req: NextRequest) {
 
       const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
 
-      const IGNORE = ["node_modules", "dist", "build", ".next", ".git", "coverage", "__pycache__", ".yarn", "vendor"];
+      const IGNORE = [
+  "node_modules", 
+  "dist", 
+  "build", 
+  ".next", 
+  ".git", 
+  "coverage", 
+  "__pycache__", 
+  ".yarn", 
+  "vendor",
+  "package-lock.json", 
+  "yarn.lock",         
+  "pnpm-lock.yaml",    
+  "repomix-output.xml" 
+];
       const IGNORE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".min.js", ".map", ".woff", ".woff2"];
 
-      filteredPaths = (treeData.tree as { type: string; path: string }[])
+      
+      const validFiles = (treeData.tree as { type: string; path: string; size?: number }[])
         .filter((file) => {
           if (file.type !== "blob") return false;
           if (IGNORE.some((ig) => file.path.includes(ig))) return false;
           if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
           return true;
-        })
-        .map((file) => file.path);
+        });
+
+      filteredPaths = validFiles.map((file) => file.path);
+      
+      fileMetrics = validFiles.map((file) => ({
+        path: file.path,
+        size: file.size || 0
+      }));
+      
 
       const scoredFiles = classifyAndScoreFiles(filteredPaths);
       scoredFiles.forEach(file => {
@@ -234,7 +262,8 @@ export async function POST(req: NextRequest) {
       fanIn,
       mermaidDiagram,
       analysis,
-      fileContents: allFileContents.slice(0, 15)
+      fileContents: allFileContents.slice(0, 15),
+      fileMetrics
     };
 
     // Only cache to Supabase if it's a GitHub repo (we don't want to save private local zips to DB)
