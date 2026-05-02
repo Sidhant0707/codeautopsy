@@ -15,6 +15,7 @@
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "@vercel/analytics": "^2.0.1",
+    "@xyflow/react": "^12.10.2",
     "dagre": "^0.8.5",
     "framer-motion": "^12.38.0",
     "jszip": "^3.10.1",

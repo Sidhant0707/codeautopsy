@@ -54,10 +54,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { question, repoContext } = await req.json();
+    // ✨ Upgraded to receive an array of messages instead of a single question
+    const { messages, repoContext } = await req.json();
 
-    if (!question || !repoContext) {
-      return NextResponse.json({ error: "Context Missing" }, { status: 400 });
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json({ error: "Context or messages missing" }, { status: 400 });
     }
 
     if (typeof repoContext === "object" && repoContext?.repo) {
@@ -118,10 +119,11 @@ ${safeContext}
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: question },
+          ...messages, // ✨ Inject the entire conversation history!
         ],
         temperature: 0.1,
         max_tokens: 1024,
+        stream: true, // ✨ ENABLE STREAMING
       }),
     }, 1);
 
@@ -130,26 +132,14 @@ ${safeContext}
       throw new Error(`Groq API Error (${res.status}): ${errorText.substring(0, 200)}`);
     }
 
-    const data = await res.json();
-
-    if (!data?.choices?.length || !data.choices[0]?.message?.content) {
-      throw new Error("Invalid or empty response structure from LLM");
-    }
-
-    let answer = data.choices[0].message.content?.trim();
-
-    if (!answer || answer.length < 10) {
-      answer = "Insufficient data in context to generate a meaningful analysis.";
-    } else {
-      answer = answer
-        .replace(/={3,}/g, "")
-        .replace(/-{3,}/g, "")
-        .replace(/^(?!\s*#)\*\*(.*?)\*\*\s*$/gm, "### $1")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-    }
-
-    return NextResponse.json({ answer });
+    // ✨ Return the raw stream directly to the client (This reduces code heavily!)
+    return new Response(res.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
 
   } catch (err: unknown) {
     let errorMessage = "Analysis Failed";

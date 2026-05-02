@@ -20,18 +20,10 @@ interface RepoContextType {
   [key: string]: string | undefined;
 }
 
-export default function RepoChat({
-  repoContext,
-}: {
-  repoContext: RepoContextType;
-}) {
-  const [messages, setMessages] = useState<
-    { id: string; role: "user" | "ai"; content: string }[]
-  >([]);
+export default function RepoChat({ repoContext }: { repoContext: RepoContextType }) {
+  const [messages, setMessages] = useState<{ id: string; role: "user" | "ai"; content: string }[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  // ✨ Fullscreen State
   const [isMaximized, setIsMaximized] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -46,13 +38,9 @@ export default function RepoChat({
   };
 
   useEffect(() => {
-    if (messages.length > 0) {
-      const timer = setTimeout(() => scrollToBottom(), 50);
-      return () => clearTimeout(timer);
-    }
+    scrollToBottom();
   }, [messages]);
 
-  // ✨ Handle Escape key and body scroll locking
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") setIsMaximized(false);
@@ -81,35 +69,78 @@ export default function RepoChat({
       role: "user" as const,
       content: query,
     };
-    setMessages((prev) => [...prev, newUserMsg]);
+    
+    // Add user message to local state
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
     setInput("");
     setIsLoading(true);
+
+    // Map roles for the Groq API (it expects "assistant" instead of "ai")
+    const apiMessages = updatedMessages.map(msg => ({
+      role: msg.role === "ai" ? "assistant" : "user",
+      content: msg.content
+    }));
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: query, repoContext: repoContext }),
+        body: JSON.stringify({ messages: apiMessages, repoContext: repoContext }),
       });
 
       if (!response.ok) throw new Error("Network response was not ok");
-      const data = await response.json();
+      if (!response.body) throw new Error("No response body");
 
+      // Setup the empty AI message block we will stream text into
+      const aiMsgId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "ai",
-          content: data.answer || "No response received.",
-        },
+        { id: aiMsgId, role: "ai", content: "" },
       ]);
+
+      // Stream Parser Logic
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+          
+          for (const line of lines) {
+            if (line.replace(/^data: /, "") === "[DONE]") {
+              done = true;
+              break;
+            }
+            if (line.startsWith("data: ")) {
+              try {
+                const parsed = JSON.parse(line.replace(/^data: /, ""));
+                const token = parsed.choices[0]?.delta?.content;
+                if (token) {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMsgId ? { ...msg, content: msg.content + token } : msg
+                    )
+                  );
+                }
+              } catch (e) {
+                // Ignore incomplete JSON chunks, they will complete on the next pass
+              }
+            }
+          }
+        }
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           role: "ai",
-          content: "[SYSTEM ERROR: Uplink failed.]",
+          content: "[SYSTEM ERROR: Uplink failed. Stream disconnected.]",
         },
       ]);
     } finally {
@@ -139,7 +170,6 @@ export default function RepoChat({
 
   return (
     <>
-      {/* Backdrop for maximized mode */}
       {isMaximized && (
         <div
           className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
@@ -147,7 +177,6 @@ export default function RepoChat({
         />
       )}
 
-      {/* Main Terminal Window */}
       <div
         className={`flex flex-col bg-[#020202] border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.8)] group transition-all duration-500 ${
           isMaximized
@@ -155,7 +184,6 @@ export default function RepoChat({
             : "relative w-full h-[600px]"
         }`}
       >
-        {/* 3D Background Grid */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none [perspective:800px] z-0">
           <motion.div
             animate={{ backgroundPosition: ["0px 0px", "0px 60px"] }}
@@ -173,7 +201,6 @@ export default function RepoChat({
           <div className="absolute inset-0 bg-gradient-to-r from-[#020202] via-transparent to-[#020202]" />
         </div>
 
-        {/* Header Section */}
         <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#020202]/80 backdrop-blur-md relative z-10">
           <div className="flex items-center gap-3">
             <Database className="w-4 h-4 text-slate-300" />
@@ -190,7 +217,7 @@ export default function RepoChat({
             {isLoading ? (
               <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-white font-mono">
                 <Unlock className="w-3 h-3 text-white animate-pulse" />
-                Decrypting...
+                Receiving Data...
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-slate-500 font-mono">
@@ -214,10 +241,9 @@ export default function RepoChat({
           </div>
         </div>
 
-        {/* Message Log Stream */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 scrollbar-hide"
+          className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 custom-scrollbar"
         >
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
@@ -256,7 +282,6 @@ export default function RepoChat({
                       </span>
                     )}
 
-                    {/* ✨ The actual Markdown Render fix */}
                     {msg.role === "ai" ? (
                       <div
                         className="prose prose-sm prose-invert max-w-none 
@@ -275,7 +300,7 @@ export default function RepoChat({
                   </div>
                 </motion.div>
               ))}
-              {isLoading && (
+              {isLoading && messages[messages.length - 1]?.role === "user" && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -292,7 +317,6 @@ export default function RepoChat({
           )}
         </div>
 
-        {/* Quick Script Buttons */}
         {messages.length === 0 && (
           <div className="px-6 pb-4 relative z-10 flex flex-wrap gap-2 justify-center">
             {quickScripts.map((script, i) => (
@@ -310,7 +334,6 @@ export default function RepoChat({
           </div>
         )}
 
-        {/* Input Bar */}
         <div className="p-4 relative z-10 bg-[#020202]/90 backdrop-blur-xl border-t border-white/5">
           <form onSubmit={(e) => handleSubmit(e)} className="relative">
             <div className="relative flex items-center bg-[#0a0a0a] rounded-xl border border-white/10 p-2 shadow-inner focus-within:border-white/30 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.03)] transition-all">
