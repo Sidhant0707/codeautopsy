@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import {
   ArrowLeft,
   FileCode,
@@ -16,6 +17,7 @@ import {
   AlertTriangle,
   MessageSquare,
   X,
+  LayoutGrid,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -321,6 +323,16 @@ function AnalyzeContent() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
+          
+          {/* ✨ NEW DASHBOARD BUTTON ADDED HERE ✨ */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </Link>
+
           <AnimatePresence mode="wait">
             {!hideFeedback && (
               <motion.div
