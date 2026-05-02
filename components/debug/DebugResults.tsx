@@ -10,7 +10,8 @@ import {
   ThumbsDown,
   RotateCcw,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, Zap, AlertCircle, ArrowRight } from "lucide-react";
 
 interface DebugResultsProps {
   result: {
@@ -27,6 +28,7 @@ interface DebugResultsProps {
 export function DebugResults({ result, onReset }: DebugResultsProps) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [hideFeedback, setHideFeedback] = useState(false);
 
   const confidenceColors = {
     high: "bg-green-500/10 border-green-500/20 text-green-400",
@@ -92,13 +94,14 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
   };
 
   const handleFeedback = async (type: "up" | "down") => {
-    // Prevent spamming the database if they already clicked it
     if (feedback !== null) return;
 
-    // Optimistically update the UI so it feels instantly responsive
     setFeedback(type);
 
-    // Fire the telemetry to Supabase in the background
+    setTimeout(() => {
+      setHideFeedback(true);
+    }, 2000);
+
     try {
       await submitDiagnosisFeedback(type === "up");
     } catch (error) {
@@ -115,7 +118,9 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
-            <span className="text-2xl">⚡</span>
+            <span className="text-2xl">
+              <Zap className="w-4 h-4 text-amber-400" />
+            </span>
           </div>
           <div>
             <h3 className="text-lg font-bold text-white font-mono">
@@ -233,37 +238,50 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4 pt-6 pb-2 border-t border-white/5 mt-4">
-        <span className="text-xs text-slate-500 uppercase tracking-widest font-mono">
-          SYSTEM_ACCURACY_CHECK
-        </span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleFeedback("up")}
-            title="Helpful"
-            aria-label="Mark diagnosis as helpful"
-            className={`p-2 rounded-lg border transition-all ${
-              feedback === "up"
-                ? "bg-green-500/20 border-green-500/40 text-green-400"
-                : "bg-white/5 border-white/10 text-slate-400 hover:text-green-400"
-            }`}
+      <AnimatePresence mode="wait">
+        {!hideFeedback && (
+          <motion.div
+            key={feedback ? "thanks" : "buttons"}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
+            className="flex flex-col items-center justify-center gap-4 pt-6 pb-2 border-t border-white/5 mt-8 flex-shrink-0"
           >
-            <ThumbsUp className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleFeedback("down")}
-            title="Not helpful"
-            aria-label="Mark diagnosis as not helpful"
-            className={`p-2 rounded-lg border transition-all ${
-              feedback === "down"
-                ? "bg-red-500/20 border-red-500/40 text-red-400"
-                : "bg-white/5 border-white/10 text-slate-400 hover:text-red-400"
-            }`}
-          >
-            <ThumbsDown className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+            {!feedback ? (
+              <div className="flex items-center gap-4">
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
+                  SYSTEM_ACCURACY_CHECK
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleFeedback("up")}
+                    aria-label="Mark feedback as helpful"
+                    title="Mark feedback as helpful"
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-green-400 hover:bg-white/10 transition-all"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleFeedback("down")}
+                    aria-label="Mark feedback as not helpful"
+                    title="Mark feedback as not helpful"
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-red-400 hover:bg-white/10 transition-all"
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                <CheckCircle2 className="w-4 h-4 text-green-400" />
+                <span className="font-mono text-[10px] font-bold uppercase text-green-400 tracking-widest">
+                  Feedback Recorded
+                </span>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

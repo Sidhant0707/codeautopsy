@@ -1,92 +1,70 @@
 "use client";
 
 import { useState } from "react";
-import { Activity } from "lucide-react";
+import { motion } from "framer-motion";
+import { Lightbulb, Activity } from "lucide-react";
 
 interface DebugFormProps {
-  onSubmit: (errorQuery: string) => void;
-  isLoading: boolean;
+  onSubmit: (text: string) => void;
+  isLoading?: boolean;
 }
 
 export function DebugForm({ onSubmit, isLoading }: DebugFormProps) {
-  const [errorQuery, setErrorQuery] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!errorQuery.trim() || isLoading) return;
-    onSubmit(errorQuery);
-  };
+  const [input, setInput] = useState("");
 
   return (
-    <form onSubmit={handleSubmit} className="w-full">
-      {/* QUICK TEST SECTION */}
-      <div className="flex items-center gap-4 mb-6">
-        <span className="mono text-[10px] uppercase tracking-widest text-slate-600 font-bold">
-          Quick Test:
-        </span>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setErrorQuery(
-                "TypeError: Cannot read properties of undefined (reading 'map') at UserList",
-              )
-            }
-            className="px-3 py-1.5 rounded-md text-xs font-mono text-slate-400 bg-[#0a0a0a] border border-white/5 hover:bg-white/5 hover:text-white transition-all"
-          >
-            TypeError
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setErrorQuery(
-                "ReferenceError: process is not defined in browser context",
-              )
-            }
-            className="px-3 py-1.5 rounded-md text-xs font-mono text-slate-400 bg-[#0a0a0a] border border-white/5 hover:bg-white/5 hover:text-white transition-all"
-          >
-            ReferenceError
-          </button>
-        </div>
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      className="flex flex-col h-full w-full min-h-0"
+    >
+      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">Quick Test:</span>
+        <button 
+          type="button"
+          onClick={() => setInput("TypeError: Cannot read properties of undefined (reading 'map')\n    at UserList (components/UserList.tsx:42:15)")} 
+          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
+        >
+          TypeError
+        </button>
+        <button 
+          type="button"
+          onClick={() => setInput("ReferenceError: window is not defined\n    at SSRRender (app/layout.tsx:12:5)")} 
+          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
+        >
+          ReferenceError
+        </button>
       </div>
 
-      {/* INPUT SECTION */}
-      <div className="mb-6">
-        <label className="block mb-3 text-sm font-medium text-slate-400">
-          Paste your stack trace or error message
-        </label>
-        <div className="relative group/input">
-          <div className="absolute -inset-0.5 bg-gradient-to-b from-white/10 to-transparent rounded-xl opacity-0 group-focus-within/input:opacity-100 transition duration-500" />
-          <textarea
-            value={errorQuery}
-            onChange={(e) => setErrorQuery(e.target.value)}
-            disabled={isLoading}
-            className="relative w-full h-40 bg-[#050505] border border-white/10 rounded-xl p-5 text-slate-300 font-mono text-sm focus:outline-none focus:border-white/30 transition-colors resize-none leading-relaxed placeholder:text-slate-700 disabled:opacity-50 shadow-inner"
-            placeholder="TypeError: Cannot read properties of undefined (reading 'map') at UserList (components/UserList.tsx:42:15)"
-          />
-        </div>
-        <div className="flex items-center gap-2 mt-3 ml-2">
-          <span className="text-slate-500 text-xs">💡</span>
-          <p className="text-xs text-slate-500">
-            Include file paths and line numbers for best results
-          </p>
-        </div>
-      </div>
+      <p className="text-sm text-slate-300 mb-3 font-satoshi flex-shrink-0">
+        Paste your stack trace or error message
+      </p>
 
-      {/* STEALTH GRAYSCALE BUTTON */}
-      <button
-        type="submit"
-        disabled={isLoading || !errorQuery.trim()}
-        className="w-full relative group/btn overflow-hidden rounded-xl p-[1px] bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[100%] group-hover/btn:translate-x-[100%] transition-transform duration-1000" />
-        <div className="relative flex items-center justify-center gap-3 bg-[#0a0a0a] px-6 py-4 rounded-xl transition-all shadow-lg group-hover/btn:shadow-[0_0_15px_rgba(255,255,255,0.05)] group-hover/btn:bg-[#111]">
-          <Activity className="w-4 h-4 text-slate-500 group-hover/btn:text-white transition-colors" />
-          <span className="text-sm font-bold text-slate-300 font-mono uppercase tracking-widest group-hover/btn:text-white transition-colors">
-            {isLoading ? "Analyzing Crash..." : "Initiate Diagnostics"}
-          </span>
+      <textarea 
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="e.g. TypeError: Cannot read properties of undefined..."
+        className="w-full flex-1 min-h-[80px] overflow-y-auto resize-none bg-[#050505] border border-white/5 rounded-xl p-5 font-mono text-[13px] text-slate-300 focus:outline-none focus:border-white/20 transition-all custom-scrollbar shadow-inner mb-6"
+      />
+
+      <div className="mt-auto flex flex-col gap-4 flex-shrink-0">
+        <div className="flex items-center gap-2 text-[11px] text-amber-500/80 font-mono">
+          <Lightbulb className="w-3.5 h-3.5" />
+          <span>Include file paths and line numbers for best results</span>
         </div>
-      </button>
-    </form>
+        
+        <button 
+          onClick={() => onSubmit(input)}
+          disabled={!input.trim() || isLoading}
+          className="w-full py-4 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-slate-200 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+        >
+          {isLoading ? (
+            <>Initializing <Activity className="w-4 h-4 animate-pulse" /></>
+          ) : (
+            <>Initiate Diagnostics <Activity className="w-4 h-4" /></>
+          )}
+        </button>
+      </div>
+    </motion.div>
   );
 }

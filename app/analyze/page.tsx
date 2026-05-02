@@ -5,41 +5,30 @@ import { useEffect, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
-  Star,
   FileCode,
   Terminal,
   Cpu,
   GitMerge,
   CheckCircle2,
-  Box,
   Layers,
   ThumbsUp,
   ThumbsDown,
   AlertTriangle,
+  MessageSquare,
+  X,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
 import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
 import DebugInterface from "@/components/debug/DebugInterface";
+import ArchitectureMap from "@/components/ArchitectureMap";
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
 const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: EXPO_OUT },
-  },
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EXPO_OUT } },
 };
 
 interface Analysis {
@@ -49,7 +38,6 @@ interface Analysis {
   tech_stack: { name: string; purpose: string }[];
   key_modules: { file: string; role: string; why_it_exists: string }[];
   onboarding_guide: string[];
-  // NEW SPRINT 2 FIELD
   blast_radius: {
     file: string;
     dependents: number;
@@ -68,36 +56,36 @@ interface RepoData {
   entryPoints: string[];
   mermaidDiagram: string;
   analysis: Analysis;
+  dependencyGraph?: Record<string, string[]>;
 }
 
 function AnalyzeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const repoUrl = searchParams.get("repo");
+  const source = searchParams.get("source");
+
   const [data, setData] = useState<RepoData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "diagnostics">(
-    "overview",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "visualizer" | "doctor"
+  >("overview");
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-  const [feedback, setFeedback] = useState<"helpful" | "not-helpful" | null>(
-    null,
-  );
+  const [hideFeedback, setHideFeedback] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   useEffect(() => {
-    // ✨ 1. NEW: CHECK FOR LOCAL UPLOAD FIRST
-    const searchParams = new URLSearchParams(window.location.search);
-    const source = searchParams.get("source");
-
     if (source === "local") {
       const localData = sessionStorage.getItem("localAnalysisResult");
       if (localData) {
         setData(JSON.parse(localData));
         setLoading(false);
-        return; // Exit early! Skip the auth check and GitHub API call entirely.
+        return;
       } else {
         setError(
           "Local analysis data expired or lost. Please return to home and upload again.",
@@ -107,8 +95,6 @@ function AnalyzeContent() {
       }
     }
 
-    // ✨ 2. EXISTING: NORMAL GITHUB FLOW
-    // If it's not a local upload, we MUST have a repoUrl to proceed.
     if (!repoUrl) return;
 
     async function analyze() {
@@ -133,7 +119,6 @@ function AnalyzeContent() {
 
         const json = await res.json();
 
-        // ✨ CHECK FOR AUTH GAP
         if (json.error === "REQUIRE_GITHUB_AUTH") {
           setShowGitHubAuthModal(true);
           setLoading(false);
@@ -149,99 +134,101 @@ function AnalyzeContent() {
       }
     }
     analyze();
-  }, [repoUrl, router]);
+  }, [repoUrl, source, router]);
 
   const handleGitHubLogin = async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        scopes: "repo", // Mandatory for private repos
+        scopes: "repo",
         redirectTo: `${window.location.origin}/analyze?repo=${encodeURIComponent(repoUrl || "")}`,
       },
     });
   };
 
-  // ✨ FIX: Removed window.scrollTo hijack[cite: 3]
-  const handleTabSwitch = (tab: "overview" | "diagnostics") => {
-    setActiveTab(tab);
-  };
-
-  const handleFeedback = async (isHelpful: boolean) => {
-    setFeedback(isHelpful ? "helpful" : "not-helpful");
+  const handleFeedback = async (
+    isHelpful: boolean,
+    exitAfter: boolean = false,
+  ) => {
     setFeedbackSubmitted(true);
+    if (exitAfter) setShowExitModal(false);
+
+    if (!exitAfter) {
+      setTimeout(() => {
+        setHideFeedback(true);
+      }, 2000);
+    }
 
     try {
       const supabase = createClient();
       await supabase.from("debug_feedback").insert([
         {
-          debug_id: data?.repo || repoUrl,
+          debug_id: data?.repo || repoUrl || "local-upload",
           is_helpful: isHelpful,
         },
       ]);
     } catch (err) {
-      console.error("Unexpected error saving feedback:", err);
+      console.error(err);
+    }
+
+    if (exitAfter) router.push("/");
+  };
+
+  const handleBackNavigation = () => {
+    if (!feedbackSubmitted) {
+      setShowExitModal(true);
+    } else {
+      router.push("/");
     }
   };
 
   if (loading)
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/[0.02] rounded-full blur-[100px] animate-pulse" />
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          animate="show"
-          className="relative z-10 w-full max-w-md p-8 glass-card rounded-2xl"
-        >
-          <motion.div
-            variants={fadeUp}
-            className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6"
-          >
-            <div className="w-10 h-10 rounded-lg bg-[#141414] border border-white/10 flex items-center justify-center">
+      <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center relative overflow-hidden text-slate-200 font-satoshi">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-white/[0.01] rounded-full blur-[80px] animate-pulse" />
+        <div className="relative z-10 glass-card p-8 rounded-2xl border border-white/5 max-w-sm w-full">
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-white/5">
+            <div className="w-10 h-10 rounded-xl bg-[#141414] border border-white/10 flex items-center justify-center">
               <Cpu className="w-5 h-5 text-slate-400" />
             </div>
             <div>
               <h3 className="cabinet font-bold text-lg text-white">
                 Performing Autopsy
               </h3>
-              <p className="mono text-[10px] text-slate-500 tracking-widest uppercase">
-                Target:{" "}
-                {repoUrl?.split("/").slice(-2).join("/") || "Repository"}
+              <p className="mono text-[10px] text-slate-500 tracking-widest uppercase truncate max-w-[200px]">
+                {source === "local"
+                  ? "Local.zip Upload"
+                  : repoUrl?.split("/").slice(-2).join("/") || "Repository"}
               </p>
             </div>
-          </motion.div>
+          </div>
           <div className="space-y-4">
             {[
-              "Cloning repository structure...",
-              "Mapping abstract syntax trees...",
+              "Cloning repository...",
+              "Mapping syntax trees...",
               "Tracing execution flows...",
-              "Synthesizing architectural patterns...",
-              "Compiling autopsy report...",
+              "Compiling report...",
             ].map((step, i) => (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                className="flex items-center gap-3"
-              >
-                <div className="w-4 h-4 rounded flex items-center justify-center bg-white/5 border border-white/10">
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded flex items-center justify-center bg-white/5 border border-white/10">
                   <div
-                    className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-ping"
+                    className="w-1 h-1 rounded-full bg-slate-400 animate-ping"
                     style={{ animationDelay: `${i * 0.2}s` }}
                   />
                 </div>
                 <span className="mono text-xs text-slate-400">{step}</span>
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.div>
+        </div>
       </div>
     );
 
   if (error)
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative">
-        <div className="glass-card p-8 rounded-2xl max-w-md text-center">
+      <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center font-satoshi">
+        <div className="glass-card p-8 rounded-2xl max-w-md text-center border border-red-500/10">
           <div className="w-12 h-12 mx-auto rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
             <Terminal className="w-6 h-6 text-red-400" />
           </div>
@@ -251,10 +238,9 @@ function AnalyzeContent() {
           <p className="text-slate-400 text-sm mb-8">{error}</p>
           <button
             onClick={() => router.push("/")}
-            className="btn-gray px-6 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center justify-center gap-2 w-full"
+            className="w-full px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-all flex items-center justify-center gap-2"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Return to Dashboard
+            <ArrowLeft className="w-4 h-4" /> Return to Dashboard
           </button>
         </div>
       </div>
@@ -264,37 +250,34 @@ function AnalyzeContent() {
 
   if (showGitHubAuthModal) {
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col items-center justify-center relative">
+      <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center relative font-satoshi">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="relative z-10 glass-card p-8 rounded-2xl max-w-md mx-4 border-2 border-white/10"
+          className="relative z-10 glass-card p-8 rounded-2xl max-w-md mx-4 border-2 border-white/10 bg-[#0e0e0e]"
         >
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-white/20 flex items-center justify-center mb-6">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-white/5 border border-white/20 flex items-center justify-center mb-6">
             <FaGithub className="w-8 h-8 text-white" />
           </div>
           <h2 className="cabinet text-2xl font-bold text-white mb-3 text-center">
-            Private Repository Detected
+            Private Repository
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed mb-8 text-center">
-            To analyze private code, you need to authenticate with GitHub. This
-            grants CodeAutopsy temporary read access to your repositories.
+            To analyze private code, you need to authenticate with GitHub.
           </p>
           <div className="space-y-3">
             <button
               onClick={handleGitHubLogin}
-              className="w-full bg-white text-black px-6 py-4 rounded-xl font-bold text-sm hover:bg-white/90 transition-all flex items-center justify-center gap-3"
+              className="w-full bg-white text-black px-6 py-4 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all flex items-center justify-center gap-3"
             >
-              <FaGithub className="w-5 h-5" />
-              Connect GitHub Account
+              <FaGithub className="w-5 h-5" /> Connect GitHub Account
             </button>
             <button
               onClick={() => router.push("/")}
-              className="w-full btn-gray px-6 py-4 rounded-xl font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
+              className="w-full px-6 py-4 rounded-xl border border-white/10 font-bold text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-all flex items-center justify-center gap-2"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
+              <ArrowLeft className="w-4 h-4" /> Back to Home
             </button>
           </div>
         </motion.div>
@@ -303,419 +286,420 @@ function AnalyzeContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)] text-[#f1f5f9] relative overflow-x-hidden font-satoshi pb-32">
-      <div className="absolute top-0 left-0 w-full h-[50vh] pointer-events-none">
-        <div className="absolute top-[-20%] left-[10%] w-[40%] h-[100%] bg-white/[0.015] blur-[120px] rounded-full" />
-      </div>
-
-      <div className="max-w-6xl mx-auto px-6 pt-12 relative z-10">
-        <button
-          onClick={() => router.push("/")}
-          className="group flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors mb-12"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Back to Search
-        </button>
-
-        <motion.div variants={staggerContainer} initial="hidden" animate="show">
-          <motion.div variants={fadeUp} className="mb-12">
-            <div className="flex items-start justify-between gap-8 flex-col md:flex-row">
-              <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <FaGithub className="w-8 h-8 text-white" />
-                  <h1 className="cabinet text-4xl md:text-5xl font-bold tracking-tight text-white">
-                    {data.owner} <span className="text-slate-600">/</span>{" "}
-                    {data.repo}
-                  </h1>
-                </div>
-                <p className="text-lg text-slate-400 max-w-2xl leading-relaxed mb-8">
-                  {data.description}
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2 border border-white/5">
-                    <Star className="w-4 h-4 text-slate-400" />
-                    <span className="mono text-xs font-bold text-white">
-                      {data.stars.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="glass-card px-4 py-2 rounded-lg flex items-center gap-2 border border-white/5">
-                    <Terminal className="w-4 h-4 text-slate-400" />
-                    <span className="mono text-xs font-bold text-white">
-                      {data.language}
-                    </span>
-                  </div>
-                  <div className="bg-white text-black px-4 py-2 rounded-lg flex items-center gap-2">
-                    <Box className="w-4 h-4" />
-                    <span className="mono text-xs font-bold uppercase tracking-wider">
-                      {data.analysis.architecture_pattern}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 mt-2 md:mt-0 flex flex-col items-end gap-3 w-full md:w-auto">
-                <ShareButton owner={data.owner} repo={data.repo} />
-
-                {activeTab !== "diagnostics" && (
-                  <button
-                    onClick={() => handleTabSwitch("diagnostics")}
-                    className="w-full relative group overflow-hidden rounded-lg p-[1px] bg-white/10 hover:bg-white/20 transition-colors"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                    <div className="relative flex items-center justify-center gap-2 bg-[#0a0a0a] px-6 py-3 rounded-lg transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)] group-hover:shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                      <Cpu className="w-4 h-4 text-slate-300" />
-                      <span className="text-xs font-bold text-slate-100 font-mono uppercase tracking-widest">
-                        Launch Engine
-                      </span>
-                    </div>
-                  </button>
-                )}
-              </div>
+    <div className="h-screen w-screen bg-[#0a0a0a] text-slate-200 overflow-hidden flex flex-col font-satoshi">
+      <header className="h-16 flex-shrink-0 border-b border-white/5 bg-[#0e0e0e] flex items-center justify-between px-4 lg:px-6 z-20">
+        <div className="flex items-center gap-6">
+          <button
+            onClick={handleBackNavigation}
+            title="Go back"
+            className="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          </button>
+          <div className="flex items-center gap-3">
+            <FaGithub className="w-5 h-5 text-slate-400 hidden sm:block" />
+            <h1 className="cabinet text-lg md:text-xl font-bold text-slate-100 flex items-center gap-2">
+              {source === "local" ? (
+                "Local Codebase"
+              ) : (
+                <>
+                  <span className="text-slate-500 font-medium">
+                    {data.owner}
+                  </span>
+                  <span className="text-slate-600">/</span>
+                  {data.repo}
+                </>
+              )}
+            </h1>
+            <div className="hidden md:flex items-center gap-2 ml-4 px-3 py-1 rounded-full bg-white/[0.02] border border-white/5">
+              <Terminal className="w-3 h-3 text-slate-500" />
+              <span className="mono text-[10px] text-slate-400 font-bold uppercase">
+                {data.language}
+              </span>
             </div>
-          </motion.div>
+          </div>
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ✨ FIX: Added min-h-[1000px] as a structural pillar[cite: 3] */}
-            <div
-              className={`${activeTab === "overview" ? "lg:col-span-8" : "lg:col-span-12"} space-y-12 transition-all duration-500 min-h-[1000px]`}
-            >
-              <div className="flex items-center justify-center">
-                <div className="inline-flex items-center p-1 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md shadow-2xl">
-                  <button
-                    onClick={() => handleTabSwitch("overview")}
-                    className={`relative px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-widest font-mono transition-all duration-300 ${
-                      activeTab === "overview"
-                        ? "text-white shadow-lg"
-                        : "text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    {activeTab === "overview" && (
-                      <motion.div
-                        layoutId="activeTabPill"
-                        className="absolute inset-0 bg-white/10 border border-white/20 rounded-lg"
-                        initial={false}
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 30,
-                        }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-2">
-                      <FileCode className="w-4 h-4" />
-                      Read_Docs
+        <div className="flex items-center gap-2 sm:gap-4">
+          <AnimatePresence mode="wait">
+            {!hideFeedback && (
+              <motion.div
+                key={feedbackSubmitted ? "thanks" : "form"}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5, filter: "blur(4px)" }}
+                className="hidden sm:flex items-center mr-2"
+              >
+                {!feedbackSubmitted ? (
+                  <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-1">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 px-2 font-bold">
+                      Helpful?
                     </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleTabSwitch("diagnostics")}
-                    className={`relative px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-widest font-mono transition-all duration-300 ${
-                      activeTab === "diagnostics"
-                        ? "text-slate-100 shadow-lg"
-                        : "text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    {activeTab === "diagnostics" && (
-                      <motion.div
-                        layoutId="activeTabPill"
-                        className="absolute inset-0 bg-white/5 border border-white/10 rounded-lg"
-                        initial={false}
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 30,
-                        }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full ${activeTab === "diagnostics" ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-600"}`}
-                      />
-                      Terminal
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {activeTab === "overview" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-8"
-                >
-                  <div className="glass-card p-8 rounded-3xl border border-white/5">
-                    <div className="flex items-center gap-3 mb-6">
-                      <Layers className="w-5 h-5 text-slate-400" />
-                      <h2 className="cabinet text-2xl font-bold text-white">
-                        System Purpose
-                      </h2>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed text-base">
-                      {data.analysis.what_it_does}
-                    </p>
+                    <button
+                      type="button"
+                      aria-label="Mark feedback as helpful"
+                      title="Mark feedback as helpful"
+                      onClick={() => handleFeedback(true)}
+                      className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-green-400 transition-colors"
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Mark feedback as not helpful"
+                      title="Mark feedback as not helpful"
+                      onClick={() => handleFeedback(false)}
+                      className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors"
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                    </button>
                   </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-[10px] uppercase font-mono text-green-400 font-bold">
+                      Thanks!
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg mr-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-500/50" />
+            <span className="text-[10px] uppercase font-mono text-green-500/50 font-bold">
+              Feedback Sent
+            </span>
+          </div>
 
-                  <div className="glass-card p-8 rounded-3xl border border-white/5">
-                    <div className="flex items-center gap-3 mb-8">
-                      <GitMerge className="w-5 h-5 text-slate-400" />
-                      <h2 className="cabinet text-2xl font-bold text-white">
+          {source !== "local" && (
+            <ShareButton owner={data.owner} repo={data.repo} />
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
+          <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center px-4 gap-1 bg-[#0a0a0a]/50">
+            <button
+              onClick={() => setActiveTab("overview")}
+              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "overview" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
+            >
+              <FileCode className="w-3.5 h-3.5" /> Read_Docs
+            </button>
+            <button
+              onClick={() => setActiveTab("visualizer")}
+              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "visualizer" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
+            >
+              <Layers className="w-3.5 h-3.5" /> Blueprint_Map
+            </button>
+            <button
+              onClick={() => setActiveTab("doctor")}
+              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "doctor" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
+            >
+              <Terminal className="w-3.5 h-3.5" /> Diagnostic_Engine
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-hidden relative">
+            {activeTab === "overview" && (
+              <div className="absolute inset-0 overflow-y-auto p-6 custom-scrollbar">
+                <motion.div
+                  initial="hidden"
+                  animate="show"
+                  variants={fadeUp}
+                  className="max-w-5xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 pb-12"
+                >
+                  <div className="xl:col-span-8 space-y-6">
+                    <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
+                      <h2 className="cabinet text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-slate-500" /> System
+                        Purpose
+                      </h2>
+                      <p className="text-slate-400 leading-relaxed text-sm">
+                        {data.analysis.what_it_does}
+                      </p>
+                    </div>
+
+                    <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
+                      <h2 className="cabinet text-xl font-bold text-white mb-6 flex items-center gap-2">
+                        <GitMerge className="w-4 h-4 text-slate-500" />{" "}
                         Execution Flow
                       </h2>
-                    </div>
-                    <div className="relative pl-4 border-l border-white/10 ml-4 space-y-8 pb-4">
-                      {data.analysis.execution_flow.map((step, i) => (
-                        <div key={i} className="relative pl-6">
-                          <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0e0e0e]" />
-                          <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-2 uppercase">
-                            Step 0{i + 1}
-                          </span>
-                          <p className="text-sm text-slate-300 leading-relaxed">
-                            {step}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="glass-card p-8 rounded-3xl border border-white/5">
-                    <div className="flex items-center gap-3 mb-6">
-                      <CheckCircle2 className="w-5 h-5 text-slate-400" />
-                      <h2 className="cabinet text-2xl font-bold text-white">
-                        Developer Onboarding
-                      </h2>
-                    </div>
-                    <div className="space-y-4">
-                      {data.analysis.onboarding_guide.map((tip, i) => (
-                        <div
-                          key={i}
-                          className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 transition-colors hover:bg-white/[0.04]"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-[#141414] border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="mono text-[10px] text-white font-bold">
-                              {i + 1}
+                      <div className="relative pl-4 border-l border-white/10 ml-2 space-y-6 pb-2">
+                        {data.analysis.execution_flow.map((step, i) => (
+                          <div key={i} className="relative pl-6">
+                            <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-slate-400 border-2 border-[#0e0e0e]" />
+                            <span className="mono text-[10px] text-slate-500 font-bold tracking-widest block mb-1 uppercase">
+                              Step 0{i + 1}
                             </span>
-                          </div>
-                          <p className="text-sm text-slate-300 leading-relaxed">
-                            {tip}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === "diagnostics" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-8"
-                >
-                  {data.mermaidDiagram && (
-                    <DebugInterface
-                      initialChart={data.mermaidDiagram}
-                      repoUrl={`https://github.com/${data.owner}/${data.repo}`}
-                    />
-                  )}
-                </motion.div>
-              )}
-
-              <div className="pt-12 mt-12 border-t border-white/10">
-                <div
-                  className={`${activeTab === "diagnostics" ? "max-w-4xl mx-auto" : "w-full"}`}
-                >
-                  <div className="flex flex-col mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Terminal className="w-4 h-4 text-white" />
-                      <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">
-                        Active_Query_Terminal
-                      </h3>
-                    </div>
-                    <p className="text-slate-400 text-sm mb-1 ml-7">
-                      Ask anything about this codebase
-                    </p>
-                    <p className="mono text-[10px] text-slate-600 uppercase tracking-widest ml-7">
-                      Powered by Groq{" "}
-                      <span className="text-indigo-400/50">Llama 3.3</span>
-                    </p>
-                  </div>
-                  <RepoChat
-                    repoContext={
-                      data as unknown as {
-                        repo?: string;
-                        [key: string]: string | undefined;
-                      }
-                    }
-                  />
-                </div>
-              </div>
-
-              <motion.section
-                variants={fadeUp}
-                className="relative overflow-hidden pt-12"
-              >
-                <div className="glass-card p-8 rounded-3xl border-2 border-white/10 bg-gradient-to-br from-white/[0.03] to-white/[0.01]">
-                  {!feedbackSubmitted ? (
-                    <>
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
-                          <span className="text-xl">💬</span>
-                        </div>
-                        <h3 className="cabinet text-xl font-bold text-white">
-                          Was this analysis helpful?
-                        </h3>
-                      </div>
-                      <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                        Your feedback helps us improve the quality of our code
-                        analysis.
-                      </p>
-                      <div className="flex gap-4">
-                        <button
-                          onClick={() => handleFeedback(true)}
-                          className="flex-1 group relative overflow-hidden px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300"
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="relative flex items-center justify-center gap-3">
-                            <ThumbsUp className="w-5 h-5 text-slate-400 group-hover:text-green-400 transition-colors" />
-                            <span className="font-bold text-sm text-white">
-                              Yes, helpful!
-                            </span>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => handleFeedback(false)}
-                          className="flex-1 group relative overflow-hidden px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300"
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="relative flex items-center justify-center gap-3">
-                            <ThumbsDown className="w-5 h-5 text-slate-400 group-hover:text-red-400 transition-colors" />
-                            <span className="font-bold text-sm text-white">
-                              Not quite
-                            </span>
-                          </div>
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="text-center py-4"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
-                        <CheckCircle2 className="w-6 h-6 text-green-400" />
-                      </div>
-                      <h4 className="cabinet text-lg font-bold text-white mb-2">
-                        Thank you for your feedback!
-                      </h4>
-                      <p className="text-slate-400 text-sm">
-                        {feedback === "helpful"
-                          ? "We're glad this analysis was useful."
-                          : "We appreciate your honesty."}
-                      </p>
-                    </motion.div>
-                  )}
-                </div>
-              </motion.section>
-            </div>
-
-            {activeTab === "overview" && (
-              <div className="lg:col-span-4 space-y-8 mt-12 lg:mt-0 transition-opacity duration-300">
-                <motion.section variants={fadeUp}>
-                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
-                    Tech Stack
-                  </h2>
-                  <div className="space-y-3">
-                    {data.analysis.tech_stack.map((tech, i) => (
-                      <div
-                        key={i}
-                        className="glass-card p-5 rounded-2xl border border-white/5 transition-all hover:bg-white/[0.04]"
-                      >
-                        <p className="cabinet font-bold text-white mb-2">
-                          {tech.name}
-                        </p>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          {tech.purpose}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </motion.section>
-
-                <motion.section variants={fadeUp}>
-                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
-                    Key Modules
-                  </h2>
-                  <div className="space-y-3">
-                    {data.analysis.key_modules.map((mod, i) => (
-                      <div
-                        key={i}
-                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a] border border-white/5"
-                      >
-                        <div className="flex items-center justify-between gap-4 mb-4">
-                          <code
-                            className="mono text-[11px] text-slate-300 truncate"
-                            title={mod.file}
-                          >
-                            {mod.file.split("/").pop()}
-                          </code>
-                          <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-2 py-1 rounded">
-                            {mod.role}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
-                          {mod.why_it_exists}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </motion.section>
-
-                <motion.section variants={fadeUp}>
-                  <h2 className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 px-2">
-                    Blast Radius
-                  </h2>
-                  <div className="space-y-3">
-                    {data.analysis.blast_radius?.map((blast, i) => (
-                      <div
-                        key={i}
-                        className="glass-card p-5 rounded-2xl bg-[#0a0a0a] border border-white/5"
-                      >
-                        <div className="flex items-center justify-between gap-4 mb-4">
-                          <code
-                            className="mono text-[11px] text-slate-300 truncate"
-                            title={blast.file}
-                          >
-                            {blast.file.split("/").pop()}
-                          </code>
-                          <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-2 py-1 rounded">
-                            {blast.dependents} dependents
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-white/10 pl-3">
-                          {blast.warning}
-                        </p>
-
-                        <div className="mt-3 space-y-2">
-                          {blast.safe_refactor_steps?.map((step, j) => (
-                            <p
-                              key={j}
-                              className="text-[11px] text-slate-400 leading-relaxed flex gap-2"
-                            >
-                              <span className="text-amber-500/60 mt-1">•</span>
+                            <p className="text-sm text-slate-400 leading-relaxed">
                               {step}
                             </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
+                      <h2 className="cabinet text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-slate-500" />{" "}
+                        Developer Onboarding
+                      </h2>
+                      <div className="space-y-3">
+                        {data.analysis.onboarding_guide.map((tip, i) => (
+                          <div
+                            key={i}
+                            className="flex gap-4 p-4 rounded-xl bg-black/20 border border-white/5"
+                          >
+                            <div className="w-5 h-5 rounded-full bg-[#141414] border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <span className="mono text-[9px] text-slate-400 font-bold">
+                                {i + 1}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-400 leading-relaxed">
+                              {tip}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="xl:col-span-4 space-y-6">
+                    {data.analysis.blast_radius &&
+                      data.analysis.blast_radius.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 mb-2 px-1">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500/80" />
+                            <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-amber-500/80">
+                              Blast Radius
+                            </h2>
+                          </div>
+                          {data.analysis.blast_radius.map((risk, i) => (
+                            <div
+                              key={i}
+                              className="glass-card p-4 rounded-xl border border-amber-500/10 bg-amber-500/[0.02]"
+                            >
+                              <code
+                                className="mono text-[11px] text-amber-400/80 mb-2 block truncate"
+                                title={risk.file}
+                              >
+                                {risk.file.split("/").pop()}
+                              </code>
+                              <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+                                {risk.warning}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[9px] text-amber-500/60 font-mono uppercase">
+                                <Layers className="w-3 h-3" /> {risk.dependents}{" "}
+                                Dependent File(s)
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
+                      )}
+
+                    <div className="space-y-3">
+                      <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">
+                        Key Modules
+                      </h2>
+                      {data.analysis.key_modules.map((mod, i) => (
+                        <div
+                          key={i}
+                          className="glass-card p-4 rounded-xl bg-[#0e0e0e] border border-white/5"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <code
+                              className="mono text-[11px] text-slate-300 truncate"
+                              title={mod.file}
+                            >
+                              {mod.file.split("/").pop()}
+                            </code>
+                            <span className="text-[8px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">
+                              {mod.role}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed border-l-2 border-white/10 pl-2">
+                            {mod.why_it_exists}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </motion.section>
+                </motion.div>
+              </div>
+            )}
+
+            {activeTab === "visualizer" && (
+              <div className="absolute inset-0 p-4">
+                {data.dependencyGraph &&
+                Object.keys(data.dependencyGraph).length > 0 ? (
+                  <div className="w-full h-full rounded-2xl border border-white/5 overflow-hidden">
+                    <ArchitectureMap
+                      dependencyGraph={data.dependencyGraph}
+                      entryPoints={data.entryPoints}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-full rounded-2xl border border-white/5 bg-[#0e0e0e] flex flex-col items-center justify-center">
+                    <Layers className="w-10 h-10 text-slate-600 mb-4" />
+                    <p className="text-slate-500 font-mono text-xs">
+                      No blueprint data parsed for this codebase.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "doctor" && (
+              <div className="absolute inset-0 overflow-hidden p-4">
+                <div className="flex flex-col gap-4 h-full">
+                  {data.mermaidDiagram ? (
+                    <>
+                      <div className="w-full flex-1 min-h-0 rounded-2xl border border-white/5 overflow-hidden bg-[#0e0e0e] relative">
+                        <DebugInterface
+                          repoUrl={
+                            source === "local"
+                              ? "Local.zip Codebase"
+                              : `https://github.com/${data.owner}/${data.repo}`
+                          }
+                        />
+                      </div>
+                      <button
+                        onClick={() => setIsChatOpen(true)}
+                        className="w-full flex-shrink-0 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center justify-center gap-3 group shadow-lg"
+                      >
+                        <MessageSquare className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
+                        <span className="text-sm font-bold text-slate-300 group-hover:text-white transition-colors">
+                          Discuss this diagnosis in Copilot &rarr;
+                        </span>
+                      </button>
+                    </>
+                  ) : (
+                    <div className="w-full h-full rounded-2xl border border-white/5 bg-[#0e0e0e] flex flex-col items-center justify-center min-h-[600px]">
+                      <Terminal className="w-10 h-10 text-slate-600 mb-4" />
+                      <p className="text-slate-500 font-mono text-xs">
+                        Diagnostic core offline.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
+
+        <AnimatePresence>
+          {!isChatOpen && (
+            <motion.button
+              type="button"
+              initial={{ x: 100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 100, opacity: 0 }}
+              onClick={() => setIsChatOpen(true)}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-3 bg-[#141414]/90 backdrop-blur-md border border-white/10 border-r-0 px-4 py-4 rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] hover:bg-[#1a1a1a] hover:pr-6 transition-all group"
+            >
+              <div className="relative">
+                <MessageSquare className="w-5 h-5 text-slate-300 group-hover:text-white transition-colors" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              </div>
+              <div className="flex flex-col text-left hidden sm:flex">
+                <span className="font-bold text-xs text-white">Need Help?</span>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                  Ask Copilot
+                </span>
+              </div>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isChatOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 420, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: EXPO_OUT }}
+              className="h-full flex-shrink-0 border-l border-white/5 bg-[#0a0a0a] flex flex-col z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.5)]"
+            >
+              <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-4 bg-[#0e0e0e]">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-3.5 h-3.5 text-slate-400" />
+                  <h3 className="text-[11px] font-bold text-slate-300 uppercase tracking-widest font-mono">
+                    Autopsy Copilot
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsChatOpen(false)}
+                  className="p-1.5 rounded-md hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 bg-transparent">
+                <RepoChat
+                  repoContext={
+                    data as unknown as {
+                      repo?: string;
+                      [key: string]: string | undefined;
+                    }
+                  }
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showExitModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => router.push("/")}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative z-10 glass-card p-6 rounded-2xl border border-white/10 max-w-sm w-full shadow-2xl bg-[#0e0e0e]"
+            >
+              <h3 className="cabinet text-lg font-bold text-white mb-2 text-center">
+                Leaving so soon?
+              </h3>
+              <p className="text-slate-400 text-xs text-center mb-6">
+                Quick check: Was this codebase analysis helpful to you?
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleFeedback(true, true)}
+                    className="flex-1 py-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-colors text-sm font-bold text-slate-300 flex items-center justify-center gap-2"
+                  >
+                    <ThumbsUp className="w-4 h-4" /> Yes
+                  </button>
+                  <button
+                    onClick={() => handleFeedback(false, true)}
+                    className="flex-1 py-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-colors text-sm font-bold text-slate-300 flex items-center justify-center gap-2"
+                  >
+                    <ThumbsDown className="w-4 h-4" /> No
+                  </button>
+                </div>
+                <button
+                  onClick={() => router.push("/")}
+                  className="w-full py-2 mt-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  Skip
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -724,8 +708,8 @@ export default function AnalyzePage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[var(--bg-deep)] flex items-center justify-center text-white font-mono">
-          LOADING_ANALYSIS...
+        <div className="h-screen w-screen bg-[#0a0a0a] flex items-center justify-center text-slate-500 font-mono text-sm tracking-widest uppercase">
+          INITIALIZING...
         </div>
       }
     >
