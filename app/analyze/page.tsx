@@ -377,12 +377,6 @@ function AnalyzeContent() {
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg mr-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-500/50" />
-            <span className="text-[10px] uppercase font-mono text-green-500/50 font-bold">
-              Feedback Sent
-            </span>
-          </div>
 
           {source !== "local" && (
             <ShareButton owner={data.owner} repo={data.repo} />
