@@ -9,11 +9,21 @@ import ReactFlow, {
   MarkerType,
   Handle,
   Position,
+  type Node,
+  type Edge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "dagre";
 
-const GlassNode = ({ data }: any) => {
+interface GlassNodeData {
+  isBlastRadius: boolean;
+  isDimmed: boolean;
+  isEntry?: boolean;
+  fullPath: string;
+  label: string;
+}
+
+const GlassNode = ({ data }: { data: GlassNodeData }) => {
   const isBlastRadius = data.isBlastRadius;
   const isDimmed = data.isDimmed;
 
@@ -68,7 +78,11 @@ const nodeTypes = {
   glass: GlassNode,
 };
 
-const getLayoutedElements = (nodes: any[], edges: any[], direction = "TB") => {
+const getLayoutedElements = (
+  nodes: Node[],
+  edges: Edge[],
+  direction = "TB",
+) => {
   if (!nodes || !edges) return { nodes: [], edges: [] };
 
   const dagreGraph = new dagre.graphlib.Graph();
@@ -104,7 +118,6 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = "TB") => {
 
   return { nodes: layoutedNodes, edges };
 };
-
 export default function ArchitectureMap({
   dependencyGraph = {},
   entryPoints = [],
@@ -132,8 +145,8 @@ export default function ArchitectureMap({
   }, [dependencyGraph]);
 
   const { initialNodes, initialEdges } = useMemo(() => {
-    const nodes: any[] = [];
-    const edges: any[] = [];
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
 
     if (!dependencyGraph || typeof dependencyGraph !== "object") {
       return { initialNodes: [], initialEdges: [] };

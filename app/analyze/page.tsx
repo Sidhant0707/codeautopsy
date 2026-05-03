@@ -393,25 +393,40 @@ function AnalyzeContent() {
 
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center px-4 gap-1 bg-[#0a0a0a]/50">
-            <button
-              onClick={() => setActiveTab("overview")}
-              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "overview" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
-            >
-              <FileCode className="w-3.5 h-3.5" /> Read_Docs
-            </button>
-            <button
-              onClick={() => setActiveTab("visualizer")}
-              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "visualizer" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
-            >
-              <Layers className="w-3.5 h-3.5" /> Blueprint_Map
-            </button>
-            <button
-              onClick={() => setActiveTab("doctor")}
-              className={`px-4 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${activeTab === "doctor" ? "bg-white/10 text-white" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
-            >
-              <Terminal className="w-3.5 h-3.5" /> Diagnostic_Engine
-            </button>
+          {/* ✨ UPGRADED GLOWING MAIN TABS ✨ */}
+          <div className="h-16 flex-shrink-0 border-b border-white/5 flex items-center px-4 sm:px-6 bg-[#0a0a0a]/50 backdrop-blur-sm z-20">
+            <div className="flex bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)]">
+              <button
+                onClick={() => setActiveTab("overview")}
+                className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "overview"
+                    ? "bg-white/10 text-white shadow-inner"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <FileCode className="w-3.5 h-3.5" /> Read_Docs
+              </button>
+              <button
+                onClick={() => setActiveTab("visualizer")}
+                className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "visualizer"
+                    ? "bg-white/10 text-white shadow-inner"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" /> Blueprint_Map
+              </button>
+              <button
+                onClick={() => setActiveTab("doctor")}
+                className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "doctor"
+                    ? "bg-white/10 text-white shadow-inner"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5" /> Diagnostic_Engine
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-hidden relative">
@@ -544,13 +559,22 @@ function AnalyzeContent() {
             )}
 
             {activeTab === "visualizer" && data && (
-              <div className="absolute inset-0 p-4 flex flex-col">
-                <div className="relative flex-1 w-full rounded-2xl border border-white/5 overflow-hidden">
-                  {/* 🛠️ THE VIEW TOGGLE SWITCH - NOW WITH AMBIENT GLOW */}
-                  <div className="absolute top-6 right-6 z-30 flex bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)]">
+              <div className="absolute inset-0 p-4 flex flex-col gap-3">
+                {/* 🛠️ TOP ROW: DOCKED VIEW TOGGLES */}
+                <div className="w-full flex justify-between items-end px-1 flex-shrink-0">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase">
+                      Blueprint Map
+                    </h3>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      VISUAL_LAYOUT // {mapView.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="flex bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                     <button
                       onClick={() => setMapView("graph")}
-                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                         mapView === "graph"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -560,7 +584,7 @@ function AnalyzeContent() {
                     </button>
                     <button
                       onClick={() => setMapView("directory")}
-                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                         mapView === "directory"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -570,7 +594,7 @@ function AnalyzeContent() {
                     </button>
                     <button
                       onClick={() => setMapView("treemap")}
-                      className={`px-4 py-2 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
                         mapView === "treemap"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -579,8 +603,10 @@ function AnalyzeContent() {
                       Codebase Weight
                     </button>
                   </div>
+                </div>
 
-                  {/* 🚀 CONDITIONAL RENDER LOGIC */}
+                {/* 🚀 BOTTOM ROW: THE CANVAS AREA */}
+                <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
                   {mapView === "graph" ? (
                     data.dependencyGraph &&
                     Object.keys(data.dependencyGraph).length > 0 ? (
@@ -674,7 +700,7 @@ function AnalyzeContent() {
               animate={{ width: 420, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: EXPO_OUT }}
-              className="h-full flex-shrink-0 border-l border-white/5 bg-[#0a0a0a] flex flex-col z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.5)]"
+              className="h-full flex-shrink-0 border-l border-white/5 bg-[#0a0a0a] flex flex-col z-30 shadow-[-20px_0_40px_rgba(0,0,0,0.5)]"
             >
               <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-4 bg-[#0e0e0e]">
                 <div className="flex items-center gap-2">
