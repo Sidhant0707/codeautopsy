@@ -68,7 +68,7 @@ interface RepoData {
 function AnalyzeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const repoUrl = searchParams.get("repo");
+  const repoUrl = searchParams.get("url") || searchParams.get("repo");
   const source = searchParams.get("source");
 
   const [data, setData] = useState<RepoData | null>(null);
@@ -120,7 +120,7 @@ function AnalyzeContent() {
           return;
         }
 
-        const res = await fetch("/api/analyze", {
+        const res = await fetch(`/api/analyze?t=${Date.now()}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repoUrl }),
