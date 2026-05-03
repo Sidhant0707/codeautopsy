@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { LayoutGrid, LogOut, ChevronDown } from "lucide-react";
+import { LayoutGrid, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase-browser";
 import { User } from "@supabase/supabase-js";
 
@@ -14,28 +14,27 @@ export default function Header() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Check if the user has already seen the new PR tool
     if (typeof window !== "undefined") {
       const hasSeenTool = localStorage.getItem("seenPRTool");
       if (!hasSeenTool) {
-        setShowPulse(true);
+        const t = setTimeout(() => setShowPulse(true), 0);
+        return () => clearTimeout(t);
       }
     }
 
-    // Fetch the authenticated user
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
     });
 
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+      },
+    );
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Handle clicking the dashboard link to clear the notification
   const handleDashboardClick = () => {
     if (typeof window !== "undefined") {
       localStorage.setItem("seenPRTool", "true");
@@ -51,7 +50,7 @@ export default function Header() {
 
   return (
     <header
-      className="sticky top-0 z-50 w-full px-6 py-4 flex items-center justify-between"
+      className="sticky top-0 z-50 w-full px-4 sm:px-6 py-4 flex items-center justify-between"
       style={{
         background: "rgba(22,22,22,0.6)",
         backdropFilter: "blur(12px)",
@@ -59,33 +58,43 @@ export default function Header() {
       }}
     >
       <Link href="/" className="cursor-pointer flex items-center gap-3 group">
-        <Image 
-          src="/codeautopsy-logo1.png" 
-          alt="Logo" 
-          width={32} 
+        <Image
+          src="/codeautopsy-logo1.png"
+          alt="Logo"
+          width={32}
           height={32}
-          style={{ width: 'auto', height: 'auto' }} 
+          style={{ width: "auto", height: "auto" }}
           className="transition-transform group-hover:scale-110"
         />
-        <span className="text-xl font-bold tracking-tight text-slate-100">CodeAutopsy</span>
+        <span className="text-xl font-bold tracking-tight text-slate-100 hidden sm:block">
+          CodeAutopsy
+        </span>
       </Link>
 
       <nav className="hidden md:flex items-center gap-8">
-        <Link href="/about" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
+        <Link
+          href="/about"
+          className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium"
+        >
           About
         </Link>
-        <Link href="/#features" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
+        <Link
+          href="/#features"
+          className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium"
+        >
           Features
         </Link>
-        <Link href="/pricing" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
+        <Link
+          href="/pricing"
+          className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium"
+        >
           Pricing
         </Link>
       </nav>
 
       <div className="flex items-center gap-4">
         {user ? (
-          <div className="flex items-center gap-4">
-            
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* Desktop Dashboard Link */}
             <Link
               href="/dashboard"
@@ -103,27 +112,35 @@ export default function Header() {
             </Link>
 
             <div className="relative">
+              {/* ✨ GOOGLE-STYLE CIRCULAR AVATAR BUTTON ✨ */}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white transition-colors"
-                style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}
+                title={user.email || "Account settings"}
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-[#1a1a1a] hover:bg-white/10 border border-white/10 transition-all focus:outline-none focus:ring-2 focus:ring-white/20 active:scale-95"
               >
-                <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white">
+                <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-sm font-bold text-white shadow-inner">
                   {user.email?.[0].toUpperCase()}
                 </div>
-                <span className="max-w-[120px] truncate">{user.email}</span>
-                <ChevronDown className="w-3 h-3" />
               </button>
 
               {menuOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-48 rounded-xl overflow-hidden shadow-2xl"
-                  style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
+                  className="absolute right-0 mt-2 w-56 rounded-xl overflow-hidden shadow-2xl"
+                  style={{
+                    background: "#141414",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
                 >
-                  <div className="px-4 py-3 border-b border-white/5">
-                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                  {/* We keep the email visible inside the dropdown menu */}
+                  <div className="px-4 py-3 border-b border-white/5 bg-[#1a1a1a]/50">
+                    <p className="text-sm font-medium text-slate-200 truncate">
+                      {user.email}
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest mt-1">
+                      Free Tier
+                    </p>
                   </div>
-                  
+
                   {/* Mobile Dashboard Link */}
                   <Link
                     href="/dashboard"
@@ -142,9 +159,33 @@ export default function Header() {
                     </span>
                   </Link>
 
+                  <Link
+                    href="/profile"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded-full border border-current flex items-center justify-center overflow-hidden">
+                      {/* A tiny user icon fallback */}
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="w-3 h-3 mt-1"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                        />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </div>
+                    Account Settings
+                  </Link>
+
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors border-t border-white/5"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-[#ff4444]/10 hover:text-[#ff4444] transition-colors border-t border-white/5"
                   >
                     <LogOut className="w-4 h-4" />
                     Sign out
@@ -155,13 +196,19 @@ export default function Header() {
           </div>
         ) : (
           <>
-            <Link href="/login" className="cursor-pointer text-sm font-medium text-slate-400 hover:text-white transition-colors">
+            <Link
+              href="/login"
+              className="cursor-pointer text-sm font-medium text-slate-400 hover:text-white transition-colors"
+            >
               Log in
             </Link>
             <Link
               href="/signup"
               className="cursor-pointer px-5 py-2 rounded-lg text-sm font-bold text-white transition-all hover:bg-[#222] active:scale-95"
-              style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}
+              style={{
+                background: "#1a1a1a",
+                border: "1px solid rgba(255,255,255,0.1)",
+              }}
             >
               Sign up
             </Link>
