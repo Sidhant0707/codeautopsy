@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
+import BackButton from "@/components/BackButton";
 import Link from "next/link";
 import {
   Database,
@@ -8,8 +9,7 @@ import {
   ArrowRight,
   LayoutGrid,
   Plus,
-  ArrowLeft,
-  GitPullRequest, // Added GitPullRequest for the new tool card
+  GitPullRequest,
 } from "lucide-react";
 
 export const metadata = {
@@ -41,13 +41,8 @@ export default async function DashboardPage() {
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent pointer-events-none z-0 blur-3xl" />
 
       <div className="max-w-6xl mx-auto relative z-10">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-slate-500 hover:text-white transition-colors text-xs font-mono uppercase tracking-widest mb-8 group"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Back to Home
-        </Link>
+        {/* ✨ Our new Client-Side Back Button Island ✨ */}
+        <BackButton />
 
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12 border-b border-white/5 pb-8">
           <div>
@@ -73,7 +68,6 @@ export default async function DashboardPage() {
           </Link>
         </header>
 
-        {/* Workspace Tools Section for PR Analyzer */}
         {/* Workspace Tools Section for PR Analyzer */}
         <div className="mb-12">
           <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
@@ -125,7 +119,7 @@ export default async function DashboardPage() {
                 No Autopsies Found
               </h3>
               <p className="text-slate-400 text-sm mb-8 max-w-md">
-                You haven't analyzed any repositories yet. Start your first scan
+                You haven&apos;t analyzed any repositories yet. Start your first scan
                 to generate an architecture blueprint and diagnostic report.
               </p>
               <Link

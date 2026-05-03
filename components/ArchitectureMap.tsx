@@ -23,6 +23,7 @@ interface GlassNodeData {
   label: string;
 }
 
+// 🔥 DEFINED OUTSIDE: Prevents node re-mounting on every render
 const GlassNode = ({ data }: { data: GlassNodeData }) => {
   const isBlastRadius = data.isBlastRadius;
   const isDimmed = data.isDimmed;
@@ -74,10 +75,6 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
   );
 };
 
-const nodeTypes = {
-  glass: GlassNode,
-};
-
 const getLayoutedElements = (
   nodes: Node[],
   edges: Edge[],
@@ -118,6 +115,7 @@ const getLayoutedElements = (
 
   return { nodes: layoutedNodes, edges };
 };
+
 export default function ArchitectureMap({
   dependencyGraph = {},
   entryPoints = [],
@@ -127,16 +125,16 @@ export default function ArchitectureMap({
 }) {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  // Compute the reverse graph (who depends on who) to trace blast radius
+  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  const nodeTypes = useMemo(() => ({ glass: GlassNode }), []);
+
   const adjacencyList = useMemo(() => {
     const reverseGraph: Record<string, string[]> = {};
-
     Object.keys(dependencyGraph).forEach((src) => {
       const deps = dependencyGraph[src];
       if (Array.isArray(deps)) {
         deps.forEach((tgt) => {
           if (!reverseGraph[tgt]) reverseGraph[tgt] = [];
-          // If src depends on tgt, tgt breaking means src breaks
           reverseGraph[tgt].push(src);
         });
       }
@@ -144,12 +142,12 @@ export default function ArchitectureMap({
     return reverseGraph;
   }, [dependencyGraph]);
 
-  const { initialNodes, initialEdges } = useMemo(() => {
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
     if (!dependencyGraph || typeof dependencyGraph !== "object") {
-      return { initialNodes: [], initialEdges: [] };
+      return { nodes: [], edges: [] };
     }
 
     Object.keys(dependencyGraph).forEach((filePath) => {
@@ -184,24 +182,19 @@ export default function ArchitectureMap({
       }
     });
 
-    const layout = getLayoutedElements(nodes, edges);
-    return { initialNodes: layout.nodes, initialEdges: layout.edges };
+    return getLayoutedElements(nodes, edges);
   }, [dependencyGraph, entryPoints]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Initialize the layout once
   useEffect(() => {
-    const layouted = getLayoutedElements(initialNodes, initialEdges);
-    setNodes(layouted.nodes);
-    setEdges(layouted.edges);
+    setNodes(initialNodes);
+    setEdges(initialEdges);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-  // Handle the Blast Radius Interaction
   useEffect(() => {
     if (!selectedNode) {
-      // Reset everything if nothing is selected
       setNodes((nds) =>
         nds.map((n) => ({
           ...n,
@@ -219,22 +212,17 @@ export default function ArchitectureMap({
       return;
     }
 
-    // Traverse the reverse graph to find all impacted files
     const blastRadiusNodes = new Set<string>();
     const blastRadiusEdges = new Set<string>();
     const queue = [selectedNode];
-
     blastRadiusNodes.add(selectedNode);
 
     while (queue.length > 0) {
       const current = queue.shift()!;
       const dependents = adjacencyList[current] || [];
-
       dependents.forEach((dep) => {
-        // The edge is drawn from dependent -> current
         const edgeId = `e-${dep}-${current}`;
         blastRadiusEdges.add(edgeId);
-
         if (!blastRadiusNodes.has(dep)) {
           blastRadiusNodes.add(dep);
           queue.push(dep);
@@ -242,7 +230,6 @@ export default function ArchitectureMap({
       });
     }
 
-    // Apply the styles
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
@@ -260,9 +247,9 @@ export default function ArchitectureMap({
         return {
           ...e,
           style: {
-            stroke: isBlastEdge ? "#ef4444" : "#475569", // Red if impacted
+            stroke: isBlastEdge ? "#ef4444" : "#475569",
             strokeWidth: isBlastEdge ? 3 : 2,
-            opacity: isBlastEdge ? 1 : 0.2, // Dim if not
+            opacity: isBlastEdge ? 1 : 0.2,
           },
           animated: isBlastEdge,
           markerEnd: {

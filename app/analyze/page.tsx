@@ -71,10 +71,15 @@ interface PRAnalysisResult {
   prNumber: number;
   title: string;
   description: string;
-  blastRadius: { file: string; impact: string }[];
+  blastRadius: PRBlastRadiusItem[];
   architecturalChanges: string[];
   breakingDependencies: string[];
   riskLevel: "low" | "medium" | "high";
+}
+
+interface PRBlastRadiusItem {
+  file: string;
+  impact: string;
 }
 
 function AnalyzeContent() {
@@ -88,13 +93,44 @@ function AnalyzeContent() {
   const [loading, setLoading] = useState(true);
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
+  // 1. Initialize with defaults to prevent Next.js hydration errors
   const [activeTab, setActiveTab] = useState<
     "overview" | "visualizer" | "doctor" | "pr_impact"
   >("overview");
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [mapView, setMapView] = useState<"graph" | "treemap" | "directory">(
     "graph",
   );
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // 2. On mount, check if we saved a previous location in this session
+  useEffect(() => {
+    const savedTab = sessionStorage.getItem("codeautopsy_tab");
+    const savedView = sessionStorage.getItem("codeautopsy_view");
+
+    if (
+      savedTab &&
+      ["overview", "visualizer", "doctor", "pr_impact"].includes(savedTab)
+    ) {
+      setActiveTab(
+        savedTab as "overview" | "visualizer" | "doctor" | "pr_impact",
+      );
+    }
+    // validate savedView before casting to the precise union type to avoid `any`
+    if (savedView && ["graph", "treemap", "directory"].includes(savedView)) {
+      setMapView(savedView as "graph" | "treemap" | "directory");
+    }
+
+    setIsHydrated(true);
+  }, []);
+
+  // 3. Whenever the user clicks a new tab or view, quietly save it
+  useEffect(() => {
+    if (isHydrated) {
+      sessionStorage.setItem("codeautopsy_tab", activeTab);
+      sessionStorage.setItem("codeautopsy_view", mapView);
+    }
+  }, [activeTab, mapView, isHydrated]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [hideFeedback, setHideFeedback] = useState(false);
@@ -111,6 +147,14 @@ function AnalyzeContent() {
     setIsAnalyzingPR(true);
     setPrError(null);
 
+    const extractedPrNumber = prInput.match(/\d+/)?.[0];
+
+    if (!extractedPrNumber) {
+      setPrError("Please enter a valid PR number.");
+      setIsAnalyzingPR(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/analyze-pr", {
         method: "POST",
@@ -118,7 +162,7 @@ function AnalyzeContent() {
         body: JSON.stringify({
           owner: data?.owner,
           repo: data?.repo,
-          prNumber: prInput,
+          prNumber: extractedPrNumber,
         }),
       });
 
@@ -226,14 +270,14 @@ function AnalyzeContent() {
       console.error(err);
     }
 
-    if (exitAfter) router.push("/");
+    if (exitAfter) router.back();
   };
 
   const handleBackNavigation = () => {
     if (!feedbackSubmitted) {
       setShowExitModal(true);
     } else {
-      router.push("/");
+      router.back();
     }
   };
 
@@ -278,26 +322,52 @@ function AnalyzeContent() {
       </div>
     );
 
-  if (error)
+  if (error) {
+    const isRateLimit =
+      error.includes("RATE_LIMIT_REACHED") || error.includes("Daily limit");
+
     return (
-      <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center font-satoshi">
-        <div className="glass-card p-8 rounded-2xl max-w-md text-center border border-red-500/10">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
-            <Terminal className="w-6 h-6 text-red-400" />
+      <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center font-satoshi p-4">
+        <div
+          className={`glass-card p-8 rounded-2xl max-w-md text-center border ${isRateLimit ? "border-amber-500/20" : "border-red-500/10"}`}
+        >
+          <div
+            className={`w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-6 border ${isRateLimit ? "bg-amber-500/10 border-amber-500/20" : "bg-red-500/10 border-red-500/20"}`}
+          >
+            {isRateLimit ? (
+              <Layers className="w-6 h-6 text-amber-400" />
+            ) : (
+              <Terminal className="w-6 h-6 text-red-400" />
+            )}
           </div>
           <h2 className="cabinet text-2xl font-bold text-white mb-2">
-            Autopsy Failed
+            {isRateLimit ? "Daily Limit Reached" : "Autopsy Failed"}
           </h2>
-          <p className="text-slate-400 text-sm mb-8">{error}</p>
-          <button
-            onClick={() => router.push("/")}
-            className="w-full px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-all flex items-center justify-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" /> Return to Dashboard
-          </button>
+          <p className="text-slate-400 text-sm mb-8">
+            {isRateLimit
+              ? "You've hit your Free Tier limit of 10 autopsies for today. Upgrade your workspace to unlock unlimited scans and priority routing."
+              : error}
+          </p>
+          <div className="flex flex-col gap-3">
+            {isRateLimit && (
+              <button
+                onClick={() => router.push("/pricing")}
+                className="w-full px-6 py-3 rounded-xl bg-white text-black font-bold text-sm hover:scale-[1.02] transition-transform"
+              >
+                View Upgrade Options
+              </button>
+            )}
+            <button
+              onClick={() => router.back()}
+              className="w-full px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" /> Go Back
+            </button>
+          </div>
         </div>
       </div>
     );
+  }
 
   if (!data) return null;
 
@@ -821,7 +891,7 @@ function AnalyzeContent() {
                           </h4>
                           <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
                             {prResult.blastRadius.map(
-                              (item: any, i: number) => (
+                              (item: PRBlastRadiusItem, i: number) => (
                                 <div
                                   key={i}
                                   className="p-3 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/5 transition-colors"
@@ -983,7 +1053,7 @@ function AnalyzeContent() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => router.push("/")}
+              onClick={() => router.back()}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -1014,7 +1084,7 @@ function AnalyzeContent() {
                   </button>
                 </div>
                 <button
-                  onClick={() => router.push("/")}
+                  onClick={() => router.back()}
                   className="w-full py-2 mt-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-slate-300 transition-colors"
                 >
                   Skip

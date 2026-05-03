@@ -12,7 +12,7 @@ export async function POST(req: Request) {
 
     // 1. Fetch the modified files from the PR using the GitHub token from your .env
     const prData = await getPullRequestDiff(prUrl, process.env.GITHUB_TOKEN);
-    const modifiedFiles = prData.modifiedFiles.map((f: any) => f.filename);
+    const modifiedFiles = prData.modifiedFiles.map((f: { filename: string }) => f.filename);
 
     // 2. Fetch the repository's dependency graph.
     // NOTE: You will eventually plug in your actual graph generator here, 
@@ -36,7 +36,8 @@ export async function POST(req: Request) {
       impactReport: blastRadius,
     });
 
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "An unknown error occurred";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

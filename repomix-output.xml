@@ -42,21 +42,33 @@ The content is organized as follows:
 <directory_structure>
 app/actions/feedback.ts
 app/actions/telemetry.ts
+app/api/analyze-pr/route.ts
 app/api/analyze/route.ts
 app/api/debug/analyze/route.ts
+app/api/github-action/route.ts
+app/api/pr-impact/route.ts
 app/auth/reset-password/page.tsx
+app/dashboard/page.tsx
 app/favicon.ico
 app/layout.tsx
+app/pr-scan/page.tsx
+app/profile/page.tsx
 app/terms/page.tsx
 components/ArchitectureMap.tsx
+components/BackButton.tsx
 components/debug/CodeDoctorPanel.tsx
 components/debug/DebugForm.tsx
 components/debug/DebugInterface.tsx
 components/debug/DebugResults.tsx
 components/debug/LoadingSkeleton.tsx
+components/DirectoryTreeVisualizer.tsx
+components/ExportButton.tsx
+components/PRAnalyzer.tsx
 components/TelemetryBanner.tsx
+components/TreemapVisualizer.tsx
 components/ZipUploader.tsx
 hooks/use-debug.ts
+lib/analyzer/blast-radius.ts
 lib/debug/cache.ts
 lib/debug/file-fetcher.ts
 lib/debug/gemini-debug.ts
@@ -66,6 +78,9 @@ lib/debug/mermaid-highlighter.ts
 lib/debug/stack-parser.ts
 lib/debug/types.ts
 lib/dependency-graph.ts
+lib/github/pr-fetcher.ts
+lib/rag.ts
+lib/usage.ts
 package.json
 proxy.ts
 public/codeautopsy-logo1.png
@@ -74,6 +89,169 @@ utils/supabase/server.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="components/BackButton.tsx">
+"use client";
+
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+
+export default function BackButton() {
+  const router = useRouter();
+
+  return (
+    <button
+      onClick={() => router.back()}
+      className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-8 group w-fit"
+    >
+      <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+      Back
+    </button>
+  );
+}
+</file>
+
+<file path="lib/rag.ts">
+import { SupabaseClient } from "@supabase/supabase-js";
+
+// Chops massive code files into ~1000 character chunks so the AI can digest them
+function chunkCode(code: string, maxChunkSize = 1000): string[] {
+  const chunks = [];
+  let currentChunk = "";
+  const lines = code.split('\n');
+
+  for (const line of lines) {
+    if (currentChunk.length + line.length > maxChunkSize) {
+      chunks.push(currentChunk);
+      currentChunk = line + '\n';
+    } else {
+      currentChunk += line + '\n';
+    }
+  }
+  if (currentChunk.trim().length > 0) chunks.push(currentChunk);
+  return chunks;
+}
+
+export async function processAndStoreCodebase(
+  supabase: SupabaseClient,
+  repoUrl: string,
+  files: { path: string; content: string }[]
+) {
+  const apiKey = process.env.GEMINI_API_KEY; // ✨ Using the free key!
+  if (!apiKey) {
+    console.error("Missing GEMINI_API_KEY. Cannot generate embeddings.");
+    return;
+  }
+
+  console.log(`🧠 Processing Free Gemini RAG embeddings for ${repoUrl}...`);
+
+  const allChunks: { repo_url: string; file_path: string; content: string }[] = [];
+
+  for (const file of files) {
+    const chunks = chunkCode(file.content);
+    for (const chunk of chunks) {
+      allChunks.push({
+        repo_url: repoUrl,
+        file_path: file.path,
+        content: chunk
+      });
+    }
+  }
+
+  // We process in batches of 100 to stay within free API limits
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
+    const batch = allChunks.slice(i, i + BATCH_SIZE);
+
+    // Format the payload for the stable embedding-001 model
+    const requests = batch.map(b => ({
+      model: "models/embedding-001",
+      content: { parts: [{ text: b.content }] }
+    }));
+
+    // 1. Turn the code chunks into vectors using Gemini's stable model
+    // 1. Turn the code chunks into vectors using Gemini's stable V1 API
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/embedding-001:batchEmbedContents?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requests })
+    });
+    if (!res.ok) {
+       console.error("Gemini Embedding generation failed", await res.text());
+       continue;
+    }
+
+    const embeddingData = await res.json();
+
+    // 2. Attach the 768-dimensional math vectors to your code chunks
+    const dbPayload = batch.map((item, index) => ({
+      ...item,
+      embedding: embeddingData.embeddings[index].values
+    }));
+
+    // 3. Save directly to your new Supabase Vector table
+    const { error } = await supabase.from('codebase_embeddings').insert(dbPayload);
+    if (error) {
+      console.error("Failed to save vectors to Supabase", error);
+    }
+  }
+  
+  console.log(`✅ Finished vectorizing ${repoUrl} for FREE`);
+}
+</file>
+
+<file path="lib/usage.ts">
+import { SupabaseClient } from "@supabase/supabase-js";
+
+// ✨ 1. Define your admin accounts (God Mode)
+const ADMIN_EMAILS = [
+  "sidhantkumar431@gmail.com", 
+  "sidhantkumar0707@gmail.com",
+];
+
+export async function checkUsageLimit(
+  supabase: SupabaseClient, 
+  userId: string, 
+  userEmail?: string
+): Promise<boolean> {
+  
+  // ✨ 2. The Admin Bypass Shield
+  if (userEmail && ADMIN_EMAILS.includes(userEmail)) {
+    console.log(`🛡️ Admin bypass active for: ${userEmail}`);
+    return true; // Instantly grant unlimited access!
+  }
+
+  const MAX_DAILY_SCANS = 10;
+  
+  // Get midnight of the current day in UTC
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const startOfDay = today.toISOString();
+
+  // Count Repo Scans today
+  const { count: repoCount, error: repoError } = await supabase
+    .from('analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (repoError) console.error("Error checking repo usage:", repoError);
+
+  // Count PR Scans today
+  const { count: prCount, error: prError } = await supabase
+    .from('pr_analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (prError) console.error("Error checking PR usage:", prError);
+
+  const totalUsage = (repoCount || 0) + (prCount || 0);
+
+  // Return true if they are under the limit, false if they hit it
+  return totalUsage < MAX_DAILY_SCANS;
+}
+</file>
 
 <file path="app/actions/feedback.ts">
 "use server";
@@ -161,6 +339,162 @@ export async function getSystemTelemetry() {
 }
 </file>
 
+<file path="app/api/analyze-pr/route.ts">
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr"; 
+import { checkUsageLimit } from "@/lib/usage"; // ✨ Import the Shield helper
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { owner, repo, prNumber } = body;
+
+    if (!owner || !repo || !prNumber) {
+      return NextResponse.json({ error: "Missing parameters." }, { status: 400 });
+    }
+
+    // --- 1. Identify the User via Supabase ---
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { get(name: string) { return cookieStore.get(name)?.value; } } }
+    );
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    // Ensure the user is actually logged in
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+    }
+
+    // ✨ THE SHIELD: Check usage limit before spending tokens (with Admin Bypass) ✨
+    const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+    if (!isUnderLimit) {
+      return NextResponse.json(
+        { 
+          error: "RATE_LIMIT_REACHED", 
+          message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." 
+        }, 
+        { status: 429 }
+      );
+    }
+
+    // --- 2. Fetch PR Metadata & Diffs ---
+    const prMetaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`, { headers: { Accept: "application/vnd.github.v3+json" } });
+    if (!prMetaRes.ok) throw new Error("Pull Request not found.");
+    const prMeta = await prMetaRes.json();
+
+    const prFilesRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`, { headers: { Accept: "application/vnd.github.v3+json" } });
+    const prFiles = await prFilesRes.json();
+
+    const fileChangesText = prFiles.slice(0, 15).map((f: { patch?: string; filename: string; status: string }) => {
+      const patch = f.patch ? f.patch.substring(0, 1500) : "Binary/large file.";
+      return `=== FILE: ${f.filename} (Status: ${f.status}) ===\n${patch}`;
+    }).join("\n\n");
+
+    // --- 3. Prompt & Groq Call ---
+    const systemPrompt = `You are a senior software engineer conducting a strict code review on a Pull Request.
+Repository: ${owner}/${repo}
+PR Title: ${prMeta.title}
+PR Description: ${prMeta.body ? prMeta.body.substring(0, 1000) : "No description."}
+CODE CHANGES (Diffs):
+${fileChangesText}
+
+Analyze these code changes and return ONLY a valid JSON object with EXACTLY this structure:
+{
+  "prNumber": ${prNumber},
+  "title": "${prMeta.title.replace(/"/g, '\\"')}",
+  "description": "A 2-sentence plain English summary.",
+  "blastRadius": [{ "file": "exact filename", "impact": "1 sentence explaining impact." }],
+  "architecturalChanges": ["bullet point 1", "bullet point 2"],
+  "breakingDependencies": ["list any dependencies. If none, write 'None detected.'"],
+  "riskLevel": "one of: low | medium | high"
+}`;
+
+    const apiKey = process.env.GROQ_API_KEY;
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: "Analyze this PR and return ONLY the required JSON." }],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      }),
+    });
+
+    if (!groqRes.ok) throw new Error(`Groq API error ${groqRes.status}`);
+    const data = await groqRes.json();
+    const finalResult = JSON.parse(data.choices[0].message.content);
+
+    // --- 4. SAVE TO SUPABASE BEFORE RETURNING! ---
+    const { error: dbError } = await supabase.from('pr_analyses').insert({
+      user_id: user.id,
+      repo_name: `${owner}/${repo}`,
+      pr_number: prNumber,
+      title: finalResult.title,
+      risk_level: finalResult.riskLevel,
+      analysis_data: finalResult // We save the whole JSON so the user can view it later without recalling the API!
+    });
+    
+    if (dbError) console.error("Failed to save PR analysis to Supabase:", dbError);
+
+    return NextResponse.json(finalResult);
+
+  } catch (error: unknown) {
+    console.error("PR Analysis Error:", error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to analyze Pull Request." }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/pr-impact/route.ts">
+import { NextResponse } from "next/server";
+import { getPullRequestDiff } from "@/lib/github/pr-fetcher";
+import { calculateBlastRadius } from "@/lib/analyzer/blast-radius";
+
+export async function POST(req: Request) {
+  try {
+    const { prUrl } = await req.json();
+
+    if (!prUrl) {
+      return NextResponse.json({ error: "Missing PR URL" }, { status: 400 });
+    }
+
+    // 1. Fetch the modified files from the PR using the GitHub token from your .env
+    const prData = await getPullRequestDiff(prUrl, process.env.GITHUB_TOKEN);
+    const modifiedFiles = prData.modifiedFiles.map((f: { filename: string }) => f.filename);
+
+    // 2. Fetch the repository's dependency graph.
+    // NOTE: You will eventually plug in your actual graph generator here, 
+    // or fetch the cached graph from Supabase for this specific repo.
+    // For now, we use a mock graph to ensure the wiring works.
+    const reverseDependencyGraph: Record<string, string[]> = {
+      "app/page.tsx": [],
+      "components/ui/button.tsx": ["app/page.tsx", "components/layout/header.tsx"],
+      "lib/auth.ts": ["app/api/user/route.ts", "components/layout/header.tsx", "app/dashboard/page.tsx"],
+    };
+
+    // 3. Calculate the Blast Radius mathematically
+    const blastRadius = calculateBlastRadius(modifiedFiles, reverseDependencyGraph);
+
+    // 4. Return the enterprise-grade impact report
+    return NextResponse.json({
+      success: true,
+      repository: `${prData.owner}/${prData.repo}`,
+      pullRequest: prData.pullNumber,
+      modifiedFilesCount: modifiedFiles.length,
+      impactReport: blastRadius,
+    });
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "An unknown error occurred";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+</file>
+
 <file path="app/auth/reset-password/page.tsx">
 "use client";
 
@@ -243,6 +577,424 @@ export default function ResetPasswordPage() {
 }
 </file>
 
+<file path="app/pr-scan/page.tsx">
+import PRAnalyzer from "@/components/PRAnalyzer";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
+export const metadata = {
+  title: "PR Impact Analyzer | CodeAutopsy",
+  description: "Calculate the blast radius of GitHub Pull Requests.",
+};
+
+export default function PRScanPage() {
+  return (
+    <div className="min-h-screen bg-[#050505] text-white p-8 pt-12">
+      <div className="max-w-6xl mx-auto flex flex-col">
+        
+        <Link 
+          href="/dashboard" 
+          className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-8 w-fit"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </Link>
+
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-slate-100 tracking-tight mb-4">
+            Pull Request Intelligence
+          </h1>
+          <p className="text-slate-400 max-w-2xl mx-auto text-sm">
+            Before you merge, know exactly what might break. Enter a PR URL below to map the downstream blast radius of the modified files.
+          </p>
+        </div>
+
+        <div className="w-full">
+          <PRAnalyzer />
+        </div>
+
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/profile/page.tsx">
+"use client";
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
+import {
+  User,
+  History,
+  Settings,
+  Terminal,
+  Zap,
+  ArrowRight,
+  Clock,
+  GitBranch,
+  GitPullRequest,
+  ArrowLeft
+} from "lucide-react";
+import Header from "@/components/Header";
+import { createClient } from "@/lib/supabase-browser";
+import { User as SupabaseUser } from "@supabase/supabase-js";
+import Link from "next/link";
+
+// 1. Unified History Type for both Repos and PRs
+type HistoryItem = {
+  id: string;
+  type: "repo" | "pr";
+  title: string;
+  subtitle: string;
+  created_at: string;
+  link: string;
+};
+
+type TabId = "account" | "history" | "preferences";
+
+type TabButtonProps = {
+  id: TabId;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  activeTab: TabId;
+  onSelect: (id: TabId) => void;
+};
+
+function TabButton({
+  id,
+  icon: Icon,
+  label,
+  activeTab,
+  onSelect,
+}: TabButtonProps) {
+  return (
+    <button
+      onClick={() => onSelect(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
+        activeTab === id
+          ? "bg-white/10 text-white shadow-inner border border-white/5"
+          : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
+      }`}
+    >
+      <Icon className="w-4 h-4" />
+      {label}
+    </button>
+  );
+}
+
+export default function ProfilePage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabId>("account");
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+
+  // Real Database State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [usageCount, setUsageCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    async function loadProfileData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+
+      if (user) {
+        // 2. Fetch both tables in parallel!
+        const [repoRes, prRes] = await Promise.all([
+          supabase.from("analyses").select("*").eq("user_id", user.id),
+          supabase.from("pr_analyses").select("*").eq("user_id", user.id),
+        ]);
+
+        // Define explicit types for rows returned from the DB to avoid `any`
+        type RepoRow = {
+          id: number | string;
+          repo_name: string;
+          created_at: string;
+        };
+        type PRRow = {
+          id: number | string;
+          repo_name: string;
+          pr_number: number | string;
+          title: string;
+          created_at: string;
+        };
+
+        const repoData = (repoRes.data ?? []) as RepoRow[];
+        const prData = (prRes.data ?? []) as PRRow[];
+
+        // 3. Format and Merge the data
+        const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
+          id: `repo-${r.id}`,
+          type: "repo",
+          title: r.repo_name,
+          subtitle: "Full Codebase Scan",
+          created_at: r.created_at,
+          link: `/analyze?repo=${encodeURIComponent(r.repo_name)}`,
+        }));
+
+        const formattedPRs: HistoryItem[] = prData.map((p: PRRow) => ({
+          id: `pr-${p.id}`,
+          type: "pr",
+          title: `${p.repo_name} #${p.pr_number}`,
+          subtitle: p.title,
+          created_at: p.created_at,
+          link: `#`, // We will wire this up to reload the PR view later!
+        }));
+
+        // 4. Sort everything by newest first
+        const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+
+        setHistory(mergedHistory);
+        setUsageCount(mergedHistory.length); // Total scans used (Repos + PRs)
+      }
+      setIsLoading(false);
+    }
+
+    loadProfileData();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-slate-200 font-satoshi flex flex-col">
+      <Header />
+
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
+        {/* LEFT SIDEBAR */}
+        <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
+          <div className="mb-8 px-4">
+            <button 
+              onClick={() => router.back()} 
+              className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-6 group w-fit"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> 
+              Back
+            </button>
+            <h1 className="text-2xl font-bold text-white tracking-tight cabinet">
+              Workspace
+            </h1>
+            <p className="text-xs text-slate-500 font-mono mt-1 truncate">
+              {user?.email || "Loading account..."}
+            </p>
+          </div>
+
+          <nav className="space-y-1">
+            <TabButton
+              id="account"
+              icon={User}
+              label="Account & Limits"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+            <TabButton
+              id="history"
+              icon={History}
+              label="Autopsy History"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+            <TabButton
+              id="preferences"
+              icon={Settings}
+              label="Engine Preferences"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+          </nav>
+        </aside>
+
+        {/* MAIN CONTENT AREA */}
+        <section className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
+            >
+              {/* --- ACCOUNT TAB --- */}
+              {activeTab === "account" && (
+                <div className="space-y-8">
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-emerald-400" /> Usage
+                      Telemetry
+                    </h2>
+                    <p className="text-sm text-slate-400 mb-6">
+                      Your current API limits and usage cycle.
+                    </p>
+
+                    <div className="p-5 rounded-xl border border-white/5 bg-black/40">
+                      <div className="flex justify-between items-end mb-2">
+                        <span className="text-xs font-mono uppercase tracking-widest text-slate-500">
+                          Free Tier (Intern)
+                        </span>
+                        <span className="text-sm font-bold text-white">
+                          {usageCount} / 10{" "}
+                          <span className="text-slate-500 font-normal">
+                            Scans Used
+                          </span>
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden flex gap-[2px] p-[2px]">
+                        {Array.from({ length: 10 }).map((_, index) => {
+                          const filled = index < usageCount;
+                          return (
+                            <div
+                              key={index}
+                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${
+                                filled
+                                  ? usageCount >= 10
+                                    ? "bg-red-500"
+                                    : "bg-emerald-500"
+                                  : "bg-white/10"
+                              }`}
+                            />
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-3 font-mono uppercase">
+                        Usage tied to connected account
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="h-px w-full bg-white/5" />
+
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-2">
+                      Connections
+                    </h2>
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <div className="flex items-center gap-3">
+                        <GitBranch className="w-6 h-6 text-white" />
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            GitHub Account
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Required for private repo access.
+                          </p>
+                        </div>
+                      </div>
+                      <button className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors">
+                        Manage
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- HISTORY TAB --- */}
+              {activeTab === "history" && (
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <History className="w-5 h-5 text-slate-400" /> Autopsy
+                    History
+                  </h2>
+                  <p className="text-sm text-slate-400 mb-6">
+                    Review your past codebase dissections without using API
+                    limits.
+                  </p>
+
+                  <div className="space-y-3">
+                    {isLoading ? (
+                      <div className="text-sm text-slate-500 font-mono animate-pulse">
+                        Loading secure records...
+                      </div>
+                    ) : history.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-white/10 rounded-xl bg-black/20">
+                        <p className="text-slate-500 text-sm">
+                          No autopsies found in your workspace.
+                        </p>
+                      </div>
+                    ) : (
+                      history.map((scan) => (
+                        <Link
+                          href={scan.link}
+                          key={scan.id}
+                          className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
+                              {/* 5. Dynamic Icons! Terminal for Repos, GitPullRequest for PRs */}
+                              {scan.type === "repo" ? (
+                                <Terminal className="w-4 h-4 text-emerald-500" />
+                              ) : (
+                                <GitPullRequest className="w-4 h-4 text-blue-500" />
+                              )}
+                              {scan.title}
+                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] font-medium text-slate-400 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                                {scan.subtitle}
+                              </span>
+                              <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                                <Clock className="w-3 h-3" />
+                                {new Date(scan.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-transform duration-300 group-hover:translate-x-1" />
+                          </div>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* --- PREFERENCES TAB --- */}
+              {activeTab === "preferences" && (
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-slate-400" /> Engine
+                    Preferences
+                  </h2>
+                  <p className="text-sm text-slate-400 mb-6">
+                    Customize how CodeAutopsy behaves by default.
+                  </p>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <div>
+                        <p className="text-sm font-bold text-white">
+                          Default View
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Which tab opens when an autopsy finishes?
+                        </p>
+                      </div>
+                      <select
+                        aria-label="Default view"
+                        className="bg-[#141414] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-slate-300 outline-none focus:border-slate-500"
+                      >
+                        <option>Read_Docs</option>
+                        <option>Blueprint_Map</option>
+                        <option>Diagnostic_Engine</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </section>
+      </main>
+    </div>
+  );
+}
+</file>
+
 <file path="app/terms/page.tsx">
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -296,193 +1048,6 @@ export default function TermsPage() {
           </section>
         </div>
       </div>
-    </div>
-  );
-}
-</file>
-
-<file path="components/ArchitectureMap.tsx">
-"use client";
-
-import React, { useMemo } from "react";
-import ReactFlow, {
-  Background,
-  Controls,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-  Handle,
-  Position,
-} from "reactflow";
-import "reactflow/dist/style.css";
-import dagre from "dagre";
-
-const GlassNode = ({ data }: any) => {
-  return (
-    <div className="px-4 py-2 shadow-xl rounded-xl bg-[#141414]/90 border border-white/10 backdrop-blur-md min-w-[150px]">
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="w-2 h-2 !bg-slate-500 border-none"
-      />
-      <div className="flex flex-col items-center justify-center">
-        {data.isEntry && (
-          <div className="text-[8px] uppercase tracking-widest text-amber-500 font-bold mb-1">
-            Entry Point
-          </div>
-        )}
-        <div
-          className="text-sm font-mono text-slate-200 truncate max-w-[200px]"
-          title={data.fullPath}
-        >
-          {data.label}
-        </div>
-      </div>
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="w-2 h-2 !bg-slate-500 border-none"
-      />
-    </div>
-  );
-};
-
-const nodeTypes = {
-  glass: GlassNode,
-};
-
-const getLayoutedElements = (nodes: any[], edges: any[], direction = "TB") => {
-  // Safety check: if nodes or edges are undefined, return empty arrays
-  if (!nodes || !edges) return { nodes: [], edges: [] };
-
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-  const nodeWidth = 200;
-  const nodeHeight = 60;
-
-  dagreGraph.setGraph({ rankdir: direction });
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
-  });
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
-
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    return {
-      ...node,
-      targetPosition: direction === "TB" ? Position.Top : Position.Left,
-      sourcePosition: direction === "TB" ? Position.Bottom : Position.Right,
-      position: {
-        x: nodeWithPosition.x - nodeWidth / 2,
-        y: nodeWithPosition.y - nodeHeight / 2,
-      },
-    };
-  });
-
-  return { nodes: layoutedNodes, edges };
-};
-
-export default function ArchitectureMap({
-  dependencyGraph = {}, // Provide default empty object
-  entryPoints = [],
-}: {
-  dependencyGraph: Record<string, string[]>;
-  entryPoints: string[];
-}) {
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const nodes: any[] = [];
-    const edges: any[] = [];
-
-    // Additional safety check
-    if (!dependencyGraph || typeof dependencyGraph !== "object") {
-      return { initialNodes: [], initialEdges: [] };
-    }
-
-    Object.keys(dependencyGraph).forEach((filePath) => {
-      nodes.push({
-        id: filePath,
-        type: "glass",
-        data: {
-          label: filePath.split("/").pop(),
-          fullPath: filePath,
-          isEntry: entryPoints.includes(filePath),
-        },
-        position: { x: 0, y: 0 },
-      });
-
-      const deps = dependencyGraph[filePath];
-      // Ensure deps is an array before iterating
-      if (Array.isArray(deps)) {
-        deps.forEach((depPath) => {
-          edges.push({
-            id: `e-${filePath}-${depPath}`,
-            source: filePath,
-            target: depPath,
-            animated: true,
-            style: { stroke: "#475569", strokeWidth: 2 },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              color: "#475569",
-            },
-          });
-        });
-      }
-    });
-
-    // getLayoutedElements returns { nodes: layoutedNodes, edges }
-    const layout = getLayoutedElements(nodes, edges);
-    return { initialNodes: layout.nodes, initialEdges: layout.edges };
-  }, [dependencyGraph, entryPoints]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  React.useEffect(() => {
-    const layouted = getLayoutedElements(initialNodes, initialEdges);
-    setNodes(layouted.nodes);
-    setEdges(layouted.edges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
-
-  // If there's no data to show, display a fallback
-  if (nodes.length === 0) {
-    return (
-      <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl border border-white/5 bg-black/40">
-        <p className="text-slate-500 font-mono text-sm">
-          No dependency graph data available.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-black/40 relative">
-      <div className="absolute top-4 left-4 z-10">
-        <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase bg-black/50 px-3 py-1 rounded-md backdrop-blur-md border border-white/10">
-          Interactive Architecture Map
-        </h3>
-      </div>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-        className="bg-[#0e0e0e]"
-      >
-        <Background color="#333" gap={16} />
-        <Controls
-          className="!bg-white !rounded-lg overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.5)] border-none [&>button]:!bg-white [&>button]:!border-b-slate-200 [&>button]:!fill-black hover:[&>button]:!bg-slate-100"
-          showInteractive={false}
-        />
-      </ReactFlow>
     </div>
   );
 }
@@ -548,6 +1113,233 @@ export function LoadingSkeleton() {
 }
 </file>
 
+<file path="components/ExportButton.tsx">
+"use client";
+
+import { Download } from "lucide-react";
+
+interface ExportButtonProps {
+  data: any;
+}
+
+export default function ExportButton({ data }: ExportButtonProps) {
+  const handleExport = () => {
+    let md = `# CodeAutopsy Report: ${data.owner}/${data.repo}\n\n`;
+    
+    md += `## System Purpose\n${data.analysis.what_it_does}\n\n`;
+    
+    md += `## Execution Flow\n`;
+    data.analysis.execution_flow.forEach((step: string, index: number) => {
+      md += `${index + 1}. ${step}\n`;
+    });
+    md += `\n`;
+    
+    md += `## Key Modules\n`;
+    data.analysis.key_modules.forEach((mod: any) => {
+      md += `- **\`${mod.file.split('/').pop()}\`** (${mod.role}): ${mod.why_it_exists}\n`;
+    });
+    md += `\n`;
+    
+    if (data.analysis.blast_radius && data.analysis.blast_radius.length > 0) {
+      md += `## Blast Radius (Critical Files)\n`;
+      data.analysis.blast_radius.forEach((risk: any) => {
+        md += `- **\`${risk.file.split('/').pop()}\`** (${risk.dependents} dependents): ${risk.warning}\n`;
+      });
+      md += `\n`;
+    }
+    
+    md += `## Developer Onboarding Guide\n`;
+    data.analysis.onboarding_guide.forEach((tip: string) => {
+      md += `- ${tip}\n`;
+    });
+    md += `\n`;
+    
+    md += `---\n*Generated by CodeAutopsy*`;
+
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${data.repo}-autopsy.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <button
+      onClick={handleExport}
+      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold ml-2"
+    >
+      <Download className="w-3.5 h-3.5" />
+      <span className="hidden sm:inline">Export .md</span>
+    </button>
+  );
+}
+</file>
+
+<file path="components/PRAnalyzer.tsx">
+"use client";
+
+import React, { useState } from "react";
+
+interface ImpactResult {
+  targetFile: string;
+  affectedDownstream: string[];
+  riskScore: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+}
+
+interface PRData {
+  repository: string;
+  pullRequest: string;
+  modifiedFilesCount: number;
+  impactReport: ImpactResult[];
+}
+
+export default function PRAnalyzer() {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<PRData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const analyzePR = async () => {
+    if (!url) return;
+    setLoading(true);
+    setError(null);
+    setData(null);
+
+    try {
+      const res = await fetch("/api/pr-impact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prUrl: url }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) throw new Error(json.error || "Failed to analyze PR");
+
+      setData(json);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getRiskColor = (score: string) => {
+    switch (score) {
+      case "CRITICAL":
+        return "bg-red-500/10 text-red-500 border-red-500/20";
+      case "HIGH":
+        return "bg-orange-500/10 text-orange-500 border-orange-500/20";
+      case "MEDIUM":
+        return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+      default:
+        return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    }
+  };
+
+  return (
+    <div className="w-full max-w-4xl mx-auto p-6 bg-[#0a0a0a] border border-white/10 rounded-2xl">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-slate-200 mb-2">
+          PR Impact Analyzer
+        </h2>
+        <p className="text-slate-400 text-sm">
+          Paste a GitHub Pull Request URL to calculate the blast radius of
+          proposed changes.
+        </p>
+      </div>
+
+      {/* Input Section */}
+      <div className="flex gap-3 mb-8">
+        <input
+          type="text"
+          placeholder="https://github.com/owner/repo/pull/1"
+          className="flex-1 bg-[#141414] border border-white/10 rounded-lg px-4 py-3 text-slate-200 focus:outline-none focus:border-blue-500/50 transition-colors font-mono text-sm"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && analyzePR()}
+        />
+        <button
+          onClick={analyzePR}
+          disabled={loading || !url}
+          className="bg-slate-200 text-slate-900 px-6 py-3 rounded-lg font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+          {loading ? "Analyzing..." : "Scan PR"}
+        </button>
+      </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm mb-6">
+          {error}
+        </div>
+      )}
+
+      {/* Results Section */}
+      {data && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center justify-between pb-4 border-b border-white/10">
+            <div>
+              <p className="text-slate-400 text-sm">Repository</p>
+              <p className="text-slate-200 font-mono">
+                {data.repository}{" "}
+                <span className="text-slate-500">#{data.pullRequest}</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-slate-400 text-sm">Files Modified</p>
+              <p className="text-slate-200 font-mono text-xl">
+                {data.modifiedFilesCount}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {data.impactReport.map((item, idx) => (
+              <div
+                key={idx}
+                className="p-4 rounded-lg bg-[#141414] border border-white/5 flex items-start justify-between gap-4 group hover:border-white/10 transition-colors"
+              >
+                <div>
+                  <p className="font-mono text-sm text-slate-300 mb-2">
+                    {item.targetFile}
+                  </p>
+                  {item.affectedDownstream.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {item.affectedDownstream.map((dep, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] font-mono px-2 py-1 rounded bg-white/5 text-slate-400"
+                        >
+                          {dep}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-600 font-mono">
+                      No downstream dependencies detected.
+                    </p>
+                  )}
+                </div>
+                <div
+                  className={`px-3 py-1 rounded border text-xs font-bold tracking-wider ${getRiskColor(item.riskScore)}`}
+                >
+                  {item.riskScore}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="components/TelemetryBanner.tsx">
 import { getSystemTelemetry } from "@/app/actions/telemetry";
 import { Activity } from "lucide-react";
@@ -585,6 +1377,192 @@ export async function TelemetryBanner() {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+</file>
+
+<file path="components/TreemapVisualizer.tsx">
+"use client";
+
+import React, { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+
+interface FileMetric {
+  path: string;
+  size: number;
+}
+
+interface TreemapVisualizerProps {
+  metrics: FileMetric[];
+}
+
+// A sleek color palette matching the CodeFlow aesthetic
+const FOLDER_COLORS = [
+  "bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-amber-500",
+  "bg-pink-500", "bg-cyan-500", "bg-rose-500", "bg-indigo-500",
+  "bg-teal-500", "bg-orange-500"
+];
+
+// Helper to estimate Lines of Code (LOC) from byte size (approx 30 bytes per line)
+const estimateLOC = (bytes: number) => Math.max(1, Math.round(bytes / 30));
+
+// Recursive Binary Split Algorithm for Treemap Layout
+function calculateLayout(
+  items: any[],
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): any[] {
+  if (items.length === 0) return [];
+  if (items.length === 1) return [{ ...items[0], x, y, width, height }];
+
+  const totalWeight = items.reduce((sum, item) => sum + item.size, 0);
+  let halfWeight = 0;
+  let splitIndex = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    halfWeight += items[i].size;
+    if (halfWeight >= totalWeight / 2) {
+      splitIndex = i + 1;
+      break;
+    }
+  }
+
+  // Prevent infinite loops if one massive file dominates
+  if (splitIndex === items.length) splitIndex = items.length - 1;
+
+  const group1 = items.slice(0, splitIndex);
+  const group2 = items.slice(splitIndex);
+
+  const weight1 = group1.reduce((sum, item) => sum + item.size, 0);
+  const ratio1 = weight1 / totalWeight;
+
+  // Split along the longest edge to keep boxes as square as possible
+  if (width > height) {
+    const w1 = width * ratio1;
+    const w2 = width - w1;
+    return [
+      ...calculateLayout(group1, x, y, w1, height),
+      ...calculateLayout(group2, x + w1, y, w2, height),
+    ];
+  } else {
+    const h1 = height * ratio1;
+    const h2 = height - h1;
+    return [
+      ...calculateLayout(group1, x, y, width, h1),
+      ...calculateLayout(group2, x, y + h1, width, h2),
+    ];
+  }
+}
+
+export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
+  const [hoveredFile, setHoveredFile] = useState<any | null>(null);
+
+  const { layout, totalLOC } = useMemo(() => {
+    if (!metrics || metrics.length === 0) return { layout: [], totalLOC: 0 };
+
+    // 1. Filter out extremely tiny files (e.g., empty files)
+    let validMetrics = metrics.filter(m => m.size > 0);
+
+    // 2. Sort largest to smallest for the algorithm to pack them cleanly
+    validMetrics.sort((a, b) => b.size - a.size);
+
+    // 3. Assign colors based on top-level directory
+    const colorMap = new Map<string, string>();
+    let colorIndex = 0;
+
+    const enrichedItems = validMetrics.map(item => {
+      const parts = item.path.split("/");
+      const rootFolder = parts.length > 1 ? parts[0] : "root";
+      
+      if (!colorMap.has(rootFolder)) {
+        colorMap.set(rootFolder, FOLDER_COLORS[colorIndex % FOLDER_COLORS.length]);
+        colorIndex++;
+      }
+
+      return {
+        ...item,
+        folder: rootFolder,
+        name: parts.pop(),
+        color: colorMap.get(rootFolder),
+        loc: estimateLOC(item.size)
+      };
+    });
+
+    const totalLOC = enrichedItems.reduce((sum, item) => sum + item.loc, 0);
+
+    // 4. Calculate coordinates (using percentages 0-100%)
+    const rawLayout = calculateLayout(enrichedItems, 0, 0, 100, 100);
+
+    return { layout: rawLayout, totalLOC };
+  }, [metrics]);
+
+  if (layout.length === 0) {
+    return (
+      <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl border border-white/5 bg-black/40">
+        <p className="text-slate-500 font-mono text-sm">No size metrics available.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full min-h-[500px] rounded-2xl border border-white/5 bg-[#0e0e0e] relative overflow-hidden p-4">
+      {/* Top Bar Info */}
+      <div className="absolute top-4 left-4 z-10 flex gap-2 pointer-events-none">
+        <div className="text-[10px] font-mono text-slate-400 bg-[#141414] px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2 shadow-lg">
+          Total Estimated LOC: <span className="text-white font-bold">{totalLOC.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* The Treemap Grid */}
+      <div className="relative w-full h-[600px] mt-10 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+        {layout.map((box, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: idx * 0.005 }}
+            onMouseEnter={() => setHoveredFile(box)}
+            onMouseLeave={() => setHoveredFile(null)}
+            className={`absolute border-[0.5px] border-black/40 overflow-hidden cursor-crosshair hover:z-30 hover:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all ${box.color}`}
+            style={{
+              left: `${box.x}%`,
+              top: `${box.y}%`,
+              width: `${box.width}%`,
+              height: `${box.height}%`,
+            }}
+          >
+            {/* Only show text if the rendered box is large enough */}
+            {box.width > 6 && box.height > 6 && (
+              <div className="p-2 w-full h-full flex flex-col items-start justify-start bg-black/20 hover:bg-transparent transition-colors">
+                <span className="text-white font-bold text-xs truncate w-full shadow-black drop-shadow-md">
+                  {box.name}
+                </span>
+                <span className="text-white/80 font-mono text-[9px] truncate w-full mt-0.5 shadow-black drop-shadow-md">
+                  {box.loc.toLocaleString()} lines
+                </span>
+              </div>
+            )}
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Floating Interactive Tooltip */}
+      {hoveredFile && (
+        <div className="absolute bottom-6 right-6 z-40 bg-[#141414]/95 border border-white/10 p-4 rounded-xl shadow-2xl backdrop-blur-xl min-w-[250px] pointer-events-none">
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${hoveredFile.color}`} />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hoveredFile.folder}</span>
+          </div>
+          <div className="text-sm text-white font-mono break-all mb-4 leading-tight">{hoveredFile.path}</div>
+          <div className="flex justify-between items-end border-t border-white/5 pt-3">
+            <span className="text-[10px] text-slate-500 font-mono tracking-widest">WEIGHT</span>
+            <span className="text-sm text-emerald-400 font-bold font-mono">{hoveredFile.loc.toLocaleString()} Lines</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -832,6 +1810,67 @@ export function useDebugAnalysis(repoUrl: string) {
   };
 
   return { analyzeCrash, result, isLoading, error, reset };
+}
+</file>
+
+<file path="lib/analyzer/blast-radius.ts">
+// lib/analyzer/blast-radius.ts
+
+export interface BlastRadiusResult {
+  targetFile: string;
+  affectedDownstream: string[];
+  riskScore: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+}
+
+/**
+ * Calculates the "Blast Radius" of modified files against the repository's dependency graph.
+ * 
+ * @param modifiedFiles - Array of filenames changed in the PR (from pr-fetcher)
+ * @param reverseDependencyGraph - Record where Key = File, Value = Array of files that IMPORT the key.
+ */
+export function calculateBlastRadius(
+  modifiedFiles: string[],
+  reverseDependencyGraph: Record<string, string[]>
+): BlastRadiusResult[] {
+  const results: BlastRadiusResult[] = [];
+
+  for (const file of modifiedFiles) {
+    const affected = new Set<string>();
+    
+    // Breadth-First Search (BFS) to find all downstream cascading effects
+    const queue = [file];
+    
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      
+      // Look up what files depend on the current file
+      const dependents = reverseDependencyGraph[current] || [];
+      
+      for (const dep of dependents) {
+        if (!affected.has(dep)) {
+          affected.add(dep);
+          queue.push(dep); // Add to queue to find what depends on the dependent
+        }
+      }
+    }
+
+    const affectedArray = Array.from(affected);
+    let risk: BlastRadiusResult["riskScore"] = "LOW";
+    
+    // Assign a risk tier based on how many files this change cascades to
+    if (affectedArray.length > 20) risk = "CRITICAL";
+    else if (affectedArray.length > 10) risk = "HIGH";
+    else if (affectedArray.length > 3) risk = "MEDIUM";
+
+    results.push({
+      targetFile: file,
+      affectedDownstream: affectedArray,
+      riskScore: risk,
+    });
+  }
+
+  // Sort by highest risk first
+  return results.sort((a, b) => b.affectedDownstream.length - a.affectedDownstream.length);
 }
 </file>
 
@@ -1195,6 +2234,60 @@ export interface DebugAnalysis {
 }
 </file>
 
+<file path="lib/github/pr-fetcher.ts">
+// lib/github/pr-fetcher.ts
+
+/**
+ * Parses a GitHub PR URL and fetches the specific files modified in that PR.
+ * Example URL: https://github.com/Sidhant0707/codeautopsy/pull/1
+ */
+export async function getPullRequestDiff(prUrl: string, token?: string) {
+  // 1. Extract owner, repo, and PR number from the URL
+  const regex = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+  const match = prUrl.match(regex);
+
+  if (!match) {
+    throw new Error("Invalid GitHub Pull Request URL.");
+  }
+
+  const [, owner, repo, pullNumber] = match;
+
+  // 2. Setup headers (Auth is crucial to avoid rate limits)
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  // 3. Fetch the files changed in this specific PR
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/files`;
+  
+  const response = await fetch(apiUrl, { headers });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API Error: ${response.status} ${response.statusText}`);
+  }
+
+  const files = await response.json();
+
+  // 4. Map the response to just the data we care about
+  const modifiedFiles = files.map((file: any) => ({
+    filename: file.filename,     // e.g., "app/page.tsx"
+    status: file.status,         // "modified", "added", "removed"
+    additions: file.additions,
+    changes: file.changes,
+  }));
+
+  return {
+    owner,
+    repo,
+    pullNumber,
+    modifiedFiles
+  };
+}
+</file>
+
 <file path="utils/supabase/server.ts">
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -1224,6 +2317,307 @@ export async function createClient() {
       },
     }
   )
+}
+</file>
+
+<file path="app/api/github-action/route.ts">
+import { NextResponse } from "next/server";
+
+export async function POST(req: Request) {
+  try {
+    // Parse the incoming request from your GitHub Action
+    const body = await req.json();
+    const { owner, repo, commitSha } = body;
+
+    // Validate that all required payload data is present
+    if (!owner || !repo || !commitSha) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const shortSha = commitSha.substring(0, 7);
+    const reportUrl = `https://codeautopsy-lyart.vercel.app/analyze?url=https://github.com/${owner}/${repo}`;
+
+    // Generate the dynamic markdown snippet that the Action will inject into the README.
+    // We wrap it in the specific start/end tags so the Action knows exactly what to replace next time.
+    const markdownSnippet = `
+<!-- CODEAUTOPSY:START -->
+<div align="center">
+  <h3>🧠 Architecture Analyzed by CodeAutopsy</h3>
+  <p>Latest commit scanned: <code>${shortSha}</code></p>
+  <a href="${reportUrl}">
+    <img src="https://img.shields.io/badge/View_Interactive_Graph-CodeAutopsy-4f46e5?style=for-the-badge" alt="View Architecture Graph" />
+  </a>
+</div>
+<!-- CODEAUTOPSY:END -->
+`.trim();
+
+    // Send the generated markdown back to the GitHub Action
+    return NextResponse.json({ markdownSnippet });
+
+  } catch (error: unknown) {
+    console.error("CodeAutopsy Action API Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+</file>
+
+<file path="components/DirectoryTreeVisualizer.tsx">
+"use client";
+
+import React, { useMemo, useState, useEffect } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  Handle,
+  Position,
+  Edge,
+  useNodesState,
+  useEdgesState,
+  Node,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { hierarchy, tree } from "d3-hierarchy";
+
+interface DirectoryNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  color?: string;
+  children?: DirectoryNode[];
+}
+
+interface TreeNodeData {
+  name: string;
+  isFolder: boolean;
+  color?: string;
+  isDimmed: boolean;
+}
+
+// 🔥 DEFINED OUTSIDE: Prevents re-renders
+const TreeNode = ({ data }: { data: TreeNodeData }) => {
+  return (
+    <div
+      className={`flex items-center gap-2 relative transition-all duration-300 cursor-pointer ${
+        data.isDimmed ? "opacity-20 grayscale" : "opacity-100 hover:scale-105"
+      }`}
+    >
+      <Handle type="target" position={Position.Left} className="opacity-0" />
+      <div
+        className={`w-3 h-3 rounded-full border-2 border-[#0e0e0e] shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-colors ${
+          data.isFolder ? "bg-slate-600" : `bg-${data.color}-500`
+        }`}
+      />
+      <div
+        className={`font-mono text-xs whitespace-nowrap transition-colors ${
+          data.isFolder
+            ? data.isDimmed
+              ? "text-slate-600"
+              : "text-slate-400 font-bold"
+            : data.isDimmed
+              ? "text-slate-700"
+              : "text-slate-200"
+        }`}
+      >
+        {data.name}
+      </div>
+      <Handle type="source" position={Position.Right} className="opacity-0" />
+    </div>
+  );
+};
+
+const COLORS = [
+  "blue",
+  "emerald",
+  "purple",
+  "amber",
+  "pink",
+  "cyan",
+  "rose",
+  "indigo",
+];
+
+export default function DirectoryTreeVisualizer({
+  metrics,
+}: {
+  metrics: { path: string; size: number }[];
+}) {
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
+
+  const { initialNodes, initialEdges } = useMemo(() => {
+    if (!metrics || metrics.length === 0)
+      return { initialNodes: [], initialEdges: [] };
+
+    const rootNode: DirectoryNode = {
+      name: "root",
+      path: "root",
+      isFolder: true,
+      color: "slate",
+      children: [],
+    };
+
+    let colorIndex = 0;
+    const folderColorMap = new Map<string, string>();
+
+    metrics.forEach((metric) => {
+      const parts = metric.path.split("/");
+      let currentLevel = rootNode.children!;
+      let currentPath = "root";
+
+      parts.forEach((part, index) => {
+        currentPath = `${currentPath}/${part}`;
+        const isFile = index === parts.length - 1;
+        let existing = currentLevel.find((n) => n.name === part);
+
+        if (!existing) {
+          const topFolder = parts.length > 1 ? parts[0] : "root";
+          if (!folderColorMap.has(topFolder)) {
+            folderColorMap.set(topFolder, COLORS[colorIndex % COLORS.length]);
+            colorIndex++;
+          }
+          existing = {
+            name: part,
+            path: currentPath,
+            isFolder: !isFile,
+            color: folderColorMap.get(topFolder),
+            children: isFile ? undefined : [],
+          };
+          currentLevel.push(existing);
+        }
+        if (!isFile && existing.children) {
+          currentLevel = existing.children;
+        }
+      });
+    });
+
+    const d3Root = hierarchy(rootNode);
+    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);
+    treeLayout(d3Root);
+
+    const rfNodes: Node<TreeNodeData>[] = [];
+    const rfEdges: Edge[] = [];
+
+    d3Root.descendants().forEach((node) => {
+      rfNodes.push({
+        id: node.data.path,
+        type: "treeNode",
+        position: { x: node.y ?? 0, y: node.x ?? 0 },
+        data: {
+          name: node.data.name,
+          isFolder: node.data.isFolder,
+          color: node.data.color,
+          isDimmed: false,
+        },
+      });
+    });
+
+    d3Root.links().forEach((link) => {
+      rfEdges.push({
+        id: `e-${link.source.data.path}-${link.target.data.path}`,
+        source: link.source.data.path,
+        target: link.target.data.path,
+        type: "default",
+        animated: false,
+        style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.4 },
+      });
+    });
+
+    return { initialNodes: rfNodes, initialEdges: rfEdges };
+  }, [metrics]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!selectedPath) {
+      setNodes((nds) =>
+        nds.map((n) => ({ ...n, data: { ...n.data, isDimmed: false } })),
+      );
+      setEdges((eds) =>
+        eds.map((e) => ({
+          ...e,
+          style: {
+            ...e.style,
+            opacity: 0.4,
+            strokeWidth: 1.5,
+            stroke: "#334155",
+          },
+        })),
+      );
+      return;
+    }
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const isActive =
+          n.id === selectedPath ||
+          selectedPath.startsWith(n.id + "/") ||
+          n.id.startsWith(selectedPath + "/");
+        return { ...n, data: { ...n.data, isDimmed: !isActive } };
+      }),
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => {
+        const sActive =
+          e.source === selectedPath ||
+          selectedPath.startsWith(e.source + "/") ||
+          e.source.startsWith(selectedPath + "/");
+        const tActive =
+          e.target === selectedPath ||
+          selectedPath.startsWith(e.target + "/") ||
+          e.target.startsWith(selectedPath + "/");
+        const isActiveEdge = sActive && tActive;
+        return {
+          ...e,
+          style: {
+            ...e.style,
+            opacity: isActiveEdge ? 1 : 0.05,
+            strokeWidth: isActiveEdge ? 2.5 : 1,
+            stroke: isActiveEdge ? "#94a3b8" : "#1e293b",
+          },
+        };
+      }),
+    );
+  }, [selectedPath, setNodes, setEdges]);
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-[#0a0a0a] relative">
+      <div className="absolute top-4 left-4 z-10 pointer-events-none">
+        <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-3 py-1.5 rounded border border-white/5 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Click any folder/file to isolate path
+        </div>
+      </div>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => setSelectedPath(node.id)}
+        onPaneClick={() => setSelectedPath(null)}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1.5 }}
+        className="bg-[#0e0e0e]"
+      >
+        <Background color="#222" gap={16} />
+        <Controls
+          className="!bg-[#141414] !rounded-lg overflow-hidden border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button>svg]:!fill-slate-400 hover:[&>button>svg]:!fill-white hover:[&>button]:!bg-white/5 transition-all"
+          showInteractive={false}
+        />
+      </ReactFlow>
+    </div>
+  );
 }
 </file>
 
@@ -1545,6 +2939,501 @@ export function extractAllCrashNodes(
 }
 </file>
 
+<file path="app/dashboard/page.tsx">
+import { createClient } from "@/utils/supabase/server";
+import { redirect } from "next/navigation";
+import BackButton from "@/components/BackButton";
+import Link from "next/link";
+import {
+  Database,
+  Clock,
+  GitBranch,
+  ArrowRight,
+  LayoutGrid,
+  Plus,
+  GitPullRequest,
+} from "lucide-react";
+
+export const metadata = {
+  title: "Dashboard | CodeAutopsy",
+};
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+
+  // Secure the route
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Fetch past autopsies for the authenticated user
+  const { data: analyses, error } = await supabase
+    .from("analyses")
+    .select("id, repo_url, repo_name, commit_sha, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-[#f1f5f9] p-8 md:p-12 lg:p-24 font-satoshi relative overflow-hidden">
+      {/* Background aesthetics */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
+      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent pointer-events-none z-0 blur-3xl" />
+
+      <div className="max-w-6xl mx-auto relative z-10">
+        {/* ✨ Our new Client-Side Back Button Island ✨ */}
+        <BackButton />
+
+        <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12 border-b border-white/5 pb-8">
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-white/5 border border-white/10 rounded-xl">
+                <LayoutGrid className="w-6 h-6 text-indigo-400" />
+              </div>
+              <h1 className="cabinet text-3xl md:text-4xl font-bold text-white tracking-tight">
+                Command Center
+              </h1>
+            </div>
+            <p className="text-slate-400 text-sm max-w-xl leading-relaxed">
+              Access your historical codebase autopsies. All dependency graphs,
+              AI diagnostics, and execution flows are cached and ready for
+              instant deployment.
+            </p>
+          </div>
+          <Link
+            href="/"
+            className="px-6 py-3 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] w-fit"
+          >
+            <Plus className="w-4 h-4" /> New Autopsy
+          </Link>
+        </header>
+
+        {/* Workspace Tools Section for PR Analyzer */}
+        <div className="mb-12">
+          <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
+            Workspace Tools
+          </h2>
+          <div className="flex">
+            <Link
+              href="/pr-scan"
+              className="flex items-center gap-4 bg-[#0a0a0a] border border-white/10 hover:border-white/20 hover:bg-white/[0.02] transition-all px-6 py-5 rounded-2xl w-full sm:w-auto shadow-xl group"
+            >
+              <div className="p-3 bg-slate-200/10 border border-slate-200/20 rounded-xl group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(241,245,249,0.05)]">
+                <GitPullRequest className="w-6 h-6 text-slate-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-slate-200 font-bold text-base">
+                    PR Impact Analyzer
+                  </h3>
+                  {/* The Luminous NEW Badge */}
+                  <span className="px-2 py-0.5 rounded-md bg-slate-200/20 border border-slate-200/50 text-slate-100 text-[10px] font-black tracking-widest uppercase animate-pulse shadow-[0_0_10px_rgba(241,245,249,0.15)]">
+                    New
+                  </span>
+                </div>
+                <p className="text-slate-400 text-sm mt-1">
+                  Scan a Pull Request for breaking changes
+                </p>
+              </div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Historical Autopsies Section */}
+        <div>
+          <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
+            Historical Scans
+          </h2>
+
+          {error ? (
+            <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400">
+              <p className="font-mono text-sm uppercase tracking-widest font-bold mb-2">
+                Database Error
+              </p>
+              <p className="text-xs opacity-80">{error.message}</p>
+            </div>
+          ) : !analyses || analyses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-16 rounded-3xl border border-white/5 bg-white/[0.02] text-center">
+              <Database className="w-12 h-12 text-slate-600 mb-6" />
+              <h3 className="text-xl font-bold text-white mb-2">
+                No Autopsies Found
+              </h3>
+              <p className="text-slate-400 text-sm mb-8 max-w-md">
+                You haven&apos;t analyzed any repositories yet. Start your first scan
+                to generate an architecture blueprint and diagnostic report.
+              </p>
+              <Link
+                href="/"
+                className="px-6 py-3 rounded-xl bg-white/5 text-white border border-white/10 font-bold text-xs uppercase tracking-[0.15em] hover:bg-white/10 transition-all"
+              >
+                Initiate Scan
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {analyses.map((analysis) => (
+                <div
+                  key={analysis.id}
+                  className="group flex flex-col p-6 rounded-2xl border border-white/10 bg-[#0a0a0a] hover:bg-white/[0.02] hover:border-white/20 transition-all duration-300 shadow-xl"
+                >
+                  <div className="flex items-start justify-between mb-6">
+                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg group-hover:scale-110 transition-transform">
+                      <Database className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                      <Clock className="w-3 h-3" />
+                      {new Date(analysis.created_at).toLocaleDateString(
+                        undefined,
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex-1">
+                    <h3
+                      className="text-lg font-bold text-white mb-2 truncate"
+                      title={analysis.repo_name}
+                    >
+                      {analysis.repo_name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mb-6 bg-black/50 w-fit px-2 py-1 rounded-md border border-white/5">
+                      <GitBranch className="w-3.5 h-3.5" />
+                      <span className="truncate max-w-[150px]">
+                        {analysis.commit_sha.substring(0, 7)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Link
+                    href={`/analyze?url=${encodeURIComponent(analysis.repo_url)}`}
+                    className="w-full py-3 rounded-xl bg-white/5 text-slate-300 border border-white/10 font-bold text-xs uppercase tracking-[0.15em] group-hover:bg-slate-200 group-hover:text-black group-hover:border-transparent transition-all flex items-center justify-center gap-2 mt-auto"
+                  >
+                    Load Report <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="components/ArchitectureMap.tsx">
+"use client";
+
+import React, { useMemo, useState, useEffect } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+  Handle,
+  Position,
+  type Node,
+  type Edge,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import dagre from "dagre";
+
+interface GlassNodeData {
+  isBlastRadius: boolean;
+  isDimmed: boolean;
+  isEntry?: boolean;
+  fullPath: string;
+  label: string;
+}
+
+// 🔥 DEFINED OUTSIDE: Prevents node re-mounting on every render
+const GlassNode = ({ data }: { data: GlassNodeData }) => {
+  const isBlastRadius = data.isBlastRadius;
+  const isDimmed = data.isDimmed;
+
+  return (
+    <div
+      className={`px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer ${
+        isBlastRadius
+          ? "bg-red-500/10 border border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+          : isDimmed
+            ? "bg-[#141414]/40 border border-white/5 opacity-30"
+            : "bg-[#141414]/90 border border-white/10 hover:border-slate-500"
+      }`}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        className={`w-2 h-2 border-none transition-colors ${
+          isBlastRadius ? "!bg-red-500" : "!bg-slate-500"
+        }`}
+      />
+      <div className="flex flex-col items-center justify-center">
+        {data.isEntry && (
+          <div className="text-[8px] uppercase tracking-widest text-amber-500 font-bold mb-1">
+            Entry Point
+          </div>
+        )}
+        <div
+          className={`text-sm font-mono truncate max-w-[200px] transition-colors ${
+            isBlastRadius
+              ? "text-red-200"
+              : isDimmed
+                ? "text-slate-600"
+                : "text-slate-200"
+          }`}
+          title={data.fullPath}
+        >
+          {data.label}
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={`w-2 h-2 border-none transition-colors ${
+          isBlastRadius ? "!bg-red-500" : "!bg-slate-500"
+        }`}
+      />
+    </div>
+  );
+};
+
+const getLayoutedElements = (
+  nodes: Node[],
+  edges: Edge[],
+  direction = "TB",
+) => {
+  if (!nodes || !edges) return { nodes: [], edges: [] };
+
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+  const nodeWidth = 200;
+  const nodeHeight = 60;
+
+  dagreGraph.setGraph({ rankdir: direction });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      targetPosition: direction === "TB" ? Position.Top : Position.Left,
+      sourcePosition: direction === "TB" ? Position.Bottom : Position.Right,
+      position: {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - nodeHeight / 2,
+      },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+};
+
+export default function ArchitectureMap({
+  dependencyGraph = {},
+  entryPoints = [],
+}: {
+  dependencyGraph: Record<string, string[]>;
+  entryPoints: string[];
+}) {
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  const nodeTypes = useMemo(() => ({ glass: GlassNode }), []);
+
+  const adjacencyList = useMemo(() => {
+    const reverseGraph: Record<string, string[]> = {};
+    Object.keys(dependencyGraph).forEach((src) => {
+      const deps = dependencyGraph[src];
+      if (Array.isArray(deps)) {
+        deps.forEach((tgt) => {
+          if (!reverseGraph[tgt]) reverseGraph[tgt] = [];
+          reverseGraph[tgt].push(src);
+        });
+      }
+    });
+    return reverseGraph;
+  }, [dependencyGraph]);
+
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+
+    if (!dependencyGraph || typeof dependencyGraph !== "object") {
+      return { nodes: [], edges: [] };
+    }
+
+    Object.keys(dependencyGraph).forEach((filePath) => {
+      nodes.push({
+        id: filePath,
+        type: "glass",
+        data: {
+          label: filePath.split("/").pop(),
+          fullPath: filePath,
+          isEntry: entryPoints.includes(filePath),
+          isBlastRadius: false,
+          isDimmed: false,
+        },
+        position: { x: 0, y: 0 },
+      });
+
+      const deps = dependencyGraph[filePath];
+      if (Array.isArray(deps)) {
+        deps.forEach((depPath) => {
+          edges.push({
+            id: `e-${filePath}-${depPath}`,
+            source: filePath,
+            target: depPath,
+            animated: true,
+            style: { stroke: "#475569", strokeWidth: 2, opacity: 1 },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#475569",
+            },
+          });
+        });
+      }
+    });
+
+    return getLayoutedElements(nodes, edges);
+  }, [dependencyGraph, entryPoints]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          data: { ...n.data, isBlastRadius: false, isDimmed: false },
+        })),
+      );
+      setEdges((eds) =>
+        eds.map((e) => ({
+          ...e,
+          style: { stroke: "#475569", strokeWidth: 2, opacity: 1 },
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
+        })),
+      );
+      return;
+    }
+
+    const blastRadiusNodes = new Set<string>();
+    const blastRadiusEdges = new Set<string>();
+    const queue = [selectedNode];
+    blastRadiusNodes.add(selectedNode);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const dependents = adjacencyList[current] || [];
+      dependents.forEach((dep) => {
+        const edgeId = `e-${dep}-${current}`;
+        blastRadiusEdges.add(edgeId);
+        if (!blastRadiusNodes.has(dep)) {
+          blastRadiusNodes.add(dep);
+          queue.push(dep);
+        }
+      });
+    }
+
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          isBlastRadius: blastRadiusNodes.has(n.id),
+          isDimmed: !blastRadiusNodes.has(n.id),
+        },
+      })),
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => {
+        const isBlastEdge = blastRadiusEdges.has(e.id);
+        return {
+          ...e,
+          style: {
+            stroke: isBlastEdge ? "#ef4444" : "#475569",
+            strokeWidth: isBlastEdge ? 3 : 2,
+            opacity: isBlastEdge ? 1 : 0.2,
+          },
+          animated: isBlastEdge,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: isBlastEdge ? "#ef4444" : "#475569",
+          },
+        };
+      }),
+    );
+  }, [selectedNode, adjacencyList, setNodes, setEdges]);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl border border-white/5 bg-black/40">
+        <p className="text-slate-500 font-mono text-sm">
+          No dependency graph data available.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-black/40 relative">
+      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
+        <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase bg-black/50 px-3 py-1 rounded-md backdrop-blur-md border border-white/10 w-fit">
+          Interactive Architecture Map
+        </h3>
+        <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-2 py-1 rounded w-fit border border-white/5 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          Click nodes to view Blast Radius
+        </div>
+      </div>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => setSelectedNode(node.id)}
+        onPaneClick={() => setSelectedNode(null)}
+        nodeTypes={nodeTypes}
+        fitView
+        className="bg-[#0e0e0e]"
+      >
+        <Background color="#333" gap={16} />
+        <Controls
+          className="!bg-[#141414] !rounded-lg overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-white/10 [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button]:!fill-slate-400 hover:[&>button]:!bg-white/5 hover:[&>button]:!fill-white transition-colors"
+          showInteractive={false}
+        />
+      </ReactFlow>
+    </div>
+  );
+}
+</file>
+
 <file path="components/debug/DebugForm.tsx">
 "use client";
 
@@ -1735,125 +3624,6 @@ export default function RootLayout({
         <Analytics /> 
       </body>
     </html>
-  );
-}
-</file>
-
-<file path="components/debug/DebugInterface.tsx">
-"use client";
-
-import { useEffect, useState } from "react";
-import { useDebugAnalysis } from "@/hooks/use-debug";
-import { DebugForm } from "./DebugForm";
-import { DebugResults } from "./DebugResults";
-import { LoadingSkeleton } from "./LoadingSkeleton";
-import { motion } from "framer-motion";
-import { AlertCircle, Cpu, Maximize2, Minimize2 } from "lucide-react";
-
-export default function DebugInterface({ repoUrl }: { initialChart?: string; repoUrl: string }) {
-  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
-  const [isMaximized, setIsMaximized] = useState(false);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsMaximized(false);
-    };
-    if (isMaximized) {
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleEscape);
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isMaximized]);
-
-  return (
-    <>
-      {isMaximized && (
-        <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
-          onClick={() => setIsMaximized(false)}
-        />
-      )}
-
-      <div
-        className={`bg-transparent overflow-hidden group transition-all duration-500 ${
-          isMaximized
-            ? "fixed inset-4 md:inset-8 z-[100] h-[calc(100vh-32px)] md:h-[calc(100vh-64px)] w-[calc(100vw-32px)] md:w-[calc(100vw-64px)] m-auto flex flex-col bg-[#0a0a0a] rounded-3xl border border-white/10 shadow-2xl"
-            : "relative w-full h-full flex flex-col"
-        }`}
-      >
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
-        <motion.div initial={{ top: "-50%" }} animate={{ top: "150%" }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent blur-sm" />
-          <div className="w-full h-[1px] bg-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative z-10" />
-        </motion.div>
-        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
-
-        <button
-          onClick={() => setIsMaximized(!isMaximized)}
-          className="absolute top-6 right-6 z-50 p-2.5 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md"
-        >
-          {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
-
-        <div className="relative z-10 p-6 md:p-8 flex-1 min-h-0 flex flex-col overflow-hidden">
-
-          <div className="flex flex-col gap-3 mb-6 pb-6 border-b border-white/5 flex-shrink-0 pr-12">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
-                <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
-              </div>
-              <h2 className="cabinet text-2xl md:text-3xl font-bold text-white tracking-tight">
-                CodeAutopsy Diagnostic Engine <span className="text-slate-600 font-mono text-sm ml-2 align-top">v1.0</span>
-              </h2>
-            </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono uppercase tracking-[0.2em] ml-16">
-              [ SYSTEM STATUS: <span className="text-green-500 font-bold animate-pulse">ONLINE</span> ] <span className="hidden sm:inline text-slate-700 mx-2">•</span> Powered by graph traversal + AI reasoning
-            </p>
-          </div>
-
-          <div className="relative z-10 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-2">
-
-            {error && (
-              <div className="mb-6 p-4 bg-red-900/20 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start flex-shrink-0">
-                <span className="text-lg"><AlertCircle className="w-4 h-4 text-red-400"/></span>
-                <div className="flex-1">
-                  <p className="font-medium mb-1">Diagnosis Failed</p>
-                  <p className="text-xs text-red-400/70">{error}</p>
-                  <button onClick={reset} className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors">{">"} REBOOT_DIAGNOSIS</button>
-                </div>
-              </div>
-            )}
-
-            {isLoading && (
-              <div className="mb-6 p-4 bg-[#0a0a0a]/80 border border-white/10 rounded-xl font-mono text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl backdrop-blur-md flex-shrink-0">
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                  <span>🔍 DEPTH_SEARCH: <span className="text-white font-bold">ACTIVE</span></span>
-                  <span className="hidden sm:inline text-slate-700">|</span>
-                  <span>NODES_SCANNED: INCREASING...</span>
-                </div>
-                <span className="animate-pulse text-white flex items-center gap-2"><span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" /> ANALYZING_FLOW...</span>
-              </div>
-            )}
-
-            <div className="flex-1 flex flex-col min-h-0 w-full h-full">
-              {isLoading ? (
-                <LoadingSkeleton />
-              ) : result ? (
-                <DebugResults result={result} onReset={reset} />
-              ) : (
-                <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
-              )}
-            </div>
-
-          </div>
-        </div>
-      </div>
-    </>
   );
 }
 </file>
@@ -2284,6 +4054,128 @@ export function CodeDoctorPanel({ repoUrl, onUpdateGraph, onDiscussInCopilot }: 
 }
 </file>
 
+<file path="components/debug/DebugInterface.tsx">
+"use client";
+
+import { useEffect, useState } from "react";
+import { useDebugAnalysis } from "@/hooks/use-debug";
+import { DebugForm } from "./DebugForm";
+import { DebugResults } from "./DebugResults";
+import { LoadingSkeleton } from "./LoadingSkeleton";
+import { motion } from "framer-motion";
+import { AlertCircle, Cpu, Maximize2, Minimize2 } from "lucide-react";
+
+export default function DebugInterface({ repoUrl }: { initialChart?: string; repoUrl: string }) {
+  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMaximized(false);
+    };
+    if (isMaximized) {
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleEscape);
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMaximized]);
+
+  return (
+    <>
+      {isMaximized && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
+          onClick={() => setIsMaximized(false)}
+        />
+      )}
+
+      <div
+        className={`bg-transparent overflow-hidden group transition-all duration-500 ${
+          isMaximized
+            ? "fixed inset-4 md:inset-8 z-[100] h-[calc(100vh-32px)] md:h-[calc(100vh-64px)] w-[calc(100vw-32px)] md:w-[calc(100vw-64px)] m-auto flex flex-col bg-[#0a0a0a] rounded-3xl border border-white/10 shadow-2xl"
+            : "relative w-full h-full flex flex-col"
+        }`}
+      >
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
+        <motion.div initial={{ top: "-50%" }} animate={{ top: "150%" }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent blur-sm" />
+          <div className="w-full h-[1px] bg-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative z-10" />
+        </motion.div>
+        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
+
+        {/* 🛠️ FIX 2: LOWERED Z-INDEX TO 20 AND ADJUSTED POSITION */}
+        <button
+          onClick={() => setIsMaximized(!isMaximized)}
+          className={`absolute z-20 p-2 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md ${
+            isMaximized ? "top-6 right-6" : "top-4 right-4"
+          }`}
+        >
+          {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+
+        <div className="relative z-10 p-6 md:p-8 flex-1 min-h-0 flex flex-col overflow-hidden">
+
+          <div className="flex flex-col gap-3 mb-6 pb-6 border-b border-white/5 flex-shrink-0 pr-12">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
+                <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
+              </div>
+              <h2 className="cabinet text-2xl md:text-3xl font-bold text-white tracking-tight">
+                CodeAutopsy Diagnostic Engine <span className="text-slate-600 font-mono text-sm ml-2 align-top">v1.0</span>
+              </h2>
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono uppercase tracking-[0.2em] ml-16">
+              [ SYSTEM STATUS: <span className="text-green-500 font-bold animate-pulse">ONLINE</span> ] <span className="hidden sm:inline text-slate-700 mx-2">•</span> Powered by graph traversal + AI reasoning
+            </p>
+          </div>
+
+          <div className="relative z-10 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-2">
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-900/20 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start flex-shrink-0">
+                <span className="text-lg"><AlertCircle className="w-4 h-4 text-red-400"/></span>
+                <div className="flex-1">
+                  <p className="font-medium mb-1">Diagnosis Failed</p>
+                  <p className="text-xs text-red-400/70">{error}</p>
+                  <button onClick={reset} className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors">{">"} REBOOT_DIAGNOSIS</button>
+                </div>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="mb-6 p-4 bg-[#0a0a0a]/80 border border-white/10 rounded-xl font-mono text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl backdrop-blur-md flex-shrink-0">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                  <span>🔍 DEPTH_SEARCH: <span className="text-white font-bold">ACTIVE</span></span>
+                  <span className="hidden sm:inline text-slate-700">|</span>
+                  <span>NODES_SCANNED: INCREASING...</span>
+                </div>
+                <span className="animate-pulse text-white flex items-center gap-2"><span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" /> ANALYZING_FLOW...</span>
+              </div>
+            )}
+
+            <div className="flex-1 flex flex-col min-h-0 w-full h-full">
+              {isLoading ? (
+                <LoadingSkeleton />
+              ) : result ? (
+                <DebugResults result={result} onReset={reset} />
+              ) : (
+                <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+</file>
+
 <file path="app/api/debug/analyze/route.ts">
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -2321,7 +4213,7 @@ export async function POST(req: NextRequest) {
       
       const { data: { session } } = await supabase.auth.getSession();
       providerToken = session?.provider_token ?? undefined;
-    } catch (error) {
+    } catch {
     }
 
     const body = await req.json();
@@ -2506,54 +4398,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "codeautopsy",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.105.1",
-    "@upstash/ratelimit": "^2.0.8",
-    "@upstash/redis": "^1.37.0",
-    "@vercel/analytics": "^2.0.1",
-    "@xyflow/react": "^12.10.2",
-    "dagre": "^0.8.5",
-    "framer-motion": "^12.38.0",
-    "jszip": "^3.10.1",
-    "lucide-react": "^1.7.0",
-    "mermaid": "^11.14.0",
-    "next": "16.2.2",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-icons": "^5.6.0",
-    "react-markdown": "^10.1.0",
-    "react-zoom-pan-pinch": "^4.0.3",
-    "reactflow": "^11.11.4",
-    "remark-gfm": "^4.0.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/dagre": "^0.7.54",
-    "@types/jszip": "^3.4.0",
-    "@types/node": "^20",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.2",
-    "tailwindcss": "^4",
-    "typescript": "^5"
   }
 }
 </file>
@@ -2900,8 +4744,74 @@ export function getBlastRadiusTargets(fanIn: Record<string, number>, limit: numb
 }
 </file>
 
+<file path="package.json">
+{
+  "name": "codeautopsy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
+    "@vercel/analytics": "^2.0.1",
+    "@xyflow/react": "^12.10.2",
+    "d3-hierarchy": "^3.1.2",
+    "dagre": "^0.8.5",
+    "framer-motion": "^12.38.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.7.0",
+    "mermaid": "^11.14.0",
+    "next": "16.2.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-icons": "^5.6.0",
+    "react-markdown": "^10.1.0",
+    "react-zoom-pan-pinch": "^4.0.3",
+    "reactflow": "^11.11.4",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@types/dagre": "^0.7.54",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^20",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "description": "<div align=\"center\">   <img src=\"./public/codeautopsy-logo1.png\" alt=\"CodeAutopsy Logo\" width=\"80\" height=\"80\" />   <h1>CodeAutopsy</h1>   <p><b>An AI-powered diagnostic engine that reverse-engineers, maps, and analyzes complex codebases in seconds.</b></p>",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sidhant0707/codeautopsy.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sidhant0707/codeautopsy/issues"
+  },
+  "homepage": "https://github.com/Sidhant0707/codeautopsy#readme"
+}
+</file>
+
 <file path="app/api/analyze/route.ts">
-export const maxDuration = 60;
+export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
@@ -2911,262 +4821,304 @@ import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
+import { checkUsageLimit } from "@/lib/usage";
+import { processAndStoreCodebase } from "@/lib/rag";
 
-const ANALYSIS_VERSION = 3;
+const ANALYSIS_VERSION = 5;
 
 export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { repoUrl, isLocal, localFiles } = body;
+
+  const cookieStore = await cookies();
+  const headerList = await headers();
+
+  const ip =
+    headerList.get("x-forwarded-for")?.split(",")[0] ||
+    headerList.get("x-real-ip") ||
+    "127.0.0.1";
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
+          cookieStore.set(name, value, options);
+        },
+        remove(name: string) {
+          cookieStore.delete(name);
+        }
+      }
+    }
+  );
+
+  let session = null;
+  let authUser = null;
+
   try {
-    const cookieStore = await cookies();
-    const headerList = await headers();
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    session = currentSession;
 
-    const ip =
-      headerList.get("x-forwarded-for")?.split(",")[0] ||
-      headerList.get("x-real-ip") ||
-      "127.0.0.1";
+    if (session) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (!userError && user) {
+        authUser = user;
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) {
-            cookieStore.set(name, value, options);
-          },
-          remove(name: string) {
-            cookieStore.delete(name);
+        // ✨ THE SHIELD: Check usage limit before spending tokens ✨
+        const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+        if (!isUnderLimit) {
+          return NextResponse.json(
+            { 
+              error: "RATE_LIMIT_REACHED", 
+              message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." 
+            }, 
+            { status: 429 }
+          );
+        }
+      } else {
+        session = null;
+      }
+    }
+  } catch (error) {
+    console.error("Auth/Rate Limit Error:", error);
+  }
+
+  const userId = authUser?.id ?? undefined;
+  const provider = authUser?.app_metadata?.provider;
+
+  let githubToken: string | undefined = undefined;
+
+  if (provider === 'github' && session?.provider_token) {
+    githubToken = session.provider_token;
+  } else if (!process.env.GITHUB_FALLBACK_TOKEN) {
+    return NextResponse.json(
+      { error: "Server configuration error: Missing GitHub fallback token." },
+      { status: 500 }
+    );
+  } else {
+    githubToken = process.env.GITHUB_FALLBACK_TOKEN;
+  }
+
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const keepAlive = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(" "));
+        } catch {
+          clearInterval(keepAlive);
+        }
+      }, 2000);
+
+      try {
+        let allFileContents: { path: string; content: string }[] = [];
+        let owner = "Local";
+        let repo = "Project";
+        let commitSha = "local-upload";
+        let description = "Locally uploaded codebase";
+        let stars = 0;
+        let language = "Mixed";
+        let filteredPaths: string[] = [];
+        let fileMetrics: { path: string; size: number }[] = [];
+
+        if (isLocal && localFiles) {
+          allFileContents = localFiles;
+          filteredPaths = localFiles.map((f: { path: string }) => f.path);
+
+          fileMetrics = localFiles.map((f: { path: string; content: string }) => ({
+            path: f.path,
+            size: f.content.length 
+          }));
+        } else {
+          const parsed = parseRepoUrl(repoUrl);
+          if (!parsed) {
+            clearInterval(keepAlive);
+            controller.enqueue(encoder.encode(JSON.stringify({ error: "Invalid GitHub URL" })));
+            controller.close();
+            return;
+          }
+
+          owner = parsed.owner;
+          repo = parsed.repo;
+
+          const meta = await fetchRepoMeta(owner, repo, githubToken);
+          commitSha = meta.default_branch;
+          description = meta.description;
+          stars = meta.stargazers_count;
+          language = meta.language;
+
+          const { data: cached } = await supabase
+            .from("analyses")
+            .select("result_json")
+            .eq("repo_url", repoUrl)
+            .eq("commit_sha", commitSha)
+            .eq("analysis_version", ANALYSIS_VERSION)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (cached?.result_json) {
+            clearInterval(keepAlive);
+            controller.enqueue(encoder.encode(JSON.stringify({ ...cached.result_json, cached: true })));
+            controller.close();
+            return;
+          }
+
+          const identifier = userId ? userId : ip;
+          const limiter = userId ? ratelimitAuth : ratelimitFree;
+          const { success, limit, reset, remaining } = await limiter.limit(identifier);
+
+          if (!success) {
+            clearInterval(keepAlive);
+            controller.enqueue(encoder.encode(JSON.stringify({ error: "Daily limit reached.", limit, remaining, reset })));
+            controller.close();
+            return;
+          }
+
+          const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
+
+          const IGNORE = [
+            "node_modules", "dist", "build", ".next", ".git", "coverage", 
+            "__pycache__", ".yarn", "vendor", "package-lock.json", 
+            "yarn.lock", "pnpm-lock.yaml", "repomix-output.xml" 
+          ];
+          const IGNORE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".min.js", ".map", ".woff", ".woff2"];
+
+          const validFiles = (treeData.tree as { type: string; path: string; size?: number }[])
+            .filter((file) => {
+              if (file.type !== "blob") return false;
+              if (IGNORE.some((ig) => file.path.includes(ig))) return false;
+              if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
+              return true;
+            });
+
+          filteredPaths = validFiles.map((file) => file.path);
+          
+          fileMetrics = validFiles.map((file) => ({
+            path: file.path,
+            size: file.size || 0
+          }));
+          
+          const scoredFiles = classifyAndScoreFiles(filteredPaths);
+          scoredFiles.forEach(file => {
+            if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
+              file.role = "entry";
+              file.score += 500;
+            }
+          });
+
+          const topFiles = getTopFiles(scoredFiles, 20);
+
+          for (const file of topFiles.slice(0, 30)) {
+            try {
+              const content = await fetchFileContent(owner, repo, file.path, githubToken);
+              const safeContent = content.split("\n").slice(0, 500).join("\n");
+              allFileContents.push({ path: file.path, content: safeContent });
+            } catch {
+              // Silently continue on fetch errors
+            }
           }
         }
-      }
-    );
 
-    let session = null;
-    let authUser = null;
-
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      session = currentSession;
-
-      if (session) {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (!userError && user) {
-          authUser = user;
-        } else {
-          session = null;
+        if (allFileContents.length === 0) {
+          clearInterval(keepAlive);
+          controller.enqueue(encoder.encode(JSON.stringify({ error: "No readable code files found." })));
+          controller.close();
+          return;
         }
-      }
-    } catch (error) {
-      console.warn("Supabase auth check failed. Proceeding as guest.", error);
-    }
 
-    const userId = authUser?.id ?? undefined;
-    const provider = authUser?.app_metadata?.provider;
+        const scoredAllFiles = classifyAndScoreFiles(filteredPaths);
+        scoredAllFiles.forEach(file => {
+          if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
+            file.role = "entry";
+            file.score += 500;
+          }
+        });
 
-    // 🚨 SMART TOKEN ROUTING
-    let githubToken: string | undefined = undefined;
+        const topFilesForGroq = getTopFiles(scoredAllFiles, 20);
+        const entryPoints = scoredAllFiles.filter((f) => f.role === "entry").map((f) => f.path);
 
-    if (provider === 'github' && session?.provider_token) {
-      githubToken = session.provider_token;
-    } else if (!process.env.GITHUB_FALLBACK_TOKEN) {
-      console.error("CRITICAL: Missing GITHUB_FALLBACK_TOKEN in environment variables.");
-      return NextResponse.json(
-        { error: "Server configuration error: Missing GitHub fallback token." },
-        { status: 500 }
-      );
-    } else {
-      githubToken = process.env.GITHUB_FALLBACK_TOKEN;
-    }
+        const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+        const fanIn = computeFanIn(dependencyGraph);
+        const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
 
-    const body = await req.json();
-    const { repoUrl, isLocal, localFiles } = body;
+        const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
+        const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
 
-    // Shared variables for the Unified Pipeline
-    let allFileContents: { path: string; content: string }[] = [];
-    let owner = "Local";
-    let repo = "Project";
-    let commitSha = "local-upload";
-    let description = "Locally uploaded codebase";
-    let stars = 0;
-    let language = "Mixed";
-    let filteredPaths: string[] = [];
-
-    // ==========================================
-    // FLOW A: LOCAL .ZIP UPLOAD
-    // ==========================================
-    if (isLocal && localFiles) {
-      console.log("Processing Local ZIP payload...");
-      allFileContents = localFiles;
-      filteredPaths = localFiles.map((f: { path: string }) => f.path);
-      
-    // ==========================================
-    // FLOW B: GITHUB REPOSITORY
-    // ==========================================
-    } else {
-      console.log("Processing GitHub URL...");
-      
-      const parsed = parseRepoUrl(repoUrl);
-      if (!parsed) {
-        return NextResponse.json({ error: "Invalid GitHub URL" }, { status: 400 });
-      }
-
-      // Reassign without redeclaring
-      owner = parsed.owner;
-      repo = parsed.repo;
-
-      const meta = await fetchRepoMeta(owner, repo, githubToken);
-      commitSha = meta.default_branch;
-      description = meta.description;
-      stars = meta.stargazers_count;
-      language = meta.language;
-
-      // ✅ CHECK CACHE FIRST (before rate limiting)
-      const { data: cached } = await supabase
-        .from("analyses")
-        .select("result_json")
-        .eq("repo_url", repoUrl)
-        .eq("commit_sha", commitSha)
-        .eq("analysis_version", ANALYSIS_VERSION)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (cached?.result_json) {
-        return NextResponse.json({ ...cached.result_json, cached: true });
-      }
-
-      // ✅ RATE LIMITING
-      const identifier = userId ? userId : ip;
-      const limiter = userId ? ratelimitAuth : ratelimitFree;
-      const { success, limit, reset, remaining } = await limiter.limit(identifier);
-
-      if (!success) {
-        return NextResponse.json(
-          { error: "Daily limit reached.", limit, remaining, reset },
-          { status: 429 }
+        const analysis = await analyzeWithGemini(
+          `${owner}/${repo}`,
+          description || "No description provided",
+          entryPoints,
+          topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
+          allFileContents.slice(0, 15),
+          blastRadiusTargets
         );
-      }
 
-      const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
+        const result = {
+          owner,
+          repo,
+          branch: commitSha,
+          description: description,
+          stars: stars,
+          language: language,
+          totalFiles: filteredPaths.length,
+          entryPoints,
+          dependencyGraph,
+          fanIn,
+          mermaidDiagram,
+          analysis,
+          fileContents: allFileContents.slice(0, 15),
+          fileMetrics
+        };
 
-      const IGNORE = ["node_modules", "dist", "build", ".next", ".git", "coverage", "__pycache__", ".yarn", "vendor"];
-      const IGNORE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".min.js", ".map", ".woff", ".woff2"];
+        if (!isLocal) {
+          await supabase.from("analyses").insert({
+            repo_url: repoUrl,
+            repo_name: `${owner}/${repo}`.toLowerCase(),
+            commit_sha: commitSha,
+            analysis_version: ANALYSIS_VERSION,
+            result_json: result,
+            user_id: userId
+          });
 
-      filteredPaths = (treeData.tree as { type: string; path: string }[])
-        .filter((file) => {
-          if (file.type !== "blob") return false;
-          if (IGNORE.some((ig) => file.path.includes(ig))) return false;
-          if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
-          return true;
-        })
-        .map((file) => file.path);
-
-      const scoredFiles = classifyAndScoreFiles(filteredPaths);
-      scoredFiles.forEach(file => {
-        if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
-          file.role = "entry";
-          file.score += 500;
+          // ✨ THE TRIGGER: Build the Copilot's memory bank!
+          // We await this so the Edge function doesn't kill the process before it finishes.
+          await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
-      });
 
-      const topFiles = getTopFiles(scoredFiles, 20);
+        clearInterval(keepAlive);
+        controller.enqueue(encoder.encode(JSON.stringify(result)));
+        controller.close();
 
-      let fetchErrors = 0;
-      for (const file of topFiles.slice(0, 30)) {
-        try {
-          const content = await fetchFileContent(owner, repo, file.path, githubToken);
-          const safeContent = content.split("\n").slice(0, 500).join("\n");
-          allFileContents.push({ path: file.path, content: safeContent });
-        } catch (err) {
-          fetchErrors++;
-          console.warn(`Failed to fetch ${file.path}:`, err);
+      } catch (err) {
+        clearInterval(keepAlive);
+        const message = err instanceof Error ? err.message : "Unknown error";
+        if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
+          controller.enqueue(encoder.encode(JSON.stringify({ 
+            error: 'REQUIRE_GITHUB_AUTH',
+            message: 'This repository requires GitHub authentication. Please sign in with GitHub to analyze private repositories.'
+          })));
+        } else {
+          controller.enqueue(encoder.encode(JSON.stringify({ error: message })));
         }
+        controller.close();
       }
-
-      if (fetchErrors > 10) {
-        console.error(`Warning: Failed to fetch ${fetchErrors} files`);
-      }
-    } // <-- END OF FLOW B (GITHUB)
-
-    // ==========================================
-    // THE UNIFIED AI PIPELINE
-    // ==========================================
-    if (allFileContents.length === 0) {
-      return NextResponse.json({ error: "No readable code files found." }, { status: 400 });
     }
+  });
 
-    // Run scoring on the combined/local files to find entry points for the AI
-    const scoredAllFiles = classifyAndScoreFiles(filteredPaths);
-    scoredAllFiles.forEach(file => {
-      if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
-        file.role = "entry";
-        file.score += 500;
-      }
-    });
-
-    const topFilesForGroq = getTopFiles(scoredAllFiles, 20);
-    const entryPoints = scoredAllFiles.filter((f) => f.role === "entry").map((f) => f.path);
-
-    const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
-    const fanIn = computeFanIn(dependencyGraph);
-    const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
-
-    const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
-    const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
-
-    const analysis = await analyzeWithGemini(
-      `${owner}/${repo}`,
-      description || "No description provided",
-      entryPoints,
-      topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
-      allFileContents.slice(0, 15),  // Use first 15 for Groq
-      blastRadiusTargets
-    );
-
-    const result = {
-      owner,
-      repo,
-      branch: commitSha,
-      description: description,
-      stars: stars,
-      language: language,
-      totalFiles: filteredPaths.length,
-      entryPoints,
-      dependencyGraph,
-      fanIn,
-      mermaidDiagram,
-      analysis,
-      fileContents: allFileContents.slice(0, 15)
-    };
-
-    // Only cache to Supabase if it's a GitHub repo (we don't want to save private local zips to DB)
-    if (!isLocal) {
-      await supabase.from("analyses").insert({
-        repo_url: repoUrl,
-        repo_name: `${owner}/${repo}`.toLowerCase(),
-        commit_sha: commitSha,
-        analysis_version: ANALYSIS_VERSION,
-        result_json: result,
-        user_id: userId
-      });
-    }
-
-    return NextResponse.json(result);
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
-      return NextResponse.json(
-        { 
-          error: 'REQUIRE_GITHUB_AUTH',
-          message: 'This repository requires GitHub authentication. Please sign in with GitHub to analyze private repositories.'
-        },
-        { status: 403 }
-      );
-    }
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
 }
 </file>
 

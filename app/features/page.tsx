@@ -59,7 +59,7 @@ export default function FeaturesPage() {
             The Anatomy <br />Of Code.
           </h1>
           <p className="text-slate-400 text-lg max-w-2xl leading-relaxed">
-            We don't just read repositories; we dissect them. CodeAutopsy combines heuristic static analysis with state-of-the-art LLMs to map, score, and explain complex software architectures.
+            We don&apos;t just read repositories; we dissect them. CodeAutopsy combines heuristic static analysis with state-of-the-art LLMs to map, score, and explain complex software architectures.
           </p>
         </motion.div>
 

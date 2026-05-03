@@ -8,6 +8,8 @@ import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
+import { checkUsageLimit } from "@/lib/usage";
+import { processAndStoreCodebase } from "@/lib/rag";
 
 const ANALYSIS_VERSION = 5;
 
@@ -50,13 +52,27 @@ export async function POST(req: NextRequest) {
 
     if (session) {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
       if (!userError && user) {
         authUser = user;
+
+        // ✨ THE SHIELD: Check usage limit before spending tokens ✨
+        const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+        if (!isUnderLimit) {
+          return NextResponse.json(
+            { 
+              error: "RATE_LIMIT_REACHED", 
+              message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." 
+            }, 
+            { status: 429 }
+          );
+        }
       } else {
         session = null;
       }
     }
-  } catch {
+  } catch (error) {
+    console.error("Auth/Rate Limit Error:", error);
   }
 
   const userId = authUser?.id ?? undefined;
@@ -257,6 +273,10 @@ export async function POST(req: NextRequest) {
             result_json: result,
             user_id: userId
           });
+
+          // ✨ THE TRIGGER: Build the Copilot's memory bank!
+          // We await this so the Edge function doesn't kill the process before it finishes.
+          await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
 
         clearInterval(keepAlive);

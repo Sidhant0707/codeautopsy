@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { ratelimitFree, ratelimitAuth } from "@/lib/ratelimit"; 
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const remaining = limitState ? limitState.remaining : maxTokens;
 
     return NextResponse.json({ remaining, maxTokens });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ remaining: 3, maxTokens: 3 }, { status: 500 }); 
   }
 }

@@ -78,7 +78,7 @@ export default function DocsPage() {
         </motion.div>
 
         <motion.p variants={fadeUp} className="text-lg text-slate-400 mb-16 max-w-2xl leading-relaxed">
-          A deep dive into the engineering principles behind the world's first AI-powered codebase visualization tool.
+          A deep dive into the engineering principles behind the world&apos;s first AI-powered codebase visualization tool.
         </motion.p>
 
         {/* Documentation Grid */}

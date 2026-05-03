@@ -1,28 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { checkUsageLimit } from "@/lib/usage";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-
-function safeTruncate(text: string, limit: number) {
-  if (text.length <= limit) return text;
-
-  let truncated = text.slice(0, limit);
-  truncated = truncated.replace(/<[^>]*$/, "");
-  truncated = truncated.replace(/&[^;\s]*$/, "");
-
-  return truncated + "\n\n...[CONTEXT TRUNCATED SAFELY]...";
-}
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 async function fetchWithRetry(url: string, options: RequestInit, retries = 1): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
-    const { signal, ...restOptions } = options;
-    const res = await fetch(url, { ...restOptions, signal: controller.signal });
+    const res = await fetch(url, { ...options, signal: controller.signal });
     
     if (!res.ok && res.status >= 500 && retries > 0) {
       return fetchWithRetry(url, options, retries - 1);
@@ -44,86 +37,103 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 1): P
 }
 
 export async function POST(req: NextRequest) {
-  let repoContextName = "unknown";
-
   try {
-    if (!GROQ_API_KEY) {
+    if (!GROQ_API_KEY || !GEMINI_API_KEY) {
       return NextResponse.json(
         { error: "Server Configuration Error: Missing API Key" }, 
         { status: 500 }
       );
     }
 
-    // ✨ Upgraded to receive an array of messages instead of a single question
-    const { messages, repoContext } = await req.json();
+    const { messages, repoUrl, repoContext } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Context or messages missing" }, { status: 400 });
     }
 
-    if (typeof repoContext === "object" && repoContext?.repo) {
-      repoContextName = repoContext.repo;
+    const latestMessage = messages[messages.length - 1]?.content;
+    const targetRepoUrl = repoUrl || (typeof repoContext === 'object' ? repoContext.url || repoContext.repo : null);
+
+    if (!latestMessage || !targetRepoUrl) {
+       return NextResponse.json({ error: "Missing query or repo URL" }, { status: 400 });
     }
 
-    let rawContext: string;
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { get(name: string) { return cookieStore.get(name)?.value; } } }
+    );
 
-    if (typeof repoContext === "string") {
-      rawContext = repoContext;
-    } else {
-      rawContext = [
-        `Language: ${repoContext.language ?? "unknown"}`,
-        `Architecture: ${repoContext.analysis?.architecture_pattern ?? "unknown"}`,
-        `Files:\n(Top-level structure)\n${(repoContext.fileContents ?? [])
-          .slice(0, 40)
-          .map((f: { path: string }) => `- ${f.path}`)
-          .join("\n")}`,
-        `Modules:\n(Key functional units)\n${(repoContext.analysis?.key_modules ?? [])
-          .slice(0, 20)
-          .map((m: { file: string; role: string }) => `- ${m.file}: ${m.role}`)
-          .join("\n")}`,
-      ].join("\n\n");
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+      if (!isUnderLimit) {
+        return NextResponse.json(
+          { error: "Daily limit reached. Upgrade to Architect." },
+          { status: 429 }
+        );
+      }
     }
 
-    if (rawContext.length > 100000) {
-      return NextResponse.json(
-        { error: "Payload Too Large: Context exceeds maximum allowed size." },
-        { status: 413 }
-      );
-    }
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1/models/embedding-001:embedContent?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "models/embedding-001",
+        content: { parts: [{ text: latestMessage }] }
+      })
+    });
 
-    const safeContext = safeTruncate(rawContext, 20000);
+    if (!geminiRes.ok) throw new Error("Failed to embed query");
+    const geminiData = await geminiRes.json();
+    const queryEmbedding = geminiData.embedding.values;
+
+    const { data: matchedChunks, error: matchError } = await supabase.rpc('match_codebase_embeddings', {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.3,
+      match_count: 5,
+      repo_url_filter: targetRepoUrl
+    });
+
+    if (matchError) throw matchError;
+
+    let contextText = "No specific code snippets found for this query.";
+    if (matchedChunks && matchedChunks.length > 0) {
+      contextText =
+        "Relevant code snippets:\n\n" +
+        matchedChunks
+          .map((c: { file_path: string; content: string }) => `--- File: ${c.file_path} ---\n${c.content}\n`)
+          .join("\n\n");
+    }
 
     const systemPrompt = `
 You are a Senior Systems Architect.
 
 Analyze ONLY the given repository context.
-If missing or unclear → say "Insufficient data in context".
+If missing or unclear -> say "Insufficient data in context".
 NEVER guess or assume this is a web project unless proven.
 
-Focus on:
-- Architecture pattern
-- Key modules and roles
-- Data/Execution flow
-
-Context:
-${safeContext}
+CONTEXT:
+${contextText}
 `;
 
     const res = await fetchWithRetry(GROQ_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${GROQ_API_KEY}`,
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages, // ✨ Inject the entire conversation history!
+          ...messages,
         ],
         temperature: 0.1,
         max_tokens: 1024,
-        stream: true, // ✨ ENABLE STREAMING
+        stream: true,
       }),
     }, 1);
 
@@ -132,7 +142,6 @@ ${safeContext}
       throw new Error(`Groq API Error (${res.status}): ${errorText.substring(0, 200)}`);
     }
 
-    // ✨ Return the raw stream directly to the client (This reduces code heavily!)
     return new Response(res.body, {
       headers: {
         "Content-Type": "text/event-stream",
@@ -143,21 +152,12 @@ ${safeContext}
 
   } catch (err: unknown) {
     let errorMessage = "Analysis Failed";
-    
     if (err instanceof Error) {
       errorMessage = err.name === "AbortError" 
         ? "Uplink Timeout: Analysis took too long or network dropped." 
         : err.message;
     }
-    
-    console.error("API Route Error:", {
-      message: errorMessage,
-      repo: repoContextName,
-    });
-    
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    console.error("API Route Error:", errorMessage);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

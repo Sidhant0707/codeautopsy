@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   User,
   History,
@@ -11,16 +12,22 @@ import {
   ArrowRight,
   Clock,
   GitBranch,
+  GitPullRequest,
+  ArrowLeft
 } from "lucide-react";
 import Header from "@/components/Header";
 import { createClient } from "@/lib/supabase-browser";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import Link from "next/link";
 
-type AnalysisRecord = {
-  id?: string | number;
-  repo_name: string;
+// 1. Unified History Type for both Repos and PRs
+type HistoryItem = {
+  id: string;
+  type: "repo" | "pr";
+  title: string;
+  subtitle: string;
   created_at: string;
+  link: string;
 };
 
 type TabId = "account" | "history" | "preferences";
@@ -56,11 +63,12 @@ function TabButton({
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("account");
   const [user, setUser] = useState<SupabaseUser | null>(null);
 
   // Real Database State
-  const [history, setHistory] = useState<AnalysisRecord[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [usageCount, setUsageCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -74,17 +82,56 @@ export default function ProfilePage() {
       setUser(user);
 
       if (user) {
-        // Fetch real analysis history from your Supabase table
-        const { data, error } = await supabase
-          .from("analyses")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+        // 2. Fetch both tables in parallel!
+        const [repoRes, prRes] = await Promise.all([
+          supabase.from("analyses").select("*").eq("user_id", user.id),
+          supabase.from("pr_analyses").select("*").eq("user_id", user.id),
+        ]);
 
-        if (data && !error) {
-          setHistory(data);
-          setUsageCount(data.length);
-        }
+        // Define explicit types for rows returned from the DB to avoid `any`
+        type RepoRow = {
+          id: number | string;
+          repo_name: string;
+          created_at: string;
+        };
+        type PRRow = {
+          id: number | string;
+          repo_name: string;
+          pr_number: number | string;
+          title: string;
+          created_at: string;
+        };
+
+        const repoData = (repoRes.data ?? []) as RepoRow[];
+        const prData = (prRes.data ?? []) as PRRow[];
+
+        // 3. Format and Merge the data
+        const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
+          id: `repo-${r.id}`,
+          type: "repo",
+          title: r.repo_name,
+          subtitle: "Full Codebase Scan",
+          created_at: r.created_at,
+          link: `/analyze?repo=${encodeURIComponent(r.repo_name)}`,
+        }));
+
+        const formattedPRs: HistoryItem[] = prData.map((p: PRRow) => ({
+          id: `pr-${p.id}`,
+          type: "pr",
+          title: `${p.repo_name} #${p.pr_number}`,
+          subtitle: p.title,
+          created_at: p.created_at,
+          link: `#`, // We will wire this up to reload the PR view later!
+        }));
+
+        // 4. Sort everything by newest first
+        const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+
+        setHistory(mergedHistory);
+        setUsageCount(mergedHistory.length); // Total scans used (Repos + PRs)
       }
       setIsLoading(false);
     }
@@ -100,6 +147,13 @@ export default function ProfilePage() {
         {/* LEFT SIDEBAR */}
         <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
           <div className="mb-8 px-4">
+            <button 
+              onClick={() => router.back()} 
+              className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-6 group w-fit"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> 
+              Back
+            </button>
             <h1 className="text-2xl font-bold text-white tracking-tight cabinet">
               Workspace
             </h1>
@@ -171,7 +225,6 @@ export default function ProfilePage() {
                       <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden flex gap-[2px] p-[2px]">
                         {Array.from({ length: 10 }).map((_, index) => {
                           const filled = index < usageCount;
-
                           return (
                             <div
                               key={index}
@@ -242,21 +295,31 @@ export default function ProfilePage() {
                         </p>
                       </div>
                     ) : (
-                      history.map((scan, i) => (
+                      history.map((scan) => (
                         <Link
-                          href={`/analyze?repo=${encodeURIComponent(scan.repo_name)}`}
-                          key={scan.id || i}
+                          href={scan.link}
+                          key={scan.id}
                           className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/5 transition-colors cursor-pointer"
                         >
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-1.5">
                             <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
-                              <Terminal className="w-3.5 h-3.5 text-slate-500" />
-                              {scan.repo_name}
+                              {/* 5. Dynamic Icons! Terminal for Repos, GitPullRequest for PRs */}
+                              {scan.type === "repo" ? (
+                                <Terminal className="w-4 h-4 text-emerald-500" />
+                              ) : (
+                                <GitPullRequest className="w-4 h-4 text-blue-500" />
+                              )}
+                              {scan.title}
                             </span>
-                            <span className="text-xs text-slate-500 flex items-center gap-1.5">
-                              <Clock className="w-3 h-3" />
-                              {new Date(scan.created_at).toLocaleDateString()}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] font-medium text-slate-400 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                                {scan.subtitle}
+                              </span>
+                              <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                                <Clock className="w-3 h-3" />
+                                {new Date(scan.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex items-center gap-4">
                             <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-transform duration-300 group-hover:translate-x-1" />

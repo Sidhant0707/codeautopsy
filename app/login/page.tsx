@@ -79,17 +79,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-[#f1f5f9] flex flex-col md:flex-row">
       <div className="hidden md:flex md:w-1/2 lg:w-3/5 p-12 lg:p-24 flex-col justify-between relative overflow-hidden border-r border-white/5">
+        {/* Styles moved to external CSS: .radial-bg */}
+        <div className="absolute inset-0 opacity-30 radial-bg" />
         <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-        <div
-          className="absolute top-1/4 -left-20 w-96 h-96 bg-white/5 rounded-full blur-[120px] animate-pulse"
-          style={{ animationDuration: "4s" }}
+          className="absolute top-1/4 -left-20 w-96 h-96 bg-white/5 rounded-full blur-[120px] animate-pulse pulse-circle"
         />
 
         <div className="relative z-10">

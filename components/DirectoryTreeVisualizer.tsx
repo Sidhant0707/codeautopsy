@@ -14,7 +14,6 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { hierarchy, tree } from "d3-hierarchy";
 
-
 interface DirectoryNode {
   name: string;
   path: string;
@@ -30,7 +29,7 @@ interface TreeNodeData {
   isDimmed: boolean;
 }
 
-// --- CUSTOM NODE ---
+// 🔥 DEFINED OUTSIDE: Prevents re-renders
 const TreeNode = ({ data }: { data: TreeNodeData }) => {
   return (
     <div
@@ -62,9 +61,6 @@ const TreeNode = ({ data }: { data: TreeNodeData }) => {
   );
 };
 
-const nodeTypes = { treeNode: TreeNode };
-
-// --- COLOR PALETTE FOR FILES ---
 const COLORS = [
   "blue",
   "emerald",
@@ -83,30 +79,32 @@ export default function DirectoryTreeVisualizer({
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
+  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
+
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!metrics || metrics.length === 0)
       return { initialNodes: [], initialEdges: [] };
 
-    // 1. Build the nested JSON hierarchy
-    const rootNode: DirectoryNode = { 
-      name: "root", 
-      path: "root", 
+    const rootNode: DirectoryNode = {
+      name: "root",
+      path: "root",
       isFolder: true,
       color: "slate",
-      children: [] 
+      children: [],
     };
+
     let colorIndex = 0;
     const folderColorMap = new Map<string, string>();
 
     metrics.forEach((metric) => {
       const parts = metric.path.split("/");
       let currentLevel = rootNode.children!;
-      let currentPath = "root"; // Base ID matches root
+      let currentPath = "root";
 
       parts.forEach((part, index) => {
         currentPath = `${currentPath}/${part}`;
         const isFile = index === parts.length - 1;
-
         let existing = currentLevel.find((n) => n.name === part);
 
         if (!existing) {
@@ -115,7 +113,6 @@ export default function DirectoryTreeVisualizer({
             folderColorMap.set(topFolder, COLORS[colorIndex % COLORS.length]);
             colorIndex++;
           }
-
           existing = {
             name: part,
             path: currentPath,
@@ -125,19 +122,16 @@ export default function DirectoryTreeVisualizer({
           };
           currentLevel.push(existing);
         }
-
         if (!isFile && existing.children) {
           currentLevel = existing.children;
         }
       });
     });
 
-    // 2. Run D3 Math
     const d3Root = hierarchy(rootNode);
-    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);;
+    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);
     treeLayout(d3Root);
 
-    // 3. Map D3 output to ReactFlow
     const rfNodes: Node<TreeNodeData>[] = [];
     const rfEdges: Edge[] = [];
 
@@ -172,16 +166,13 @@ export default function DirectoryTreeVisualizer({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Sync data on load
   useEffect(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-  // Handle the Sub-Tree Click Isolation
   useEffect(() => {
     if (!selectedPath) {
-      // Reset everything if background is clicked
       setNodes((nds) =>
         nds.map((n) => ({ ...n, data: { ...n.data, isDimmed: false } })),
       );
@@ -199,14 +190,12 @@ export default function DirectoryTreeVisualizer({
       return;
     }
 
-    // Determine active path (Ancestors + Descendants)
     setNodes((nds) =>
       nds.map((n) => {
         const isActive =
-          n.id === selectedPath || // Exact match
-          selectedPath.startsWith(n.id + "/") || // Ancestor (e.g. root/app contains root/app/api)
-          n.id.startsWith(selectedPath + "/"); // Descendant (e.g. root/app/api is inside root/app)
-
+          n.id === selectedPath ||
+          selectedPath.startsWith(n.id + "/") ||
+          n.id.startsWith(selectedPath + "/");
         return { ...n, data: { ...n.data, isDimmed: !isActive } };
       }),
     );
@@ -222,7 +211,6 @@ export default function DirectoryTreeVisualizer({
           selectedPath.startsWith(e.target + "/") ||
           e.target.startsWith(selectedPath + "/");
         const isActiveEdge = sActive && tActive;
-
         return {
           ...e,
           style: {
@@ -240,14 +228,12 @@ export default function DirectoryTreeVisualizer({
 
   return (
     <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-[#0a0a0a] relative">
-      {/* Helper text */}
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
         <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-3 py-1.5 rounded border border-white/5 flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           Click any folder/file to isolate path
         </div>
       </div>
-
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -261,7 +247,6 @@ export default function DirectoryTreeVisualizer({
         className="bg-[#0e0e0e]"
       >
         <Background color="#222" gap={16} />
-        {/* 🔥 FIX 1: Overhauled Controls Styling 🔥 */}
         <Controls
           className="!bg-[#141414] !rounded-lg overflow-hidden border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button>svg]:!fill-slate-400 hover:[&>button>svg]:!fill-white hover:[&>button]:!bg-white/5 transition-all"
           showInteractive={false}
