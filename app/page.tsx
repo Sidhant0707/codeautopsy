@@ -61,7 +61,7 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => {
         setRemaining(data.remaining);
-        setMaxLimit(data.maxTokens); 
+        setMaxLimit(data.maxTokens);
       })
       .catch(() => {
         setRemaining(3);
@@ -218,39 +218,49 @@ export default function Home() {
             AI-Powered Code Analysis
           </motion.div>
 
-          {/* NEW TELEMETRY FLEX BANNER - Neon Blue Removed */}
+          {/* ✨ RESPONSIVE TELEMETRY PILL ✨ */}
           {telemetry.totalScans > 0 && (
             <motion.div
               variants={fadeUp}
-              className="max-w-lg mx-auto mb-8 rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center justify-between"
+              className="flex items-center justify-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 sm:py-3 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-md w-fit max-w-[95vw] mx-auto mb-8 overflow-hidden transition-all"
             >
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-slate-400 animate-pulse" />
-                <span className="font-mono text-[10px] font-bold text-slate-300 tracking-widest uppercase">
-                  Live_Engine_Telemetry
+              {/* Telemetry Label */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 animate-pulse" />
+                <span className="text-[9px] sm:text-[10px] font-mono font-bold tracking-widest text-slate-300 uppercase">
+                  <span className="hidden sm:inline">LIVE_</span>TELEMETRY
                 </span>
               </div>
-              <div className="flex items-center gap-4 font-mono text-[10px]">
-                <div className="flex flex-col items-end">
-                  <span className="text-slate-500">ACCURACY</span>
-                  <span className="text-emerald-500/80 font-bold text-sm">
-                    {telemetry.successRate}%
-                  </span>
-                </div>
-                <div className="w-px h-6 bg-white/10" />
-                <div className="flex flex-col items-end">
-                  <span className="text-slate-500">SCANS_LOGGED</span>
-                  <span className="text-slate-300 font-bold text-sm">
-                    {telemetry.totalScans}
-                  </span>
-                </div>
+
+              <div className="w-px h-3 sm:h-4 bg-white/10" />
+
+              {/* Accuracy */}
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                <span className="text-[8px] sm:text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+                  Acc<span className="hidden sm:inline">uracy</span>
+                </span>
+                <span className="text-[10px] sm:text-sm font-mono font-bold text-emerald-500/80">
+                  {telemetry.successRate}%
+                </span>
+              </div>
+
+              <div className="w-px h-3 sm:h-4 bg-white/10" />
+
+              {/* Scans Logged */}
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                <span className="text-[8px] sm:text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+                  Scans<span className="hidden sm:inline">_Logged</span>
+                </span>
+                <span className="text-[10px] sm:text-sm font-mono font-bold text-slate-300">
+                  {telemetry.totalScans}
+                </span>
               </div>
             </motion.div>
           )}
 
           <motion.h1
             variants={fadeUp}
-            className="text-5xl md:text-7xl font-bold mb-6 tracking-tight leading-[1.1] text-slate-50"
+            className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6 tracking-tight leading-[1.2] sm:leading-[1.1] text-slate-50"
           >
             Understand Any{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-500">
@@ -270,22 +280,24 @@ export default function Home() {
 
           <motion.div variants={fadeUp} className="max-w-3xl mx-auto mb-6">
             <div className="glass-card rounded-2xl p-1 shadow-2xl">
-              <div className="relative flex items-center bg-[#0a0a0a] rounded-xl p-3 border border-white/5">
-                <FaGithub className="w-6 h-6 ml-2 text-slate-400 flex-shrink-0" />
-                <input
-                  type="text"
-                  placeholder="https://github.com/facebook/react"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                  className="flex-1 bg-transparent border-none outline-none px-4 text-slate-200 placeholder:text-slate-600/50 font-mono text-sm cursor-text"
-                />
+              <div className="relative flex flex-col sm:flex-row items-center bg-[#0a0a0a] rounded-xl p-2 sm:p-3 border border-white/5 gap-2 sm:gap-0">
+                <div className="flex items-center w-full sm:w-auto flex-1">
+                  <FaGithub className="w-5 h-5 ml-2 text-slate-400 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="https://github.com/facebook/react"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                    className="w-full bg-transparent border-none outline-none px-3 sm:px-4 text-slate-200 placeholder:text-slate-600/50 font-mono text-[13px] sm:text-sm cursor-text"
+                  />
+                </div>
 
                 <motion.button
                   onClick={handleAnalyze}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="cursor-pointer btn-gray text-white px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
+                  className="w-full sm:w-auto cursor-pointer btn-gray text-white px-6 py-2.5 sm:py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
                 >
                   Analyze →
                 </motion.button>
@@ -343,7 +355,7 @@ export default function Home() {
           <p className="text-center text-slate-500 text-[10px] font-bold mb-10 uppercase tracking-[0.3em]">
             Trusted by engineers at
           </p>
-          <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24">
+          <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-12 md:gap-24 px-4">
             {[
               { name: "GitHub", Icon: FaGithub },
               { name: "Google", Icon: FaGoogle },
