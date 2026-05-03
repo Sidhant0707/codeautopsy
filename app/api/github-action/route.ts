@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     }
 
     const shortSha = commitSha.substring(0, 7);
-    const reportUrl = `https://codeautopsy.app/analyze?url=https://github.com/${owner}/${repo}`;
+    const reportUrl = `https://codeautopsy-lyart.vercel.app/analyze?url=https://github.com/${owner}/${repo}`;
 
     // Generate the dynamic markdown snippet that the Action will inject into the README.
     // We wrap it in the specific start/end tags so the Action knows exactly what to replace next time.
