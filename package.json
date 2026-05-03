@@ -43,5 +43,22 @@
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "description": "<div align=\"center\">   <img src=\"./public/codeautopsy-logo1.png\" alt=\"CodeAutopsy Logo\" width=\"80\" height=\"80\" />   <h1>CodeAutopsy</h1>   <p><b>An AI-powered diagnostic engine that reverse-engineers, maps, and analyzes complex codebases in seconds.</b></p>",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sidhant0707/codeautopsy.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Sidhant0707/codeautopsy/issues"
+  },
+  "homepage": "https://github.com/Sidhant0707/codeautopsy#readme"
 }

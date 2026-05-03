@@ -10,19 +10,39 @@ import { User } from "@supabase/supabase-js";
 export default function Header() {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showPulse, setShowPulse] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
+    // Check if the user has already seen the new PR tool
+    if (typeof window !== "undefined") {
+      const hasSeenTool = localStorage.getItem("seenPRTool");
+      if (!hasSeenTool) {
+        setShowPulse(true);
+      }
+    }
+
+    // Fetch the authenticated user
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
     });
 
+    // Listen for auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Handle clicking the dashboard link to clear the notification
+  const handleDashboardClick = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("seenPRTool", "true");
+    }
+    setShowPulse(false);
+    setMenuOpen(false);
+  };
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -60,20 +80,24 @@ export default function Header() {
         <Link href="/pricing" className="cursor-pointer text-slate-400 hover:text-white transition-colors text-sm font-medium">
           Pricing
         </Link>
-        {/* If the user is NOT logged in, we can hide the dashboard link from the main nav, 
-            or show it and let the page redirect them to login. We will keep it clean and remove it here,
-            placing it next to the profile menu instead! */}
       </nav>
 
       <div className="flex items-center gap-4">
         {user ? (
           <div className="flex items-center gap-4">
             
-            {/* ✨ NEW DASHBOARD BUTTON for Desktop ✨ */}
+            {/* Desktop Dashboard Link */}
             <Link
               href="/dashboard"
-              className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-all font-mono text-xs uppercase tracking-widest"
+              onClick={handleDashboardClick}
+              className="relative hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-all font-mono text-xs uppercase tracking-widest"
             >
+              {showPulse && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-200 opacity-80"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-slate-100 shadow-[0_0_10px_rgba(241,245,249,0.8)]"></span>
+                </span>
+              )}
               <LayoutGrid className="w-4 h-4" />
               Dashboard
             </Link>
@@ -100,14 +124,22 @@ export default function Header() {
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                   </div>
                   
-                  {/* ✨ UPDATED Mobile/Menu Dashboard Link ✨ */}
+                  {/* Mobile Dashboard Link */}
                   <Link
                     href="/dashboard"
-                    onClick={() => setMenuOpen(false)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors md:hidden"
+                    onClick={handleDashboardClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors md:hidden relative"
                   >
                     <LayoutGrid className="w-4 h-4" />
-                    Dashboard
+                    <span className="relative flex items-center">
+                      Dashboard
+                      {showPulse && (
+                        <span className="absolute -right-3 -top-0.5 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-200 opacity-80"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-100 shadow-[0_0_8px_rgba(241,245,249,0.8)]"></span>
+                        </span>
+                      )}
+                    </span>
                   </Link>
 
                   <button
