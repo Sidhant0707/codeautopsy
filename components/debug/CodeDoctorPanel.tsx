@@ -11,10 +11,9 @@ import { Cpu, Maximize2, Minimize2, AlertCircle, Search } from "lucide-react";
 interface CodeDoctorPanelProps {
   repoUrl: string;
   onUpdateGraph?: (newMermaidString: string) => void;
-  onDiscussInCopilot?: () => void;
 }
 
-export function CodeDoctorPanel({ repoUrl, onUpdateGraph, onDiscussInCopilot }: CodeDoctorPanelProps) {
+export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps) {
   const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
   const lastChartRef = useRef<string | null>(null);
   

@@ -672,8 +672,8 @@ export default function Home() {
                 </span>
               </div>
               <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
-                The world's first AI-powered codebase visualization tool. Built
-                for efficiency.
+                The world&apos;s first AI-powered codebase visualization tool.
+                Built for efficiency.
               </p>
             </div>
             {[
@@ -733,6 +733,8 @@ export default function Home() {
                     <a
                       key={i}
                       href={social.href}
+                      aria-label={social.href}
+                      title={social.href}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-10 h-10 rounded-lg bg-[#141414] border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:border-white/20 transition-all"

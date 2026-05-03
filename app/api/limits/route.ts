@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { ratelimitFree, ratelimitAuth } from "@/lib/ratelimit"; 
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
