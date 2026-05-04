@@ -55,32 +55,31 @@ export async function GET(req: NextRequest) {
 
     // Generate the raw SVG string
     // This creates a sleek, dark-mode badge matching your UI aesthetics
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="280" height="40" viewBox="0 0 280 40" fill="none">
-        <rect width="280" height="40" rx="6" fill="#0e0e0e" stroke="#222222" stroke-width="1.5"/>
-        
-        <!-- Glowing Letter Grade Box -->
-        <rect x="4" y="4" width="32" height="32" rx="4" fill="${colorHex}15" stroke="${colorHex}40" stroke-width="1"/>
-        <text x="20" y="26" font-family="monospace" font-size="20" font-weight="900" fill="${colorHex}" text-anchor="middle">${grade}</text>
-        
-        <!-- CodeAutopsy Branding -->
-        <text x="48" y="16" font-family="sans-serif" font-size="9" font-weight="700" fill="#64748b" letter-spacing="1">CODEAUTOPSY HEALTH</text>
-        
-        <!-- Status & Score -->
-        <text x="48" y="30" font-family="sans-serif" font-size="12" font-weight="600" fill="#e2e8f0">${statusText}</text>
-        
-        <!-- Score Pill -->
-        <rect x="230" y="10" width="40" height="20" rx="10" fill="${colorHex}20" />
-        <text x="250" y="24" font-family="monospace" font-size="10" font-weight="bold" fill="${colorHex}" text-anchor="middle">${score}</text>
-      </svg>
-    `;
+    // ✨ UPGRADED: Zero whitespace at the start, premium system fonts, and better spacing
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="310" height="44" viewBox="0 0 310 44" fill="none">
+      <rect width="310" height="44" rx="8" fill="#0a0a0a" stroke="#222222" stroke-width="1.5"/>
+      
+      <!-- Glowing Letter Grade Box -->
+      <rect x="6" y="6" width="32" height="32" rx="6" fill="${colorHex}15" stroke="${colorHex}40" stroke-width="1"/>
+      <text x="22" y="27" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="900" fill="${colorHex}" text-anchor="middle">${grade}</text>
+      
+      <!-- CodeAutopsy Branding -->
+      <text x="52" y="18" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#64748b" letter-spacing="1.5">CODEAUTOPSY HEALTH</text>
+      
+      <!-- Status Text -->
+      <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#f8fafc">${statusText}</text>
+      
+      <!-- Score Pill -->
+      <rect x="250" y="12" width="50" height="20" rx="10" fill="${colorHex}10" stroke="${colorHex}30" stroke-width="1"/>
+      <text x="275" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="${colorHex}" text-anchor="middle">${score}/100</text>
+    </svg>`;
 
     // Return the SVG with aggressive caching headers to prevent spamming your database
     return new NextResponse(svg.trim(), {
       status: 200,
       headers: {
         "Content-Type": "image/svg+xml",
-        "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+        "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
       },
     });
 
