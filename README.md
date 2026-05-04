@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/AI-Groq_Llama_3.3-blue?style=for-the-badge&logo=meta" alt="Powered by Groq" />
   <a href="https://codeautopsy-lyart.vercel.app/analyze?repo=Sidhant0707/codeautopsy">
   <img src="https://codeautopsy-lyart.vercel.app/api/badge?repo=Sidhant0707/codeautopsy&v=1" alt="CodeAutopsy Health" />
-</a>
+  </a>
 </div>
 
 ---
