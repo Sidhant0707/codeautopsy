@@ -1,0 +1,35 @@
+name: CodeAutopsy Architecture Scan
+
+on:
+  pull_request:
+    types: [opened, synchronize] # Runs when PR is opened or new commits are pushed
+
+jobs:
+  analyze-architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call CodeAutopsy Engine
+        id: autopsy
+        run: |
+          # 1. Hit your live Vercel API
+          # Make sure to replace this URL with your actual production URL if different!
+          RESPONSE=$(curl -s -X POST https://codeautopsy-lyart.vercel.app/api/github-action \
+            -H "Content-Type: application/json" \
+            -d '{"owner": "${{ github.repository_owner }}", "repo": "${{ github.event.repository.name }}", "commitSha": "${{ github.event.pull_request.head.sha }}"}')
+          
+          # 2. Extract the markdown snippet using jq
+          SNIPPET=$(echo "$RESPONSE" | jq -r '.markdownSnippet')
+          
+          # 3. Save to GitHub Environment for the next step (multiline safe)
+          echo "SNIPPET<<EOF" >> $GITHUB_ENV
+          echo "$SNIPPET" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Inject Interactive Map into PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNIPPET: ${{ env.SNIPPET }}
+        run: |
+          # 4. Use GitHub CLI to post or update the comment on the Pull Request
+          # The <!-- CODEAUTOPSY:START --> tags in your API ensure it updates the same comment!
+          gh pr comment ${{ github.event.pull_request.number }} --body "$SNIPPET"
