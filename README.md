@@ -5,6 +5,9 @@
   
   <img src="https://img.shields.io/badge/Deployed-Vercel-black?style=for-the-badge&logo=vercel" alt="Deployed on Vercel" />
   <img src="https://img.shields.io/badge/AI-Groq_Llama_3.3-blue?style=for-the-badge&logo=meta" alt="Powered by Groq" />
+  <a href="https://codeautopsy-lyart.vercel.app/analyze?repo=Sidhant0707/codeautopsy">
+  <img src="https://codeautopsy-lyart.vercel.app/api/badge?repo=Sidhant0707/codeautopsy" alt="CodeAutopsy Health" />
+</a>
 </div>
 
 ---
