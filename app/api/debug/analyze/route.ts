@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
       fanIn
     );
 
-    traversalPath = applyDebugHeuristics(traversalPath, crashNode, error_type);
+    traversalPath = applyDebugHeuristics(traversalPath, error_type);
 
     const fileContents = result_json.fileContents || [];
     const existingContents = new Map<string, string>(
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
 
     const debugResult = await analyzeDebugWithGemini(debugInput);
 
-    const confidence = calculateConfidence(traversalPath, crashNode);
+    const confidence = calculateConfidence(traversalPath);
     const requires_runtime = requiresRuntimeCheck(error_type, error_message);
 
     const suspectedRootCause = traversalPath.find(n => n.relationship === "upstream")?.file;

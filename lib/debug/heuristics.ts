@@ -1,10 +1,9 @@
 // lib/debug/heuristics.ts
 
-import { TraversalNode, CrashNode } from "./types";
+import { TraversalNode } from "./types";
 
 export function applyDebugHeuristics(
   nodes: TraversalNode[],
-  crashNode: CrashNode,
   errorType: string
 ): TraversalNode[] {
   return nodes.map((node) => {
@@ -65,7 +64,6 @@ export function applyDebugHeuristics(
 // Confidence scoring based on traversal results
 export function calculateConfidence(
   traversalPath: TraversalNode[],
-  crashNode: CrashNode
 ): "high" | "medium" | "low" {
   const upstreamCount = traversalPath.filter(
     (n) => n.relationship === "upstream"

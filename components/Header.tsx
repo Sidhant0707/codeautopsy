@@ -13,15 +13,8 @@ export default function Header() {
   const [showPulse, setShowPulse] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
+  // 1. Auth State Effect (Runs independently to ensure user data always loads)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const hasSeenTool = localStorage.getItem("seenPRTool");
-      if (!hasSeenTool) {
-        const t = setTimeout(() => setShowPulse(true), 0);
-        return () => clearTimeout(t);
-      }
-    }
-
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
     });
@@ -34,6 +27,17 @@ export default function Header() {
 
     return () => listener.subscription.unsubscribe();
   }, [supabase.auth]);
+
+  // 2. Dashboard Pulse UI Effect (Runs independently to handle the local storage logic)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hasSeenTool = localStorage.getItem("seenPRTool");
+      if (!hasSeenTool) {
+        const t = setTimeout(() => setShowPulse(true), 0);
+        return () => clearTimeout(t);
+      }
+    }
+  }, []);
 
   const handleDashboardClick = () => {
     if (typeof window !== "undefined") {
