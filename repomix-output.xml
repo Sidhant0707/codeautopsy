@@ -40,10 +40,12 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+.github/workflows/codeautopsy.yml
 app/actions/feedback.ts
 app/actions/telemetry.ts
 app/api/analyze-pr/route.ts
 app/api/analyze/route.ts
+app/api/badge/route.ts
 app/api/debug/analyze/route.ts
 app/api/github-action/route.ts
 app/api/pr-impact/route.ts
@@ -69,6 +71,7 @@ components/TreemapVisualizer.tsx
 components/ZipUploader.tsx
 hooks/use-debug.ts
 lib/analyzer/blast-radius.ts
+lib/analyzer/health.ts
 lib/debug/cache.ts
 lib/debug/file-fetcher.ts
 lib/debug/gemini-debug.ts
@@ -84,173 +87,49 @@ lib/usage.ts
 package.json
 proxy.ts
 public/codeautopsy-logo1.png
+README.md
 utils/supabase/server.ts
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path="components/BackButton.tsx">
-"use client";
+<file path=".github/workflows/codeautopsy.yml">
+name: CodeAutopsy Architecture Scan
 
-import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+on:
+  pull_request:
+    types: [opened, synchronize] # Runs when PR is opened or new commits are pushed
 
-export default function BackButton() {
-  const router = useRouter();
+jobs:
+  analyze-architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call CodeAutopsy Engine
+        id: autopsy
+        run: |
+          # 1. Hit your live Vercel API
+          # Make sure to replace this URL with your actual production URL if different!
+          RESPONSE=$(curl -s -X POST https://codeautopsy-lyart.vercel.app/api/github-action \
+            -H "Content-Type: application/json" \
+            -d '{"owner": "${{ github.repository_owner }}", "repo": "${{ github.event.repository.name }}", "commitSha": "${{ github.event.pull_request.head.sha }}"}')
+          
+          # 2. Extract the markdown snippet using jq
+          SNIPPET=$(echo "$RESPONSE" | jq -r '.markdownSnippet')
+          
+          # 3. Save to GitHub Environment for the next step (multiline safe)
+          echo "SNIPPET<<EOF" >> $GITHUB_ENV
+          echo "$SNIPPET" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
-  return (
-    <button
-      onClick={() => router.back()}
-      className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-8 group w-fit"
-    >
-      <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-      Back
-    </button>
-  );
-}
-</file>
-
-<file path="lib/rag.ts">
-import { SupabaseClient } from "@supabase/supabase-js";
-
-// Chops massive code files into ~1000 character chunks so the AI can digest them
-function chunkCode(code: string, maxChunkSize = 1000): string[] {
-  const chunks = [];
-  let currentChunk = "";
-  const lines = code.split('\n');
-
-  for (const line of lines) {
-    if (currentChunk.length + line.length > maxChunkSize) {
-      chunks.push(currentChunk);
-      currentChunk = line + '\n';
-    } else {
-      currentChunk += line + '\n';
-    }
-  }
-  if (currentChunk.trim().length > 0) chunks.push(currentChunk);
-  return chunks;
-}
-
-export async function processAndStoreCodebase(
-  supabase: SupabaseClient,
-  repoUrl: string,
-  files: { path: string; content: string }[]
-) {
-  const apiKey = process.env.GEMINI_API_KEY; // ✨ Using the free key!
-  if (!apiKey) {
-    console.error("Missing GEMINI_API_KEY. Cannot generate embeddings.");
-    return;
-  }
-
-  console.log(`🧠 Processing Free Gemini RAG embeddings for ${repoUrl}...`);
-
-  const allChunks: { repo_url: string; file_path: string; content: string }[] = [];
-
-  for (const file of files) {
-    const chunks = chunkCode(file.content);
-    for (const chunk of chunks) {
-      allChunks.push({
-        repo_url: repoUrl,
-        file_path: file.path,
-        content: chunk
-      });
-    }
-  }
-
-  // We process in batches of 100 to stay within free API limits
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
-    const batch = allChunks.slice(i, i + BATCH_SIZE);
-
-    // Format the payload for the stable embedding-001 model
-    const requests = batch.map(b => ({
-      model: "models/embedding-001",
-      content: { parts: [{ text: b.content }] }
-    }));
-
-    // 1. Turn the code chunks into vectors using Gemini's stable model
-    // 1. Turn the code chunks into vectors using Gemini's stable V1 API
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/embedding-001:batchEmbedContents?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requests })
-    });
-    if (!res.ok) {
-       console.error("Gemini Embedding generation failed", await res.text());
-       continue;
-    }
-
-    const embeddingData = await res.json();
-
-    // 2. Attach the 768-dimensional math vectors to your code chunks
-    const dbPayload = batch.map((item, index) => ({
-      ...item,
-      embedding: embeddingData.embeddings[index].values
-    }));
-
-    // 3. Save directly to your new Supabase Vector table
-    const { error } = await supabase.from('codebase_embeddings').insert(dbPayload);
-    if (error) {
-      console.error("Failed to save vectors to Supabase", error);
-    }
-  }
-  
-  console.log(`✅ Finished vectorizing ${repoUrl} for FREE`);
-}
-</file>
-
-<file path="lib/usage.ts">
-import { SupabaseClient } from "@supabase/supabase-js";
-
-// ✨ 1. Define your admin accounts (God Mode)
-const ADMIN_EMAILS = [
-  "sidhantkumar431@gmail.com", 
-  "sidhantkumar0707@gmail.com",
-];
-
-export async function checkUsageLimit(
-  supabase: SupabaseClient, 
-  userId: string, 
-  userEmail?: string
-): Promise<boolean> {
-  
-  // ✨ 2. The Admin Bypass Shield
-  if (userEmail && ADMIN_EMAILS.includes(userEmail)) {
-    console.log(`🛡️ Admin bypass active for: ${userEmail}`);
-    return true; // Instantly grant unlimited access!
-  }
-
-  const MAX_DAILY_SCANS = 10;
-  
-  // Get midnight of the current day in UTC
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const startOfDay = today.toISOString();
-
-  // Count Repo Scans today
-  const { count: repoCount, error: repoError } = await supabase
-    .from('analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
-
-  if (repoError) console.error("Error checking repo usage:", repoError);
-
-  // Count PR Scans today
-  const { count: prCount, error: prError } = await supabase
-    .from('pr_analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
-
-  if (prError) console.error("Error checking PR usage:", prError);
-
-  const totalUsage = (repoCount || 0) + (prCount || 0);
-
-  // Return true if they are under the limit, false if they hit it
-  return totalUsage < MAX_DAILY_SCANS;
-}
+      - name: Inject Interactive Map into PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNIPPET: ${{ env.SNIPPET }}
+        run: |
+          # 4. Use GitHub CLI to post or update the comment on the Pull Request
+          # The <!-- CODEAUTOPSY:START --> tags in your API ensure it updates the same comment!
+          gh pr comment ${{ github.event.pull_request.number }} --body "$SNIPPET"
 </file>
 
 <file path="app/actions/feedback.ts">
@@ -336,162 +215,6 @@ export async function getSystemTelemetry() {
     successRate, 
     totalScans: totalVotes 
   };
-}
-</file>
-
-<file path="app/api/analyze-pr/route.ts">
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr"; 
-import { checkUsageLimit } from "@/lib/usage"; // ✨ Import the Shield helper
-
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { owner, repo, prNumber } = body;
-
-    if (!owner || !repo || !prNumber) {
-      return NextResponse.json({ error: "Missing parameters." }, { status: 400 });
-    }
-
-    // --- 1. Identify the User via Supabase ---
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { get(name: string) { return cookieStore.get(name)?.value; } } }
-    );
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    // Ensure the user is actually logged in
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
-    }
-
-    // ✨ THE SHIELD: Check usage limit before spending tokens (with Admin Bypass) ✨
-    const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
-    if (!isUnderLimit) {
-      return NextResponse.json(
-        { 
-          error: "RATE_LIMIT_REACHED", 
-          message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." 
-        }, 
-        { status: 429 }
-      );
-    }
-
-    // --- 2. Fetch PR Metadata & Diffs ---
-    const prMetaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`, { headers: { Accept: "application/vnd.github.v3+json" } });
-    if (!prMetaRes.ok) throw new Error("Pull Request not found.");
-    const prMeta = await prMetaRes.json();
-
-    const prFilesRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`, { headers: { Accept: "application/vnd.github.v3+json" } });
-    const prFiles = await prFilesRes.json();
-
-    const fileChangesText = prFiles.slice(0, 15).map((f: { patch?: string; filename: string; status: string }) => {
-      const patch = f.patch ? f.patch.substring(0, 1500) : "Binary/large file.";
-      return `=== FILE: ${f.filename} (Status: ${f.status}) ===\n${patch}`;
-    }).join("\n\n");
-
-    // --- 3. Prompt & Groq Call ---
-    const systemPrompt = `You are a senior software engineer conducting a strict code review on a Pull Request.
-Repository: ${owner}/${repo}
-PR Title: ${prMeta.title}
-PR Description: ${prMeta.body ? prMeta.body.substring(0, 1000) : "No description."}
-CODE CHANGES (Diffs):
-${fileChangesText}
-
-Analyze these code changes and return ONLY a valid JSON object with EXACTLY this structure:
-{
-  "prNumber": ${prNumber},
-  "title": "${prMeta.title.replace(/"/g, '\\"')}",
-  "description": "A 2-sentence plain English summary.",
-  "blastRadius": [{ "file": "exact filename", "impact": "1 sentence explaining impact." }],
-  "architecturalChanges": ["bullet point 1", "bullet point 2"],
-  "breakingDependencies": ["list any dependencies. If none, write 'None detected.'"],
-  "riskLevel": "one of: low | medium | high"
-}`;
-
-    const apiKey = process.env.GROQ_API_KEY;
-    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: "Analyze this PR and return ONLY the required JSON." }],
-        temperature: 0.1,
-        response_format: { type: "json_object" }
-      }),
-    });
-
-    if (!groqRes.ok) throw new Error(`Groq API error ${groqRes.status}`);
-    const data = await groqRes.json();
-    const finalResult = JSON.parse(data.choices[0].message.content);
-
-    // --- 4. SAVE TO SUPABASE BEFORE RETURNING! ---
-    const { error: dbError } = await supabase.from('pr_analyses').insert({
-      user_id: user.id,
-      repo_name: `${owner}/${repo}`,
-      pr_number: prNumber,
-      title: finalResult.title,
-      risk_level: finalResult.riskLevel,
-      analysis_data: finalResult // We save the whole JSON so the user can view it later without recalling the API!
-    });
-    
-    if (dbError) console.error("Failed to save PR analysis to Supabase:", dbError);
-
-    return NextResponse.json(finalResult);
-
-  } catch (error: unknown) {
-    console.error("PR Analysis Error:", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to analyze Pull Request." }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/pr-impact/route.ts">
-import { NextResponse } from "next/server";
-import { getPullRequestDiff } from "@/lib/github/pr-fetcher";
-import { calculateBlastRadius } from "@/lib/analyzer/blast-radius";
-
-export async function POST(req: Request) {
-  try {
-    const { prUrl } = await req.json();
-
-    if (!prUrl) {
-      return NextResponse.json({ error: "Missing PR URL" }, { status: 400 });
-    }
-
-    // 1. Fetch the modified files from the PR using the GitHub token from your .env
-    const prData = await getPullRequestDiff(prUrl, process.env.GITHUB_TOKEN);
-    const modifiedFiles = prData.modifiedFiles.map((f: { filename: string }) => f.filename);
-
-    // 2. Fetch the repository's dependency graph.
-    // NOTE: You will eventually plug in your actual graph generator here, 
-    // or fetch the cached graph from Supabase for this specific repo.
-    // For now, we use a mock graph to ensure the wiring works.
-    const reverseDependencyGraph: Record<string, string[]> = {
-      "app/page.tsx": [],
-      "components/ui/button.tsx": ["app/page.tsx", "components/layout/header.tsx"],
-      "lib/auth.ts": ["app/api/user/route.ts", "components/layout/header.tsx", "app/dashboard/page.tsx"],
-    };
-
-    // 3. Calculate the Blast Radius mathematically
-    const blastRadius = calculateBlastRadius(modifiedFiles, reverseDependencyGraph);
-
-    // 4. Return the enterprise-grade impact report
-    return NextResponse.json({
-      success: true,
-      repository: `${prData.owner}/${prData.repo}`,
-      pullRequest: prData.pullNumber,
-      modifiedFilesCount: modifiedFiles.length,
-      impactReport: blastRadius,
-    });
-
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "An unknown error occurred";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
 }
 </file>
 
@@ -619,382 +342,6 @@ export default function PRScanPage() {
 }
 </file>
 
-<file path="app/profile/page.tsx">
-"use client";
-
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
-import {
-  User,
-  History,
-  Settings,
-  Terminal,
-  Zap,
-  ArrowRight,
-  Clock,
-  GitBranch,
-  GitPullRequest,
-  ArrowLeft
-} from "lucide-react";
-import Header from "@/components/Header";
-import { createClient } from "@/lib/supabase-browser";
-import { User as SupabaseUser } from "@supabase/supabase-js";
-import Link from "next/link";
-
-// 1. Unified History Type for both Repos and PRs
-type HistoryItem = {
-  id: string;
-  type: "repo" | "pr";
-  title: string;
-  subtitle: string;
-  created_at: string;
-  link: string;
-};
-
-type TabId = "account" | "history" | "preferences";
-
-type TabButtonProps = {
-  id: TabId;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  activeTab: TabId;
-  onSelect: (id: TabId) => void;
-};
-
-function TabButton({
-  id,
-  icon: Icon,
-  label,
-  activeTab,
-  onSelect,
-}: TabButtonProps) {
-  return (
-    <button
-      onClick={() => onSelect(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
-        activeTab === id
-          ? "bg-white/10 text-white shadow-inner border border-white/5"
-          : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
-      }`}
-    >
-      <Icon className="w-4 h-4" />
-      {label}
-    </button>
-  );
-}
-
-export default function ProfilePage() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabId>("account");
-  const [user, setUser] = useState<SupabaseUser | null>(null);
-
-  // Real Database State
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [usageCount, setUsageCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    async function loadProfileData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
-
-      if (user) {
-        // 2. Fetch both tables in parallel!
-        const [repoRes, prRes] = await Promise.all([
-          supabase.from("analyses").select("*").eq("user_id", user.id),
-          supabase.from("pr_analyses").select("*").eq("user_id", user.id),
-        ]);
-
-        // Define explicit types for rows returned from the DB to avoid `any`
-        type RepoRow = {
-          id: number | string;
-          repo_name: string;
-          created_at: string;
-        };
-        type PRRow = {
-          id: number | string;
-          repo_name: string;
-          pr_number: number | string;
-          title: string;
-          created_at: string;
-        };
-
-        const repoData = (repoRes.data ?? []) as RepoRow[];
-        const prData = (prRes.data ?? []) as PRRow[];
-
-        // 3. Format and Merge the data
-        const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
-          id: `repo-${r.id}`,
-          type: "repo",
-          title: r.repo_name,
-          subtitle: "Full Codebase Scan",
-          created_at: r.created_at,
-          link: `/analyze?repo=${encodeURIComponent(r.repo_name)}`,
-        }));
-
-        const formattedPRs: HistoryItem[] = prData.map((p: PRRow) => ({
-          id: `pr-${p.id}`,
-          type: "pr",
-          title: `${p.repo_name} #${p.pr_number}`,
-          subtitle: p.title,
-          created_at: p.created_at,
-          link: `#`, // We will wire this up to reload the PR view later!
-        }));
-
-        // 4. Sort everything by newest first
-        const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-
-        setHistory(mergedHistory);
-        setUsageCount(mergedHistory.length); // Total scans used (Repos + PRs)
-      }
-      setIsLoading(false);
-    }
-
-    loadProfileData();
-  }, []);
-
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] text-slate-200 font-satoshi flex flex-col">
-      <Header />
-
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
-        {/* LEFT SIDEBAR */}
-        <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
-          <div className="mb-8 px-4">
-            <button 
-              onClick={() => router.back()} 
-              className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-6 group w-fit"
-            >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> 
-              Back
-            </button>
-            <h1 className="text-2xl font-bold text-white tracking-tight cabinet">
-              Workspace
-            </h1>
-            <p className="text-xs text-slate-500 font-mono mt-1 truncate">
-              {user?.email || "Loading account..."}
-            </p>
-          </div>
-
-          <nav className="space-y-1">
-            <TabButton
-              id="account"
-              icon={User}
-              label="Account & Limits"
-              activeTab={activeTab}
-              onSelect={setActiveTab}
-            />
-            <TabButton
-              id="history"
-              icon={History}
-              label="Autopsy History"
-              activeTab={activeTab}
-              onSelect={setActiveTab}
-            />
-            <TabButton
-              id="preferences"
-              icon={Settings}
-              label="Engine Preferences"
-              activeTab={activeTab}
-              onSelect={setActiveTab}
-            />
-          </nav>
-        </aside>
-
-        {/* MAIN CONTENT AREA */}
-        <section className="flex-1 min-w-0">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
-            >
-              {/* --- ACCOUNT TAB --- */}
-              {activeTab === "account" && (
-                <div className="space-y-8">
-                  <div>
-                    <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                      <Zap className="w-5 h-5 text-emerald-400" /> Usage
-                      Telemetry
-                    </h2>
-                    <p className="text-sm text-slate-400 mb-6">
-                      Your current API limits and usage cycle.
-                    </p>
-
-                    <div className="p-5 rounded-xl border border-white/5 bg-black/40">
-                      <div className="flex justify-between items-end mb-2">
-                        <span className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                          Free Tier (Intern)
-                        </span>
-                        <span className="text-sm font-bold text-white">
-                          {usageCount} / 10{" "}
-                          <span className="text-slate-500 font-normal">
-                            Scans Used
-                          </span>
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden flex gap-[2px] p-[2px]">
-                        {Array.from({ length: 10 }).map((_, index) => {
-                          const filled = index < usageCount;
-                          return (
-                            <div
-                              key={index}
-                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${
-                                filled
-                                  ? usageCount >= 10
-                                    ? "bg-red-500"
-                                    : "bg-emerald-500"
-                                  : "bg-white/10"
-                              }`}
-                            />
-                          );
-                        })}
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-3 font-mono uppercase">
-                        Usage tied to connected account
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="h-px w-full bg-white/5" />
-
-                  <div>
-                    <h2 className="text-xl font-bold text-white mb-2">
-                      Connections
-                    </h2>
-                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                      <div className="flex items-center gap-3">
-                        <GitBranch className="w-6 h-6 text-white" />
-                        <div>
-                          <p className="text-sm font-bold text-white">
-                            GitHub Account
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Required for private repo access.
-                          </p>
-                        </div>
-                      </div>
-                      <button className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors">
-                        Manage
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* --- HISTORY TAB --- */}
-              {activeTab === "history" && (
-                <div>
-                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                    <History className="w-5 h-5 text-slate-400" /> Autopsy
-                    History
-                  </h2>
-                  <p className="text-sm text-slate-400 mb-6">
-                    Review your past codebase dissections without using API
-                    limits.
-                  </p>
-
-                  <div className="space-y-3">
-                    {isLoading ? (
-                      <div className="text-sm text-slate-500 font-mono animate-pulse">
-                        Loading secure records...
-                      </div>
-                    ) : history.length === 0 ? (
-                      <div className="p-6 text-center border border-dashed border-white/10 rounded-xl bg-black/20">
-                        <p className="text-slate-500 text-sm">
-                          No autopsies found in your workspace.
-                        </p>
-                      </div>
-                    ) : (
-                      history.map((scan) => (
-                        <Link
-                          href={scan.link}
-                          key={scan.id}
-                          className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/5 transition-colors cursor-pointer"
-                        >
-                          <div className="flex flex-col gap-1.5">
-                            <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
-                              {/* 5. Dynamic Icons! Terminal for Repos, GitPullRequest for PRs */}
-                              {scan.type === "repo" ? (
-                                <Terminal className="w-4 h-4 text-emerald-500" />
-                              ) : (
-                                <GitPullRequest className="w-4 h-4 text-blue-500" />
-                              )}
-                              {scan.title}
-                            </span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] font-medium text-slate-400 px-2 py-0.5 rounded bg-white/5 border border-white/10">
-                                {scan.subtitle}
-                              </span>
-                              <span className="text-xs text-slate-500 flex items-center gap-1.5">
-                                <Clock className="w-3 h-3" />
-                                {new Date(scan.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-transform duration-300 group-hover:translate-x-1" />
-                          </div>
-                        </Link>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* --- PREFERENCES TAB --- */}
-              {activeTab === "preferences" && (
-                <div>
-                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-slate-400" /> Engine
-                    Preferences
-                  </h2>
-                  <p className="text-sm text-slate-400 mb-6">
-                    Customize how CodeAutopsy behaves by default.
-                  </p>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                      <div>
-                        <p className="text-sm font-bold text-white">
-                          Default View
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          Which tab opens when an autopsy finishes?
-                        </p>
-                      </div>
-                      <select
-                        aria-label="Default view"
-                        className="bg-[#141414] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-slate-300 outline-none focus:border-slate-500"
-                      >
-                        <option>Read_Docs</option>
-                        <option>Blueprint_Map</option>
-                        <option>Diagnostic_Engine</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </section>
-      </main>
-    </div>
-  );
-}
-</file>
-
 <file path="app/terms/page.tsx">
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -1049,6 +396,27 @@ export default function TermsPage() {
         </div>
       </div>
     </div>
+  );
+}
+</file>
+
+<file path="components/BackButton.tsx">
+"use client";
+
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+
+export default function BackButton() {
+  const router = useRouter();
+
+  return (
+    <button
+      onClick={() => router.back()}
+      className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-8 group w-fit"
+    >
+      <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+      Back
+    </button>
   );
 }
 </file>
@@ -1874,6 +1242,67 @@ export function calculateBlastRadius(
 }
 </file>
 
+<file path="lib/analyzer/health.ts">
+// lib/analyzer/health.ts
+
+export interface CodebaseMetrics {
+  totalFiles: number;
+  circularDependencies: number; // Count of dependency loops
+  maxFanIn: number;             // The highest number of dependents a single file has
+  largeFilesCount: number;      // Files over ~500 lines or a certain KB limit
+}
+
+export function calculateHealthGrade(metrics: CodebaseMetrics) {
+  let score = 100;
+
+  // 1. Circular Dependency Penalty (Severe)
+  // Dependency loops cause infinite renders and spaghetti code. -15 points per loop.
+  score -= (metrics.circularDependencies * 15);
+
+  // 2. Coupling Penalty (The "God Module" factor)
+  // A normal file has 1-5 dependents. If a file has 15+ dependents, it's a bottleneck.
+  const SAFE_FAN_IN_THRESHOLD = 10;
+  if (metrics.maxFanIn > SAFE_FAN_IN_THRESHOLD) {
+    // -2 points for every connection above the safe threshold (capped at -30)
+    const couplingPenalty = Math.min(30, (metrics.maxFanIn - SAFE_FAN_IN_THRESHOLD) * 2);
+    score -= couplingPenalty;
+  }
+
+  // 3. Bloat Penalty (The "Monolith" factor)
+  // If a large percentage of the codebase consists of massive files, penalize it.
+  const largeFileRatio = metrics.largeFilesCount / Math.max(1, metrics.totalFiles);
+  score -= (largeFileRatio * 40); // E.g., if 25% of files are huge, drop score by 10
+
+  // Ensure score stays cleanly within 0-100 bounds
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // Assign the Grade and Color for the UI
+  let grade = "F";
+  let color = "red-500";
+  let status = "Critical Tech Debt";
+
+  if (score >= 90) { 
+    grade = "A"; 
+    color = "emerald-500"; 
+    status = "Pristine Architecture";
+  } else if (score >= 80) { 
+    grade = "B"; 
+    color = "blue-500"; 
+    status = "Solid Foundation";
+  } else if (score >= 70) { 
+    grade = "C"; 
+    color = "amber-500"; 
+    status = "Moderate Coupling";
+  } else if (score >= 60) { 
+    grade = "D"; 
+    color = "orange-500"; 
+    status = "High Refactor Risk";
+  }
+
+  return { score, grade, color, status };
+}
+</file>
+
 <file path="lib/debug/file-fetcher.ts">
 // lib/debug/file-fetcher.ts
 
@@ -2061,122 +1490,6 @@ function buildReverseGraph(graph: DependencyGraph): DependencyGraph {
 }
 </file>
 
-<file path="lib/debug/heuristics.ts">
-// lib/debug/heuristics.ts
-
-import { TraversalNode, CrashNode } from "./types";
-
-export function applyDebugHeuristics(
-  nodes: TraversalNode[],
-  crashNode: CrashNode,
-  errorType: string
-): TraversalNode[] {
-  return nodes.map((node) => {
-    let bonus = 0;
-
-    // Heuristic 1: Upstream nodes more likely to be root cause
-    if (node.relationship === "upstream") {
-      bonus += 2;
-    }
-
-    // Heuristic 2: Files with "config", "setup", "init" in name
-    if (/config|setup|init|bootstrap|env/i.test(node.file)) {
-      bonus += 1.5;
-    }
-
-    // Heuristic 3: Entry points are often misconfigured
-    if (node.file.includes("index.") || node.file.includes("main.")) {
-      bonus += 1;
-    }
-
-    // Heuristic 4: If crash is TypeError/ReferenceError, prioritize data sources
-    if (
-      (errorType === "TypeError" || errorType === "ReferenceError") &&
-      (node.file.includes("api/") ||
-        node.file.includes("service") ||
-        node.file.includes("db") ||
-        node.file.includes("database"))
-    ) {
-      bonus += 1.5;
-    }
-
-    // Heuristic 5: Auth-related errors should prioritize auth files
-    if (
-      errorType.toLowerCase().includes("auth") &&
-      (node.file.includes("auth") ||
-        node.file.includes("login") ||
-        node.file.includes("session"))
-    ) {
-      bonus += 2;
-    }
-
-    // Heuristic 6: Middleware and route handlers are common error sources
-    if (
-      node.file.includes("middleware") ||
-      node.file.includes("route") ||
-      node.file.includes("handler")
-    ) {
-      bonus += 1;
-    }
-
-    return {
-      ...node,
-      relevance_score: node.relevance_score + bonus,
-    };
-  });
-}
-
-// Confidence scoring based on traversal results
-export function calculateConfidence(
-  traversalPath: TraversalNode[],
-  crashNode: CrashNode
-): "high" | "medium" | "low" {
-  const upstreamCount = traversalPath.filter(
-    (n) => n.relationship === "upstream"
-  ).length;
-  const highFanInCount = traversalPath.filter((n) => n.fan_in > 5).length;
-
-  // High confidence: Multiple upstream nodes with high fan-in
-  if (upstreamCount >= 3 && highFanInCount >= 2) {
-    return "high";
-  }
-
-  // Medium confidence: Some upstream nodes
-  if (upstreamCount >= 1) {
-    return "medium";
-  }
-
-  // Low confidence: Only downstream or isolated crash
-  return "low";
-}
-
-// Determine if error likely requires runtime check
-export function requiresRuntimeCheck(
-  errorType: string,
-  errorMessage: string
-): boolean {
-  const runtimeIndicators = [
-    /undefined/i,
-    /null/i,
-    /cannot read/i,
-    /is not a function/i,
-    /missing/i,
-    /not found/i,
-    /failed to fetch/i,
-    /network/i,
-    /timeout/i,
-    /connection/i,
-    /database/i,
-    /authentication/i,
-    /unauthorized/i,
-  ];
-
-  const fullText = `${errorType} ${errorMessage}`;
-
-  return runtimeIndicators.some((pattern) => pattern.test(fullText));
-}
-</file>
-
 <file path="lib/debug/types.ts">
 // lib/debug/types.ts
 
@@ -2288,6 +1601,148 @@ export async function getPullRequestDiff(prUrl: string, token?: string) {
 }
 </file>
 
+<file path="lib/rag.ts">
+import { SupabaseClient } from "@supabase/supabase-js";
+
+// Chops massive code files into ~1000 character chunks so the AI can digest them
+function chunkCode(code: string, maxChunkSize = 1000): string[] {
+  const chunks = [];
+  let currentChunk = "";
+  const lines = code.split('\n');
+
+  for (const line of lines) {
+    if (currentChunk.length + line.length > maxChunkSize) {
+      chunks.push(currentChunk);
+      currentChunk = line + '\n';
+    } else {
+      currentChunk += line + '\n';
+    }
+  }
+  if (currentChunk.trim().length > 0) chunks.push(currentChunk);
+  return chunks;
+}
+
+export async function processAndStoreCodebase(
+  supabase: SupabaseClient,
+  repoUrl: string,
+  files: { path: string; content: string }[]
+) {
+  const apiKey = process.env.GEMINI_API_KEY; // ✨ Using the free key!
+  if (!apiKey) {
+    console.error("Missing GEMINI_API_KEY. Cannot generate embeddings.");
+    return;
+  }
+
+  console.log(`🧠 Processing Free Gemini RAG embeddings for ${repoUrl}...`);
+
+  const allChunks: { repo_url: string; file_path: string; content: string }[] = [];
+
+  for (const file of files) {
+    const chunks = chunkCode(file.content);
+    for (const chunk of chunks) {
+      allChunks.push({
+        repo_url: repoUrl,
+        file_path: file.path,
+        content: chunk
+      });
+    }
+  }
+
+  // We process in batches of 100 to stay within free API limits
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
+    const batch = allChunks.slice(i, i + BATCH_SIZE);
+
+    // Format the payload for the stable embedding-001 model
+    const requests = batch.map(b => ({
+      model: "models/embedding-001",
+      content: { parts: [{ text: b.content }] }
+    }));
+
+    // 1. Turn the code chunks into vectors using Gemini's stable model
+    // 1. Turn the code chunks into vectors using Gemini's stable V1 API
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/embedding-001:batchEmbedContents?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requests })
+    });
+    if (!res.ok) {
+       console.error("Gemini Embedding generation failed", await res.text());
+       continue;
+    }
+
+    const embeddingData = await res.json();
+
+    // 2. Attach the 768-dimensional math vectors to your code chunks
+    const dbPayload = batch.map((item, index) => ({
+      ...item,
+      embedding: embeddingData.embeddings[index].values
+    }));
+
+    // 3. Save directly to your new Supabase Vector table
+    const { error } = await supabase.from('codebase_embeddings').insert(dbPayload);
+    if (error) {
+      console.error("Failed to save vectors to Supabase", error);
+    }
+  }
+  
+  console.log(`✅ Finished vectorizing ${repoUrl} for FREE`);
+}
+</file>
+
+<file path="lib/usage.ts">
+import { SupabaseClient } from "@supabase/supabase-js";
+
+// ✨ 1. Define your admin accounts (God Mode)
+const ADMIN_EMAILS = [
+  "sidhantkumar431@gmail.com", 
+  "sidhantkumar0707@gmail.com",
+];
+
+export async function checkUsageLimit(
+  supabase: SupabaseClient, 
+  userId: string, 
+  userEmail?: string
+): Promise<boolean> {
+  
+  // ✨ 2. The Admin Bypass Shield
+  if (userEmail && ADMIN_EMAILS.includes(userEmail)) {
+    console.log(`🛡️ Admin bypass active for: ${userEmail}`);
+    return true; // Instantly grant unlimited access!
+  }
+
+  const MAX_DAILY_SCANS = 10;
+  
+  // Get midnight of the current day in UTC
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const startOfDay = today.toISOString();
+
+  // Count Repo Scans today
+  const { count: repoCount, error: repoError } = await supabase
+    .from('analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (repoError) console.error("Error checking repo usage:", repoError);
+
+  // Count PR Scans today
+  const { count: prCount, error: prError } = await supabase
+    .from('pr_analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (prError) console.error("Error checking PR usage:", prError);
+
+  const totalUsage = (repoCount || 0) + (prCount || 0);
+
+  // Return true if they are under the limit, false if they hit it
+  return totalUsage < MAX_DAILY_SCANS;
+}
+</file>
+
 <file path="utils/supabase/server.ts">
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -2317,6 +1772,209 @@ export async function createClient() {
       },
     }
   )
+}
+</file>
+
+<file path="app/api/analyze-pr/route.ts">
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr"; 
+import { checkUsageLimit } from "@/lib/usage"; // ✨ Import the Shield helper
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { owner, repo, prNumber } = body;
+
+    if (!owner || !repo || !prNumber) {
+      return NextResponse.json({ error: "Missing parameters." }, { status: 400 });
+    }
+
+    // --- 1. Identify the User via Supabase ---
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { get(name: string) { return cookieStore.get(name)?.value; } } }
+    );
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    // Ensure the user is actually logged in
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+    }
+
+    // ✨ THE SHIELD: Check usage limit before spending tokens (with Admin Bypass) ✨
+    const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+    if (!isUnderLimit) {
+      return NextResponse.json(
+        { 
+          error: "RATE_LIMIT_REACHED", 
+          message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." 
+        }, 
+        { status: 429 }
+      );
+    }
+
+    // --- 2. Fetch PR Metadata & Diffs ---
+    const prMetaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`, { headers: { Accept: "application/vnd.github.v3+json" } });
+    if (!prMetaRes.ok) throw new Error("Pull Request not found.");
+    const prMeta = await prMetaRes.json();
+
+    const prFilesRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files`, { headers: { Accept: "application/vnd.github.v3+json" } });
+    const prFiles = await prFilesRes.json();
+
+    const fileChangesText = prFiles.slice(0, 15).map((f: { patch?: string; filename: string; status: string }) => {
+      const patch = f.patch ? f.patch.substring(0, 1500) : "Binary/large file.";
+      return `=== FILE: ${f.filename} (Status: ${f.status}) ===\n${patch}`;
+    }).join("\n\n");
+
+    // --- 3. Prompt & Groq Call ---
+    const systemPrompt = `You are a senior software engineer conducting a strict code review on a Pull Request.
+Repository: ${owner}/${repo}
+PR Title: ${prMeta.title}
+PR Description: ${prMeta.body ? prMeta.body.substring(0, 1000) : "No description."}
+CODE CHANGES (Diffs):
+${fileChangesText}
+
+Analyze these code changes and return ONLY a valid JSON object with EXACTLY this structure:
+{
+  "prNumber": ${prNumber},
+  "title": "${prMeta.title.replace(/"/g, '\\"')}",
+  "description": "A 2-sentence plain English summary.",
+  "blastRadius": [{ "file": "exact filename", "impact": "1 sentence explaining impact." }],
+  "architecturalChanges": ["bullet point 1", "bullet point 2"],
+  "breakingDependencies": ["list any dependencies. If none, write 'None detected.'"],
+  "riskLevel": "one of: low | medium | high"
+}`;
+
+    const apiKey = process.env.GROQ_API_KEY;
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: "Analyze this PR and return ONLY the required JSON." }],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      }),
+    });
+
+    if (!groqRes.ok) throw new Error(`Groq API error ${groqRes.status}`);
+    const data = await groqRes.json();
+    const finalResult = JSON.parse(data.choices[0].message.content);
+
+    // --- 4. SAVE TO SUPABASE BEFORE RETURNING! ---
+    const { error: dbError } = await supabase.from('pr_analyses').insert({
+      user_id: user.id,
+      repo_name: `${owner}/${repo}`,
+      pr_number: prNumber,
+      title: finalResult.title,
+      risk_level: finalResult.riskLevel,
+      analysis_data: finalResult // We save the whole JSON so the user can view it later without recalling the API!
+    });
+    
+    if (dbError) console.error("Failed to save PR analysis to Supabase:", dbError);
+
+    return NextResponse.json(finalResult);
+
+  } catch (error: unknown) {
+    console.error("PR Analysis Error:", error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to analyze Pull Request." }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/badge/route.ts">
+export const runtime = 'edge';
+
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+// We use the standard supabase-js client here because this is a public GET request
+// triggered by GitHub's image caching servers. There are no cookies to pass.
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const repoParam = searchParams.get("repo");
+
+    if (!repoParam) {
+      return new NextResponse("Missing repo parameter", { status: 400 });
+    }
+
+    // Handle both raw "owner/repo" and full "https://github.com/owner/repo" formats
+    const repoPath = repoParam.replace("https://github.com/", "").replace(".git", "");
+    const repoUrl = `https://github.com/${repoPath}`;
+
+    // Look up the latest analysis for this repository
+    const { data: cached } = await supabase
+      .from("analyses")
+      .select("result_json")
+      .eq("repo_url", repoUrl)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Default Fallback values if the repo hasn't been scanned yet
+    let grade = "-";
+    let score = "0";
+    let colorHex = "#64748b"; // Slate-500
+    let statusText = "Unscanned";
+
+    // If we have data, extract the exact metrics your AI generated
+    if (cached?.result_json?.healthMetrics) {
+      const metrics = cached.result_json.healthMetrics;
+      grade = metrics.grade;
+      score = metrics.score.toString();
+      statusText = metrics.status || "Analyzed";
+
+      // Match the exact Tailwind colors from our UI
+      if (grade === "A") colorHex = "#10b981"; // Emerald-500
+      else if (grade === "B") colorHex = "#3b82f6"; // Blue-500
+      else if (grade === "C") colorHex = "#f59e0b"; // Amber-500
+      else if (grade === "D") colorHex = "#f97316"; // Orange-500
+      else if (grade === "F") colorHex = "#ef4444"; // Red-500
+    }
+
+    // Generate the raw SVG string
+    // This creates a sleek, dark-mode badge matching your UI aesthetics
+    // ✨ UPGRADED: Zero whitespace at the start, premium system fonts, and better spacing
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="310" height="44" viewBox="0 0 310 44" fill="none">
+      <rect width="310" height="44" rx="8" fill="#0a0a0a" stroke="#222222" stroke-width="1.5"/>
+      
+      <!-- Glowing Letter Grade Box -->
+      <rect x="6" y="6" width="32" height="32" rx="6" fill="${colorHex}15" stroke="${colorHex}40" stroke-width="1"/>
+      <text x="22" y="27" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="900" fill="${colorHex}" text-anchor="middle">${grade}</text>
+      
+      <!-- CodeAutopsy Branding -->
+      <text x="52" y="18" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#64748b" letter-spacing="1.5">CODEAUTOPSY HEALTH</text>
+      
+      <!-- Status Text -->
+      <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#f8fafc">${statusText}</text>
+      
+      <!-- Score Pill -->
+      <rect x="250" y="12" width="50" height="20" rx="10" fill="${colorHex}10" stroke="${colorHex}30" stroke-width="1"/>
+      <text x="275" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="${colorHex}" text-anchor="middle">${score}/100</text>
+    </svg>`;
+
+    // Return the SVG with aggressive caching headers to prevent spamming your database
+    return new NextResponse(svg.trim(), {
+      status: 200,
+      headers: {
+        "Content-Type": "image/svg+xml",
+        "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+      },
+    });
+
+  } catch (error) {
+    console.error("Badge generation error:", error);
+    return new NextResponse("Error generating badge", { status: 500 });
+  }
 }
 </file>
 
@@ -2361,261 +2019,423 @@ export async function POST(req: Request) {
 }
 </file>
 
-<file path="components/DirectoryTreeVisualizer.tsx">
-"use client";
+<file path="app/api/pr-impact/route.ts">
+import { NextResponse } from "next/server";
+import { getPullRequestDiff } from "@/lib/github/pr-fetcher";
+import { calculateBlastRadius } from "@/lib/analyzer/blast-radius";
 
-import React, { useMemo, useState, useEffect } from "react";
-import ReactFlow, {
-  Background,
-  Controls,
-  Handle,
-  Position,
-  Edge,
-  useNodesState,
-  useEdgesState,
-  Node,
-} from "reactflow";
-import "reactflow/dist/style.css";
-import { hierarchy, tree } from "d3-hierarchy";
+export async function POST(req: Request) {
+  try {
+    const { prUrl } = await req.json();
 
-interface DirectoryNode {
-  name: string;
-  path: string;
-  isFolder: boolean;
-  color?: string;
-  children?: DirectoryNode[];
-}
-
-interface TreeNodeData {
-  name: string;
-  isFolder: boolean;
-  color?: string;
-  isDimmed: boolean;
-}
-
-// 🔥 DEFINED OUTSIDE: Prevents re-renders
-const TreeNode = ({ data }: { data: TreeNodeData }) => {
-  return (
-    <div
-      className={`flex items-center gap-2 relative transition-all duration-300 cursor-pointer ${
-        data.isDimmed ? "opacity-20 grayscale" : "opacity-100 hover:scale-105"
-      }`}
-    >
-      <Handle type="target" position={Position.Left} className="opacity-0" />
-      <div
-        className={`w-3 h-3 rounded-full border-2 border-[#0e0e0e] shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-colors ${
-          data.isFolder ? "bg-slate-600" : `bg-${data.color}-500`
-        }`}
-      />
-      <div
-        className={`font-mono text-xs whitespace-nowrap transition-colors ${
-          data.isFolder
-            ? data.isDimmed
-              ? "text-slate-600"
-              : "text-slate-400 font-bold"
-            : data.isDimmed
-              ? "text-slate-700"
-              : "text-slate-200"
-        }`}
-      >
-        {data.name}
-      </div>
-      <Handle type="source" position={Position.Right} className="opacity-0" />
-    </div>
-  );
-};
-
-const COLORS = [
-  "blue",
-  "emerald",
-  "purple",
-  "amber",
-  "pink",
-  "cyan",
-  "rose",
-  "indigo",
-];
-
-export default function DirectoryTreeVisualizer({
-  metrics,
-}: {
-  metrics: { path: string; size: number }[];
-}) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-
-  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
-  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
-
-  const { initialNodes, initialEdges } = useMemo(() => {
-    if (!metrics || metrics.length === 0)
-      return { initialNodes: [], initialEdges: [] };
-
-    const rootNode: DirectoryNode = {
-      name: "root",
-      path: "root",
-      isFolder: true,
-      color: "slate",
-      children: [],
-    };
-
-    let colorIndex = 0;
-    const folderColorMap = new Map<string, string>();
-
-    metrics.forEach((metric) => {
-      const parts = metric.path.split("/");
-      let currentLevel = rootNode.children!;
-      let currentPath = "root";
-
-      parts.forEach((part, index) => {
-        currentPath = `${currentPath}/${part}`;
-        const isFile = index === parts.length - 1;
-        let existing = currentLevel.find((n) => n.name === part);
-
-        if (!existing) {
-          const topFolder = parts.length > 1 ? parts[0] : "root";
-          if (!folderColorMap.has(topFolder)) {
-            folderColorMap.set(topFolder, COLORS[colorIndex % COLORS.length]);
-            colorIndex++;
-          }
-          existing = {
-            name: part,
-            path: currentPath,
-            isFolder: !isFile,
-            color: folderColorMap.get(topFolder),
-            children: isFile ? undefined : [],
-          };
-          currentLevel.push(existing);
-        }
-        if (!isFile && existing.children) {
-          currentLevel = existing.children;
-        }
-      });
-    });
-
-    const d3Root = hierarchy(rootNode);
-    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);
-    treeLayout(d3Root);
-
-    const rfNodes: Node<TreeNodeData>[] = [];
-    const rfEdges: Edge[] = [];
-
-    d3Root.descendants().forEach((node) => {
-      rfNodes.push({
-        id: node.data.path,
-        type: "treeNode",
-        position: { x: node.y ?? 0, y: node.x ?? 0 },
-        data: {
-          name: node.data.name,
-          isFolder: node.data.isFolder,
-          color: node.data.color,
-          isDimmed: false,
-        },
-      });
-    });
-
-    d3Root.links().forEach((link) => {
-      rfEdges.push({
-        id: `e-${link.source.data.path}-${link.target.data.path}`,
-        source: link.source.data.path,
-        target: link.target.data.path,
-        type: "default",
-        animated: false,
-        style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.4 },
-      });
-    });
-
-    return { initialNodes: rfNodes, initialEdges: rfEdges };
-  }, [metrics]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
-
-  useEffect(() => {
-    if (!selectedPath) {
-      setNodes((nds) =>
-        nds.map((n) => ({ ...n, data: { ...n.data, isDimmed: false } })),
-      );
-      setEdges((eds) =>
-        eds.map((e) => ({
-          ...e,
-          style: {
-            ...e.style,
-            opacity: 0.4,
-            strokeWidth: 1.5,
-            stroke: "#334155",
-          },
-        })),
-      );
-      return;
+    if (!prUrl) {
+      return NextResponse.json({ error: "Missing PR URL" }, { status: 400 });
     }
 
-    setNodes((nds) =>
-      nds.map((n) => {
-        const isActive =
-          n.id === selectedPath ||
-          selectedPath.startsWith(n.id + "/") ||
-          n.id.startsWith(selectedPath + "/");
-        return { ...n, data: { ...n.data, isDimmed: !isActive } };
-      }),
-    );
+    // 1. Fetch the modified files from the PR using the GitHub token from your .env
+    const prData = await getPullRequestDiff(prUrl, process.env.GITHUB_TOKEN);
+    const modifiedFiles = prData.modifiedFiles.map((f: { filename: string }) => f.filename);
 
-    setEdges((eds) =>
-      eds.map((e) => {
-        const sActive =
-          e.source === selectedPath ||
-          selectedPath.startsWith(e.source + "/") ||
-          e.source.startsWith(selectedPath + "/");
-        const tActive =
-          e.target === selectedPath ||
-          selectedPath.startsWith(e.target + "/") ||
-          e.target.startsWith(selectedPath + "/");
-        const isActiveEdge = sActive && tActive;
-        return {
-          ...e,
-          style: {
-            ...e.style,
-            opacity: isActiveEdge ? 1 : 0.05,
-            strokeWidth: isActiveEdge ? 2.5 : 1,
-            stroke: isActiveEdge ? "#94a3b8" : "#1e293b",
-          },
+    // 2. Fetch the repository's dependency graph.
+    // NOTE: You will eventually plug in your actual graph generator here, 
+    // or fetch the cached graph from Supabase for this specific repo.
+    // For now, we use a mock graph to ensure the wiring works.
+    const reverseDependencyGraph: Record<string, string[]> = {
+      "app/page.tsx": [],
+      "components/ui/button.tsx": ["app/page.tsx", "components/layout/header.tsx"],
+      "lib/auth.ts": ["app/api/user/route.ts", "components/layout/header.tsx", "app/dashboard/page.tsx"],
+    };
+
+    // 3. Calculate the Blast Radius mathematically
+    const blastRadius = calculateBlastRadius(modifiedFiles, reverseDependencyGraph);
+
+    // 4. Return the enterprise-grade impact report
+    return NextResponse.json({
+      success: true,
+      repository: `${prData.owner}/${prData.repo}`,
+      pullRequest: prData.pullNumber,
+      modifiedFilesCount: modifiedFiles.length,
+      impactReport: blastRadius,
+    });
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "An unknown error occurred";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/profile/page.tsx">
+"use client";
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
+import {
+  User,
+  History,
+  Settings,
+  Terminal,
+  Zap,
+  ArrowRight,
+  Clock,
+  GitBranch,
+  GitPullRequest,
+  ArrowLeft
+} from "lucide-react";
+import Header from "@/components/Header";
+import { createClient } from "@/lib/supabase-browser";
+import { User as SupabaseUser } from "@supabase/supabase-js";
+import Link from "next/link";
+
+// 1. Unified History Type for both Repos and PRs
+type HistoryItem = {
+  id: string;
+  type: "repo" | "pr";
+  title: string;
+  subtitle: string;
+  created_at: string;
+  link: string;
+};
+
+type TabId = "account" | "history" | "preferences";
+
+type TabButtonProps = {
+  id: TabId;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  activeTab: TabId;
+  onSelect: (id: TabId) => void;
+};
+
+function TabButton({
+  id,
+  icon: Icon,
+  label,
+  activeTab,
+  onSelect,
+}: TabButtonProps) {
+  return (
+    <button
+      onClick={() => onSelect(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
+        activeTab === id
+          ? "bg-white/10 text-white shadow-inner border border-white/5"
+          : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
+      }`}
+    >
+      <Icon className="w-4 h-4" />
+      {label}
+    </button>
+  );
+}
+
+export default function ProfilePage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabId>("account");
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+
+  // Real Database State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [usageCount, setUsageCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    async function loadProfileData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+
+      if (user) {
+        // 2. Fetch both tables in parallel!
+        const [repoRes, prRes] = await Promise.all([
+          supabase.from("analyses").select("*").eq("user_id", user.id),
+          supabase.from("pr_analyses").select("*").eq("user_id", user.id),
+        ]);
+
+        // Define explicit types for rows returned from the DB to avoid `any`
+        type RepoRow = {
+          id: number | string;
+          repo_name: string;
+          created_at: string;
         };
-      }),
-    );
-  }, [selectedPath, setNodes, setEdges]);
+        type PRRow = {
+          id: number | string;
+          repo_name: string;
+          pr_number: number | string;
+          title: string;
+          created_at: string;
+        };
 
-  if (nodes.length === 0) return null;
+        const repoData = (repoRes.data ?? []) as RepoRow[];
+        const prData = (prRes.data ?? []) as PRRow[];
+
+        // 3. Format and Merge the data
+        const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
+          id: `repo-${r.id}`,
+          type: "repo",
+          title: r.repo_name,
+          subtitle: "Full Codebase Scan",
+          created_at: r.created_at,
+          link: `/analyze?repo=${encodeURIComponent(r.repo_name)}`,
+        }));
+
+        const formattedPRs: HistoryItem[] = prData.map((p: PRRow) => ({
+          id: `pr-${p.id}`,
+          type: "pr",
+          title: `${p.repo_name} #${p.pr_number}`,
+          subtitle: p.title,
+          created_at: p.created_at,
+          link: `#`, // We will wire this up to reload the PR view later!
+        }));
+
+        // 4. Sort everything by newest first
+        const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+
+        setHistory(mergedHistory);
+        setUsageCount(mergedHistory.length); // Total scans used (Repos + PRs)
+      }
+      setIsLoading(false);
+    }
+
+    loadProfileData();
+  }, []);
 
   return (
-    <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-[#0a0a0a] relative">
-      <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-3 py-1.5 rounded border border-white/5 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Click any folder/file to isolate path
-        </div>
-      </div>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={(_, node) => setSelectedPath(node.id)}
-        onPaneClick={() => setSelectedPath(null)}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1.5 }}
-        className="bg-[#0e0e0e]"
-      >
-        <Background color="#222" gap={16} />
-        <Controls
-          className="!bg-[#141414] !rounded-lg overflow-hidden border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button>svg]:!fill-slate-400 hover:[&>button>svg]:!fill-white hover:[&>button]:!bg-white/5 transition-all"
-          showInteractive={false}
-        />
-      </ReactFlow>
+    <div className="min-h-screen bg-[#0a0a0a] text-slate-200 font-satoshi flex flex-col">
+      <Header />
+
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
+        {/* LEFT SIDEBAR */}
+        <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
+          <div className="mb-8 px-4">
+            <button 
+              onClick={() => router.back()} 
+              className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-6 group w-fit"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> 
+              Back
+            </button>
+            <h1 className="text-2xl font-bold text-white tracking-tight cabinet">
+              Workspace
+            </h1>
+            <p className="text-xs text-slate-500 font-mono mt-1 truncate">
+              {user?.email || "Loading account..."}
+            </p>
+          </div>
+
+          <nav className="space-y-1">
+            <TabButton
+              id="account"
+              icon={User}
+              label="Account & Limits"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+            <TabButton
+              id="history"
+              icon={History}
+              label="Autopsy History"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+            <TabButton
+              id="preferences"
+              icon={Settings}
+              label="Engine Preferences"
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+            />
+          </nav>
+        </aside>
+
+        {/* MAIN CONTENT AREA */}
+        <section className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
+            >
+              {/* --- ACCOUNT TAB --- */}
+              {activeTab === "account" && (
+                <div className="space-y-8">
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-emerald-400" /> Usage
+                      Telemetry
+                    </h2>
+                    <p className="text-sm text-slate-400 mb-6">
+                      Your current API limits and usage cycle.
+                    </p>
+
+                    <div className="p-5 rounded-xl border border-white/5 bg-black/40">
+                      <div className="flex justify-between items-end mb-2">
+                        <span className="text-xs font-mono uppercase tracking-widest text-slate-500">
+                          Free Tier (Intern)
+                        </span>
+                        <span className="text-sm font-bold text-white">
+                          {usageCount} / 10{" "}
+                          <span className="text-slate-500 font-normal">
+                            Scans Used
+                          </span>
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden flex gap-[2px] p-[2px]">
+                        {Array.from({ length: 10 }).map((_, index) => {
+                          const filled = index < usageCount;
+                          return (
+                            <div
+                              key={index}
+                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${
+                                filled
+                                  ? usageCount >= 10
+                                    ? "bg-red-500"
+                                    : "bg-emerald-500"
+                                  : "bg-white/10"
+                              }`}
+                            />
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-3 font-mono uppercase">
+                        Usage tied to connected account
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="h-px w-full bg-white/5" />
+
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-2">
+                      Connections
+                    </h2>
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <div className="flex items-center gap-3">
+                        <GitBranch className="w-6 h-6 text-white" />
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            GitHub Account
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Required for private repo access.
+                          </p>
+                        </div>
+                      </div>
+                      <button className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors">
+                        Manage
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- HISTORY TAB --- */}
+              {activeTab === "history" && (
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <History className="w-5 h-5 text-slate-400" /> Autopsy
+                    History
+                  </h2>
+                  <p className="text-sm text-slate-400 mb-6">
+                    Review your past codebase dissections without using API
+                    limits.
+                  </p>
+
+                  <div className="space-y-3">
+                    {isLoading ? (
+                      <div className="text-sm text-slate-500 font-mono animate-pulse">
+                        Loading secure records...
+                      </div>
+                    ) : history.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-white/10 rounded-xl bg-black/20">
+                        <p className="text-slate-500 text-sm">
+                          No autopsies found in your workspace.
+                        </p>
+                      </div>
+                    ) : (
+                      history.map((scan) => (
+                        <Link
+                          href={scan.link}
+                          key={scan.id}
+                          className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
+                              {/* 5. Dynamic Icons! Terminal for Repos, GitPullRequest for PRs */}
+                              {scan.type === "repo" ? (
+                                <Terminal className="w-4 h-4 text-emerald-500" />
+                              ) : (
+                                <GitPullRequest className="w-4 h-4 text-blue-500" />
+                              )}
+                              {scan.title}
+                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] font-medium text-slate-400 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                                {scan.subtitle}
+                              </span>
+                              <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                                <Clock className="w-3 h-3" />
+                                {new Date(scan.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-transform duration-300 group-hover:translate-x-1" />
+                          </div>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* --- PREFERENCES TAB --- */}
+              {activeTab === "preferences" && (
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-slate-400" /> Engine
+                    Preferences
+                  </h2>
+                  <p className="text-sm text-slate-400 mb-6">
+                    Customize how CodeAutopsy behaves by default.
+                  </p>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <div>
+                        <p className="text-sm font-bold text-white">
+                          Default View
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Which tab opens when an autopsy finishes?
+                        </p>
+                      </div>
+                      <select
+                        aria-label="Default view"
+                        className="bg-[#141414] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-slate-300 outline-none focus:border-slate-500"
+                      >
+                        <option>Read_Docs</option>
+                        <option>Blueprint_Map</option>
+                        <option>Diagnostic_Engine</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </section>
+      </main>
     </div>
   );
 }
@@ -2658,6 +2478,120 @@ export async function cacheDebug(
 export function hashStackTrace(trace: string): string {
   // Simple hash using built-in crypto
   return crypto.createHash("sha256").update(trace).digest("hex").slice(0, 16);
+}
+</file>
+
+<file path="lib/debug/heuristics.ts">
+// lib/debug/heuristics.ts
+
+import { TraversalNode } from "./types";
+
+export function applyDebugHeuristics(
+  nodes: TraversalNode[],
+  errorType: string
+): TraversalNode[] {
+  return nodes.map((node) => {
+    let bonus = 0;
+
+    // Heuristic 1: Upstream nodes more likely to be root cause
+    if (node.relationship === "upstream") {
+      bonus += 2;
+    }
+
+    // Heuristic 2: Files with "config", "setup", "init" in name
+    if (/config|setup|init|bootstrap|env/i.test(node.file)) {
+      bonus += 1.5;
+    }
+
+    // Heuristic 3: Entry points are often misconfigured
+    if (node.file.includes("index.") || node.file.includes("main.")) {
+      bonus += 1;
+    }
+
+    // Heuristic 4: If crash is TypeError/ReferenceError, prioritize data sources
+    if (
+      (errorType === "TypeError" || errorType === "ReferenceError") &&
+      (node.file.includes("api/") ||
+        node.file.includes("service") ||
+        node.file.includes("db") ||
+        node.file.includes("database"))
+    ) {
+      bonus += 1.5;
+    }
+
+    // Heuristic 5: Auth-related errors should prioritize auth files
+    if (
+      errorType.toLowerCase().includes("auth") &&
+      (node.file.includes("auth") ||
+        node.file.includes("login") ||
+        node.file.includes("session"))
+    ) {
+      bonus += 2;
+    }
+
+    // Heuristic 6: Middleware and route handlers are common error sources
+    if (
+      node.file.includes("middleware") ||
+      node.file.includes("route") ||
+      node.file.includes("handler")
+    ) {
+      bonus += 1;
+    }
+
+    return {
+      ...node,
+      relevance_score: node.relevance_score + bonus,
+    };
+  });
+}
+
+// Confidence scoring based on traversal results
+export function calculateConfidence(
+  traversalPath: TraversalNode[],
+): "high" | "medium" | "low" {
+  const upstreamCount = traversalPath.filter(
+    (n) => n.relationship === "upstream"
+  ).length;
+  const highFanInCount = traversalPath.filter((n) => n.fan_in > 5).length;
+
+  // High confidence: Multiple upstream nodes with high fan-in
+  if (upstreamCount >= 3 && highFanInCount >= 2) {
+    return "high";
+  }
+
+  // Medium confidence: Some upstream nodes
+  if (upstreamCount >= 1) {
+    return "medium";
+  }
+
+  // Low confidence: Only downstream or isolated crash
+  return "low";
+}
+
+// Determine if error likely requires runtime check
+export function requiresRuntimeCheck(
+  errorType: string,
+  errorMessage: string
+): boolean {
+  const runtimeIndicators = [
+    /undefined/i,
+    /null/i,
+    /cannot read/i,
+    /is not a function/i,
+    /missing/i,
+    /not found/i,
+    /failed to fetch/i,
+    /network/i,
+    /timeout/i,
+    /connection/i,
+    /database/i,
+    /authentication/i,
+    /unauthorized/i,
+  ];
+
+  const fullText = `${errorType} ${errorMessage}`;
+
+  return runtimeIndicators.some((pattern) => pattern.test(fullText));
 }
 </file>
 
@@ -2939,6 +2873,396 @@ export function extractAllCrashNodes(
 }
 </file>
 
+<file path="components/debug/DebugForm.tsx">
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Lightbulb, Activity } from "lucide-react";
+
+interface DebugFormProps {
+  onSubmit: (text: string) => void;
+  isLoading?: boolean;
+}
+
+export function DebugForm({ onSubmit, isLoading }: DebugFormProps) {
+  const [input, setInput] = useState("");
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      className="flex flex-col h-full w-full min-h-0"
+    >
+      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">Quick Test:</span>
+        <button 
+          type="button"
+          onClick={() => setInput("TypeError: Cannot read properties of undefined (reading 'map')\n    at UserList (components/UserList.tsx:42:15)")} 
+          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
+        >
+          TypeError
+        </button>
+        <button 
+          type="button"
+          onClick={() => setInput("ReferenceError: window is not defined\n    at SSRRender (app/layout.tsx:12:5)")} 
+          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
+        >
+          ReferenceError
+        </button>
+      </div>
+
+      <p className="text-sm text-slate-300 mb-3 font-satoshi flex-shrink-0">
+        Paste your stack trace or error message
+      </p>
+
+      <textarea 
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="e.g. TypeError: Cannot read properties of undefined..."
+        className="w-full flex-1 min-h-[80px] overflow-y-auto resize-none bg-[#050505] border border-white/5 rounded-xl p-5 font-mono text-[13px] text-slate-300 focus:outline-none focus:border-white/20 transition-all custom-scrollbar shadow-inner mb-6"
+      />
+
+      <div className="mt-auto flex flex-col gap-4 flex-shrink-0">
+        <div className="flex items-center gap-2 text-[11px] text-amber-500/80 font-mono">
+          <Lightbulb className="w-3.5 h-3.5" />
+          <span>Include file paths and line numbers for best results</span>
+        </div>
+        
+        <button 
+          onClick={() => onSubmit(input)}
+          disabled={!input.trim() || isLoading}
+          className="w-full py-4 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-slate-200 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+        >
+          {isLoading ? (
+            <>Initializing <Activity className="w-4 h-4 animate-pulse" /></>
+          ) : (
+            <>Initiate Diagnostics <Activity className="w-4 h-4" /></>
+          )}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+</file>
+
+<file path="components/DirectoryTreeVisualizer.tsx">
+"use client";
+
+import React, { useMemo, useState, useEffect } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  Handle,
+  Position,
+  Edge,
+  useNodesState,
+  useEdgesState,
+  Node,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { hierarchy, tree } from "d3-hierarchy";
+
+interface DirectoryNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  color?: string;
+  children?: DirectoryNode[];
+}
+
+interface TreeNodeData {
+  name: string;
+  isFolder: boolean;
+  color?: string;
+  isDimmed: boolean;
+}
+
+// 🔥 DEFINED OUTSIDE: Prevents re-renders
+const TreeNode = ({ data }: { data: TreeNodeData }) => {
+  return (
+    <div
+      className={`flex items-center gap-2 relative transition-all duration-300 cursor-pointer ${
+        data.isDimmed ? "opacity-20 grayscale" : "opacity-100 hover:scale-105"
+      }`}
+    >
+      <Handle type="target" position={Position.Left} className="opacity-0" />
+      <div
+        className={`w-3 h-3 rounded-full border-2 border-[#0e0e0e] shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-colors ${
+          data.isFolder ? "bg-slate-600" : `bg-${data.color}-500`
+        }`}
+      />
+      <div
+        className={`font-mono text-xs whitespace-nowrap transition-colors ${
+          data.isFolder
+            ? data.isDimmed
+              ? "text-slate-600"
+              : "text-slate-400 font-bold"
+            : data.isDimmed
+              ? "text-slate-700"
+              : "text-slate-200"
+        }`}
+      >
+        {data.name}
+      </div>
+      <Handle type="source" position={Position.Right} className="opacity-0" />
+    </div>
+  );
+};
+
+const COLORS = [
+  "blue",
+  "emerald",
+  "purple",
+  "amber",
+  "pink",
+  "cyan",
+  "rose",
+  "indigo",
+];
+
+export default function DirectoryTreeVisualizer({
+  metrics,
+}: {
+  metrics: { path: string; size: number }[];
+}) {
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
+
+  const { initialNodes, initialEdges } = useMemo(() => {
+    if (!metrics || metrics.length === 0)
+      return { initialNodes: [], initialEdges: [] };
+
+    const rootNode: DirectoryNode = {
+      name: "root",
+      path: "root",
+      isFolder: true,
+      color: "slate",
+      children: [],
+    };
+
+    let colorIndex = 0;
+    const folderColorMap = new Map<string, string>();
+
+    metrics.forEach((metric) => {
+      const parts = metric.path.split("/");
+      let currentLevel = rootNode.children!;
+      let currentPath = "root";
+
+      parts.forEach((part, index) => {
+        currentPath = `${currentPath}/${part}`;
+        const isFile = index === parts.length - 1;
+        let existing = currentLevel.find((n) => n.name === part);
+
+        if (!existing) {
+          const topFolder = parts.length > 1 ? parts[0] : "root";
+          if (!folderColorMap.has(topFolder)) {
+            folderColorMap.set(topFolder, COLORS[colorIndex % COLORS.length]);
+            colorIndex++;
+          }
+          existing = {
+            name: part,
+            path: currentPath,
+            isFolder: !isFile,
+            color: folderColorMap.get(topFolder),
+            children: isFile ? undefined : [],
+          };
+          currentLevel.push(existing);
+        }
+        if (!isFile && existing.children) {
+          currentLevel = existing.children;
+        }
+      });
+    });
+
+    const d3Root = hierarchy(rootNode);
+    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);
+    treeLayout(d3Root);
+
+    const rfNodes: Node<TreeNodeData>[] = [];
+    const rfEdges: Edge[] = [];
+
+    d3Root.descendants().forEach((node) => {
+      rfNodes.push({
+        id: node.data.path,
+        type: "treeNode",
+        position: { x: node.y ?? 0, y: node.x ?? 0 },
+        data: {
+          name: node.data.name,
+          isFolder: node.data.isFolder,
+          color: node.data.color,
+          isDimmed: false,
+        },
+      });
+    });
+
+    d3Root.links().forEach((link) => {
+      rfEdges.push({
+        id: `e-${link.source.data.path}-${link.target.data.path}`,
+        source: link.source.data.path,
+        target: link.target.data.path,
+        type: "default",
+        animated: false,
+        style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.4 },
+      });
+    });
+
+    return { initialNodes: rfNodes, initialEdges: rfEdges };
+  }, [metrics]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!selectedPath) {
+      setNodes((nds) =>
+        nds.map((n) => ({ ...n, data: { ...n.data, isDimmed: false } })),
+      );
+      setEdges((eds) =>
+        eds.map((e) => ({
+          ...e,
+          style: {
+            ...e.style,
+            opacity: 0.4,
+            strokeWidth: 1.5,
+            stroke: "#334155",
+          },
+        })),
+      );
+      return;
+    }
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const isActive =
+          n.id === selectedPath ||
+          selectedPath.startsWith(n.id + "/") ||
+          n.id.startsWith(selectedPath + "/");
+        return { ...n, data: { ...n.data, isDimmed: !isActive } };
+      }),
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => {
+        const sActive =
+          e.source === selectedPath ||
+          selectedPath.startsWith(e.source + "/") ||
+          e.source.startsWith(selectedPath + "/");
+        const tActive =
+          e.target === selectedPath ||
+          selectedPath.startsWith(e.target + "/") ||
+          e.target.startsWith(selectedPath + "/");
+        const isActiveEdge = sActive && tActive;
+        return {
+          ...e,
+          style: {
+            ...e.style,
+            opacity: isActiveEdge ? 1 : 0.05,
+            strokeWidth: isActiveEdge ? 2.5 : 1,
+            stroke: isActiveEdge ? "#94a3b8" : "#1e293b",
+          },
+        };
+      }),
+    );
+  }, [selectedPath, setNodes, setEdges]);
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-[#0a0a0a] relative">
+      <div className="absolute top-4 left-4 z-10 pointer-events-none">
+        <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-3 py-1.5 rounded border border-white/5 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Click any folder/file to isolate path
+        </div>
+      </div>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => setSelectedPath(node.id)}
+        onPaneClick={() => setSelectedPath(null)}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1.5 }}
+        className="bg-[#0e0e0e]"
+      >
+        <Background color="#222" gap={16} />
+        <Controls
+          className="!bg-[#141414] !rounded-lg overflow-hidden border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button>svg]:!fill-slate-400 hover:[&>button>svg]:!fill-white hover:[&>button]:!bg-white/5 transition-all"
+          showInteractive={false}
+        />
+      </ReactFlow>
+    </div>
+  );
+}
+</file>
+
+<file path="proxy.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function proxy(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user && request.nextUrl.pathname.startsWith('/analyze')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search);
+    return NextResponse.redirect(url);
+  }
+
+  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+</file>
+
 <file path="app/dashboard/page.tsx">
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
@@ -3123,6 +3447,70 @@ export default async function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next"; 
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "CodeAutopsy | AI-Powered Codebase Visualization",
+  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
+  metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
+  openGraph: {
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
+    url: "https://codeautopsy-lyart.vercel.app",
+    siteName: "CodeAutopsy",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "CodeAutopsy Visual Architecture Analysis",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CodeAutopsy | Dissect Any Codebase",
+    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
+    creator: "@Sidhant07",
+    images: ["/og-image.png"],
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Analytics /> 
+      </body>
+    </html>
   );
 }
 </file>
@@ -3434,196 +3822,124 @@ export default function ArchitectureMap({
 }
 </file>
 
-<file path="components/debug/DebugForm.tsx">
+<file path="components/debug/DebugInterface.tsx">
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useDebugAnalysis } from "@/hooks/use-debug";
+import { DebugForm } from "./DebugForm";
+import { DebugResults } from "./DebugResults";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 import { motion } from "framer-motion";
-import { Lightbulb, Activity } from "lucide-react";
+import { AlertCircle, Cpu, Maximize2, Minimize2 } from "lucide-react";
 
-interface DebugFormProps {
-  onSubmit: (text: string) => void;
-  isLoading?: boolean;
-}
+export default function DebugInterface({ repoUrl }: { initialChart?: string; repoUrl: string }) {
+  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
+  const [isMaximized, setIsMaximized] = useState(false);
 
-export function DebugForm({ onSubmit, isLoading }: DebugFormProps) {
-  const [input, setInput] = useState("");
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      className="flex flex-col h-full w-full min-h-0"
-    >
-      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">Quick Test:</span>
-        <button 
-          type="button"
-          onClick={() => setInput("TypeError: Cannot read properties of undefined (reading 'map')\n    at UserList (components/UserList.tsx:42:15)")} 
-          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
-        >
-          TypeError
-        </button>
-        <button 
-          type="button"
-          onClick={() => setInput("ReferenceError: window is not defined\n    at SSRRender (app/layout.tsx:12:5)")} 
-          className="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-mono text-slate-400 transition-colors"
-        >
-          ReferenceError
-        </button>
-      </div>
-
-      <p className="text-sm text-slate-300 mb-3 font-satoshi flex-shrink-0">
-        Paste your stack trace or error message
-      </p>
-
-      <textarea 
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="e.g. TypeError: Cannot read properties of undefined..."
-        className="w-full flex-1 min-h-[80px] overflow-y-auto resize-none bg-[#050505] border border-white/5 rounded-xl p-5 font-mono text-[13px] text-slate-300 focus:outline-none focus:border-white/20 transition-all custom-scrollbar shadow-inner mb-6"
-      />
-
-      <div className="mt-auto flex flex-col gap-4 flex-shrink-0">
-        <div className="flex items-center gap-2 text-[11px] text-amber-500/80 font-mono">
-          <Lightbulb className="w-3.5 h-3.5" />
-          <span>Include file paths and line numbers for best results</span>
-        </div>
-        
-        <button 
-          onClick={() => onSubmit(input)}
-          disabled={!input.trim() || isLoading}
-          className="w-full py-4 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-slate-200 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)]"
-        >
-          {isLoading ? (
-            <>Initializing <Activity className="w-4 h-4 animate-pulse" /></>
-          ) : (
-            <>Initiate Diagnostics <Activity className="w-4 h-4" /></>
-          )}
-        </button>
-      </div>
-    </motion.div>
-  );
-}
-</file>
-
-<file path="proxy.ts">
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
-
-export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMaximized(false);
+    };
+    if (isMaximized) {
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleEscape);
+    } else {
+      document.body.style.overflow = "unset";
     }
-  );
+    return () => {
+      document.body.style.overflow = "unset";
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMaximized]);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user && request.nextUrl.pathname.startsWith('/analyze')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search);
-    return NextResponse.redirect(url);
-  }
-
-  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
-  }
-
-  return supabaseResponse;
-}
-
-export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
-};
-</file>
-
-<file path="app/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next"; 
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "CodeAutopsy | AI-Powered Codebase Visualization",
-  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
-  metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
-  openGraph: {
-    title: "CodeAutopsy | Dissect Any Codebase",
-    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
-    url: "https://codeautopsy-lyart.vercel.app",
-    siteName: "CodeAutopsy",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "CodeAutopsy Visual Architecture Analysis",
-      },
-    ],
-    locale: "en_US",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "CodeAutopsy | Dissect Any Codebase",
-    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
-    creator: "@Sidhant07",
-    images: ["/og-image.png"],
-  },
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        {children}
-        <Analytics /> 
-      </body>
-    </html>
+    <>
+      {isMaximized && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
+          onClick={() => setIsMaximized(false)}
+        />
+      )}
+
+      <div
+        className={`bg-transparent overflow-hidden group transition-all duration-500 ${
+          isMaximized
+            ? "fixed inset-4 md:inset-8 z-[100] h-[calc(100vh-32px)] md:h-[calc(100vh-64px)] w-[calc(100vw-32px)] md:w-[calc(100vw-64px)] m-auto flex flex-col bg-[#0a0a0a] rounded-3xl border border-white/10 shadow-2xl"
+            : "relative w-full h-full flex flex-col"
+        }`}
+      >
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
+        <motion.div initial={{ top: "-50%" }} animate={{ top: "150%" }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent blur-sm" />
+          <div className="w-full h-[1px] bg-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative z-10" />
+        </motion.div>
+        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
+
+        {/* 🛠️ FIX 2: LOWERED Z-INDEX TO 20 AND ADJUSTED POSITION */}
+        <button
+          onClick={() => setIsMaximized(!isMaximized)}
+          className={`absolute z-20 p-2 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md ${
+            isMaximized ? "top-6 right-6" : "top-4 right-4"
+          }`}
+        >
+          {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+
+        <div className="relative z-10 p-6 md:p-8 flex-1 min-h-0 flex flex-col overflow-hidden">
+
+          <div className="flex flex-col gap-3 mb-6 pb-6 border-b border-white/5 flex-shrink-0 pr-12">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
+                <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
+              </div>
+              <h2 className="cabinet text-2xl md:text-3xl font-bold text-white tracking-tight">
+                CodeAutopsy Diagnostic Engine <span className="text-slate-600 font-mono text-sm ml-2 align-top">v1.0</span>
+              </h2>
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono uppercase tracking-[0.2em] ml-16">
+              [ SYSTEM STATUS: <span className="text-green-500 font-bold animate-pulse">ONLINE</span> ] <span className="hidden sm:inline text-slate-700 mx-2">•</span> Powered by graph traversal + AI reasoning
+            </p>
+          </div>
+
+          <div className="relative z-10 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-2">
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-900/20 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start flex-shrink-0">
+                <span className="text-lg"><AlertCircle className="w-4 h-4 text-red-400"/></span>
+                <div className="flex-1">
+                  <p className="font-medium mb-1">Diagnosis Failed</p>
+                  <p className="text-xs text-red-400/70">{error}</p>
+                  <button onClick={reset} className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors">{">"} REBOOT_DIAGNOSIS</button>
+                </div>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="mb-6 p-4 bg-[#0a0a0a]/80 border border-white/10 rounded-xl font-mono text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl backdrop-blur-md flex-shrink-0">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                  <span>🔍 DEPTH_SEARCH: <span className="text-white font-bold">ACTIVE</span></span>
+                  <span className="hidden sm:inline text-slate-700">|</span>
+                  <span>NODES_SCANNED: INCREASING...</span>
+                </div>
+                <span className="animate-pulse text-white flex items-center gap-2"><span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" /> ANALYZING_FLOW...</span>
+              </div>
+            )}
+
+            <div className="flex-1 flex flex-col min-h-0 w-full h-full">
+              {isLoading ? (
+                <LoadingSkeleton />
+              ) : result ? (
+                <DebugResults result={result} onReset={reset} />
+              ) : (
+                <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 </file>
@@ -3642,7 +3958,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Zap, AlertCircle, ArrowRight } from "lucide-react";
+import { CheckCircle2, Zap } from "lucide-react";
 
 interface DebugResultsProps {
   result: {
@@ -3932,10 +4248,9 @@ import { Cpu, Maximize2, Minimize2, AlertCircle, Search } from "lucide-react";
 interface CodeDoctorPanelProps {
   repoUrl: string;
   onUpdateGraph?: (newMermaidString: string) => void;
-  onDiscussInCopilot?: () => void;
 }
 
-export function CodeDoctorPanel({ repoUrl, onUpdateGraph, onDiscussInCopilot }: CodeDoctorPanelProps) {
+export function CodeDoctorPanel({ repoUrl, onUpdateGraph }: CodeDoctorPanelProps) {
   const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
   const lastChartRef = useRef<string | null>(null);
   
@@ -4054,126 +4369,169 @@ export function CodeDoctorPanel({ repoUrl, onUpdateGraph, onDiscussInCopilot }: 
 }
 </file>
 
-<file path="components/debug/DebugInterface.tsx">
-"use client";
+<file path="README.md">
+<div align="center">
+  <img src="./public/codeautopsy-logo1.png" alt="CodeAutopsy Logo" width="80" height="80" />
+  <h1>CodeAutopsy</h1>
+  <p><b>An AI-powered diagnostic engine that reverse-engineers, maps, and analyzes complex codebases in seconds.</b></p>
+  
+  <img src="https://img.shields.io/badge/Deployed-Vercel-black?style=for-the-badge&logo=vercel" alt="Deployed on Vercel" />
+  <img src="https://img.shields.io/badge/AI-Groq_Llama_3.3-blue?style=for-the-badge&logo=meta" alt="Powered by Groq" />
+  <a href="https://codeautopsy-lyart.vercel.app/analyze?repo=Sidhant0707/codeautopsy">
+  <img src="https://codeautopsy-lyart.vercel.app/api/badge?repo=Sidhant0707/codeautopsy&v=1" alt="CodeAutopsy Health" />
+  </a>
+</div>
 
-import { useEffect, useState } from "react";
-import { useDebugAnalysis } from "@/hooks/use-debug";
-import { DebugForm } from "./DebugForm";
-import { DebugResults } from "./DebugResults";
-import { LoadingSkeleton } from "./LoadingSkeleton";
-import { motion } from "framer-motion";
-import { AlertCircle, Cpu, Maximize2, Minimize2 } from "lucide-react";
+---
 
-export default function DebugInterface({ repoUrl }: { initialChart?: string; repoUrl: string }) {
-  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
-  const [isMaximized, setIsMaximized] = useState(false);
+## 🔬 Overview
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsMaximized(false);
-    };
-    if (isMaximized) {
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleEscape);
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isMaximized]);
+Reading someone else's code is hard. Figuring out how thousands of files connect is even harder.
 
-  return (
-    <>
-      {isMaximized && (
-        <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[90]"
-          onClick={() => setIsMaximized(false)}
-        />
-      )}
+**CodeAutopsy** is a deep-analysis pipeline that transforms complex GitHub repositories into interactive architectural maps. It is not a simple AI wrapper—it performs real static analysis, constructs custom graphing algorithms, and feeds highly structured context to AI to help developers understand new codebases in minutes rather than days.
 
-      <div
-        className={`bg-transparent overflow-hidden group transition-all duration-500 ${
-          isMaximized
-            ? "fixed inset-4 md:inset-8 z-[100] h-[calc(100vh-32px)] md:h-[calc(100vh-64px)] w-[calc(100vw-32px)] md:w-[calc(100vw-64px)] m-auto flex flex-col bg-[#0a0a0a] rounded-3xl border border-white/10 shadow-2xl"
-            : "relative w-full h-full flex flex-col"
-        }`}
-      >
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
-        <motion.div initial={{ top: "-50%" }} animate={{ top: "150%" }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent blur-sm" />
-          <div className="w-full h-[1px] bg-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative z-10" />
-        </motion.div>
-        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
+🌐 **Live Demo:** [codeautopsy.app](https://codeautopsy-lyart.vercel.app)
 
-        {/* 🛠️ FIX 2: LOWERED Z-INDEX TO 20 AND ADJUSTED POSITION */}
-        <button
-          onClick={() => setIsMaximized(!isMaximized)}
-          className={`absolute z-20 p-2 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md ${
-            isMaximized ? "top-6 right-6" : "top-4 right-4"
-          }`}
-        >
-          {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
+---
 
-        <div className="relative z-10 p-6 md:p-8 flex-1 min-h-0 flex flex-col overflow-hidden">
+## 🛠️ What it does
 
-          <div className="flex flex-col gap-3 mb-6 pb-6 border-b border-white/5 flex-shrink-0 pr-12">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
-                <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
-              </div>
-              <h2 className="cabinet text-2xl md:text-3xl font-bold text-white tracking-tight">
-                CodeAutopsy Diagnostic Engine <span className="text-slate-600 font-mono text-sm ml-2 align-top">v1.0</span>
-              </h2>
-            </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono uppercase tracking-[0.2em] ml-16">
-              [ SYSTEM STATUS: <span className="text-green-500 font-bold animate-pulse">ONLINE</span> ] <span className="hidden sm:inline text-slate-700 mx-2">•</span> Powered by graph traversal + AI reasoning
-            </p>
-          </div>
+Paste any GitHub repo URL and get:
 
-          <div className="relative z-10 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-2">
+- **Architecture Overview** — Pattern detection (MVC, Monolith, Library, etc.)
+- **Execution Flow** — Detailed trace of how the app runs from start to finish
+- **Dependency Graph** — Visual Mermaid.js diagram built from real import parsing
+- **Tech Stack Detection** — Deep dive into languages, frameworks, and their specific roles
+- **Key Modules Breakdown** — Functional analysis of what each file does and why it exists
+- **Developer Onboarding Guide** — Instant documentation for new contributors
+- **Blast Radius Analysis** — Shows what breaks if you modify critical files
+- **Ask the Repo Chat** — Natural language Q&A powered by Groq/Llama 3.3
+- **Shareable Reports** — Persistent analysis URLs at `/view/{owner}/{repo}`
 
-            {error && (
-              <div className="mb-6 p-4 bg-red-900/20 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start flex-shrink-0">
-                <span className="text-lg"><AlertCircle className="w-4 h-4 text-red-400"/></span>
-                <div className="flex-1">
-                  <p className="font-medium mb-1">Diagnosis Failed</p>
-                  <p className="text-xs text-red-400/70">{error}</p>
-                  <button onClick={reset} className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors">{">"} REBOOT_DIAGNOSIS</button>
-                </div>
-              </div>
-            )}
+---
 
-            {isLoading && (
-              <div className="mb-6 p-4 bg-[#0a0a0a]/80 border border-white/10 rounded-xl font-mono text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl backdrop-blur-md flex-shrink-0">
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                  <span>🔍 DEPTH_SEARCH: <span className="text-white font-bold">ACTIVE</span></span>
-                  <span className="hidden sm:inline text-slate-700">|</span>
-                  <span>NODES_SCANNED: INCREASING...</span>
-                </div>
-                <span className="animate-pulse text-white flex items-center gap-2"><span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" /> ANALYZING_FLOW...</span>
-              </div>
-            )}
+## 🏗️ Deep Engineering (How it Works)
 
-            <div className="flex-1 flex flex-col min-h-0 w-full h-full">
-              {isLoading ? (
-                <LoadingSkeleton />
-              ) : result ? (
-                <DebugResults result={result} onReset={reset} />
-              ) : (
-                <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
-              )}
-            </div>
+Most "AI code analysis" tools dump a repo into an LLM and pray. CodeAutopsy uses a sophisticated engineering pipeline that runs before any AI call is made:
 
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
+### Layer 1 — Repository Parser
+
+- Fetches the full file tree in a single call via the **GitHub Git Trees API**
+- Intelligent noise filtering: `node_modules`, `dist`, lock files, and binaries
+- Entry point detection via manifest parsing (`package.json`) and filename patterns
+
+### Layer 2 — Static Analysis Engine
+
+- **Regex Parsing:** Extracts `import`/`require` statements across the codebase
+- **Graph Construction:** Builds a dependency adjacency list with local path resolution
+- **Metric Computation:** Calculates **Fan-in scores** to identify core utility modules
+- **Ranking Algorithm:** Sorts files by "Architectural Significance" (Fan-in + Depth + Role)
+
+### Layer 3 — Structured AI Analysis
+
+- **Context Optimization:** Only the top 15-30 ranked files are sent to Groq to prevent "lost in the middle" context issues
+- **Strict Schema:** Forces AI into a typed JSON schema for consistent UI rendering
+- **Cross-Validation:** Ensures AI-generated insights match the actual file tree
+
+### Layer 4 — Infrastructure
+
+- **Smart Caching:** Supabase (PostgreSQL) caching keyed by `repo_url + commit_sha + analysis_version`
+- **Stateless Auth:** `@supabase/ssr` for secure session handling and Private Repo token injection
+- **Traffic Control:** Upstash Redis rate-limiting (3 analyses per 24h for free users, 10 for authenticated)
+
+---
+
+## 💻 Tech Stack
+
+| Layer               | Technology                                             |
+| ------------------- | ------------------------------------------------------ |
+| **Frontend**        | Next.js 16 (App Router) + Tailwind CSS + Framer Motion |
+| **AI Analysis**     | Groq (Llama 3.3 70B Versatile)                         |
+| **Repo Chat**       | Groq (Llama 3.1 8B)                                    |
+| **Repo Data**       | GitHub REST API                                        |
+| **Database + Auth** | Supabase                                               |
+| **Rate Limiting**   | Upstash Redis                                          |
+| **Diagrams**        | Mermaid.js                                             |
+| **Deployment**      | Vercel                                                 |
+
+---
+
+## 🚀 Running Locally
+
+**1. Clone & Install**
+
+```bash
+git clone https://github.com/Sidhant0707/codeautopsy
+cd codeautopsy
+npm install
+```
+
+**2. Configure Environment**
+
+Create a `.env.local` file:
+
+```env
+GITHUB_TOKEN=your_github_token
+GITHUB_FALLBACK_TOKEN=your_fallback_token
+GROQ_API_KEY=your_groq_api_key
+USE_GROQ_FOR_ANALYSIS=true
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_KEY=your_supabase_service_key
+UPSTASH_REDIS_REST_URL=your_upstash_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+```
+
+**3. Launch**
+
+```bash
+npm run dev
+```
+
+---
+
+## 📐 Architecture Flow
+
+User pastes GitHub URL
+↓
+GitHub API → fetch file tree (single call)
+↓
+Filter noise files
+↓
+Detect entry points
+↓
+Build dependency graph
+↓
+Rank files by importance
+↓
+Fetch top 30 file contents
+↓
+Send structured context to Groq
+↓
+Groq returns typed JSON
+↓
+Store in Supabase cache
+↓
+Render analysis + dependency graph + chat
+
+---
+
+## 🎯 Features
+
+- 🔐 **Authentication** — GitHub OAuth, Google OAuth, email/password
+- 📁 **Private Repos** — analyze private repositories when logged in with GitHub
+- 📊 **History Page** — view all previously analyzed repositories
+- 🔗 **Shareable Links** — every analysis accessible at `/view/{owner}/{repo}`
+- 💬 **Chat Interface** — ask natural language questions about any analyzed repo
+- ⚡ **Smart Caching** — instant results for previously analyzed repos
+- 🛡️ **Rate Limiting** — prevents API abuse with per-IP daily limits
+- 🎯 **Blast Radius** — shows what breaks if you modify high-dependency files
+
+---
+
+## 👨‍💻 Built by
+
+[Sidhant Kumar](https://github.com/Sidhant0707) — [LinkedIn](https://linkedin.com/in/sidhant0707)
 </file>
 
 <file path="app/api/debug/analyze/route.ts">
@@ -4286,7 +4644,7 @@ export async function POST(req: NextRequest) {
       fanIn
     );
 
-    traversalPath = applyDebugHeuristics(traversalPath, crashNode, error_type);
+    traversalPath = applyDebugHeuristics(traversalPath, error_type);
 
     const fileContents = result_json.fileContents || [];
     const existingContents = new Map<string, string>(
@@ -4351,7 +4709,7 @@ export async function POST(req: NextRequest) {
 
     const debugResult = await analyzeDebugWithGemini(debugInput);
 
-    const confidence = calculateConfidence(traversalPath, crashNode);
+    const confidence = calculateConfidence(traversalPath);
     const requires_runtime = requiresRuntimeCheck(error_type, error_message);
 
     const suspectedRootCause = traversalPath.find(n => n.relationship === "upstream")?.file;
@@ -4823,8 +5181,9 @@ import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/depend
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
+import { calculateHealthGrade } from "@/lib/analyzer/health"; // ✨ IMPORTED NEW ALGORITHM
 
-const ANALYSIS_VERSION = 5;
+const ANALYSIS_VERSION = 6;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -4948,10 +5307,11 @@ export async function POST(req: NextRequest) {
           repo = parsed.repo;
 
           const meta = await fetchRepoMeta(owner, repo, githubToken);
-          commitSha = meta.default_branch;
-          description = meta.description;
-          stars = meta.stargazers_count;
-          language = meta.language;
+          commitSha = String(meta.default_branch);
+          description = String(meta.description ?? "");
+          stars = Number(meta.stargazers_count ?? 0);
+          // ensure language is a string to avoid 'unknown' type issues
+          language = String(meta.language ?? "");
 
           const { data: cached } = await supabase
             .from("analyses")
@@ -5051,13 +5411,27 @@ export async function POST(req: NextRequest) {
         const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
         const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
 
+        // ✨ NEW: CALCULATE HEALTH SCORE METRICS HERE ✨
+        const fanInValues = Object.values(fanIn) as number[];
+        const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
+        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length; // files > ~15KB
+        
+        const healthMetrics = calculateHealthGrade({
+          totalFiles: filteredPaths.length,
+          circularDependencies: 0, // Placeholder until circular detection is written
+          maxFanIn: maxFanInValue,
+          largeFilesCount: largeFilesCount
+        });
+
+        // ✨ NEW: Passed healthMetrics as the 7th parameter
         const analysis = await analyzeWithGemini(
           `${owner}/${repo}`,
           description || "No description provided",
           entryPoints,
           topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
           allFileContents.slice(0, 15),
-          blastRadiusTargets
+          blastRadiusTargets,
+          healthMetrics 
         );
 
         const result = {
@@ -5074,7 +5448,8 @@ export async function POST(req: NextRequest) {
           mermaidDiagram,
           analysis,
           fileContents: allFileContents.slice(0, 15),
-          fileMetrics
+          fileMetrics,
+          healthMetrics // ✨ NEW: Send straight to frontend for the UI badge!
         };
 
         if (!isLocal) {
@@ -5088,7 +5463,6 @@ export async function POST(req: NextRequest) {
           });
 
           // ✨ THE TRIGGER: Build the Copilot's memory bank!
-          // We await this so the Edge function doesn't kill the process before it finishes.
           await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
 

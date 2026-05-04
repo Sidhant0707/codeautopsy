@@ -5,59 +5,24 @@ import { checkUsageLimit } from "@/lib/usage";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-async function fetchWithRetry(url: string, options: RequestInit, retries = 1): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
-
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    
-    if (!res.ok && res.status >= 500 && retries > 0) {
-      return fetchWithRetry(url, options, retries - 1);
-    }
-    
-    return res;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw err;
-    }
-
-    if (retries > 0) {
-      return fetchWithRetry(url, options, retries - 1);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
-    if (!GROQ_API_KEY || !GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: "Server Configuration Error: Missing API Key" }, 
-        { status: 500 }
-      );
+    if (!GROQ_API_KEY) {
+      return NextResponse.json({ error: "Missing Groq API Key" }, { status: 500 });
     }
 
-    const { messages, repoUrl, repoContext } = await req.json();
+    const { messages, repoContext } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "Context or messages missing" }, { status: 400 });
+      return NextResponse.json({ error: "Messages missing" }, { status: 400 });
     }
 
-    const latestMessage = messages[messages.length - 1]?.content;
-    const targetRepoUrl = repoUrl || (typeof repoContext === 'object' ? repoContext.url || repoContext.repo : null);
-
-    if (!latestMessage || !targetRepoUrl) {
-       return NextResponse.json({ error: "Missing query or repo URL" }, { status: 400 });
-    }
-
+    // 1. Anti-Bankruptcy Check (Kept this safe!)
     const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,60 +31,28 @@ export async function POST(req: NextRequest) {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-
     if (user) {
       const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
       if (!isUnderLimit) {
-        return NextResponse.json(
-          { error: "Daily limit reached. Upgrade to Architect." },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: "Daily limit reached." }, { status: 429 });
       }
     }
 
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1/models/embedding-001:embedContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "models/embedding-001",
-        content: { parts: [{ text: latestMessage }] }
-      })
-    });
-
-    if (!geminiRes.ok) throw new Error("Failed to embed query");
-    const geminiData = await geminiRes.json();
-    const queryEmbedding = geminiData.embedding.values;
-
-    const { data: matchedChunks, error: matchError } = await supabase.rpc('match_codebase_embeddings', {
-      query_embedding: queryEmbedding,
-      match_threshold: 0.3,
-      match_count: 5,
-      repo_url_filter: targetRepoUrl
-    });
-
-    if (matchError) throw matchError;
-
-    let contextText = "No specific code snippets found for this query.";
-    if (matchedChunks && matchedChunks.length > 0) {
-      contextText =
-        "Relevant code snippets:\n\n" +
-        matchedChunks
-          .map((c: { file_path: string; content: string }) => `--- File: ${c.file_path} ---\n${c.content}\n`)
-          .join("\n\n");
+    // 2. Pre-RAG Logic: Just grab the frontend context directly
+    let contextText = "No repository context provided.";
+    if (repoContext) {
+      // Stringify the context the frontend already has, capping it so Groq doesn't crash
+      contextText = JSON.stringify(repoContext).substring(0, 20000); 
     }
 
-    const systemPrompt = `
-You are a Senior Systems Architect.
+    const systemPrompt = `You are a Senior Systems Architect analyzing a codebase.
+Use the provided JSON context about the repository to answer the user's questions. 
 
-Analyze ONLY the given repository context.
-If missing or unclear -> say "Insufficient data in context".
-NEVER guess or assume this is a web project unless proven.
+REPOSITORY CONTEXT (JSON):
+${contextText}`;
 
-CONTEXT:
-${contextText}
-`;
-
-    const res = await fetchWithRetry(GROQ_URL, {
+    // 3. Direct Groq Streaming
+    const res = await fetch(GROQ_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -135,11 +68,11 @@ ${contextText}
         max_tokens: 1024,
         stream: true,
       }),
-    }, 1);
+    });
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`Groq API Error (${res.status}): ${errorText.substring(0, 200)}`);
+      throw new Error(`Groq API Error: ${errorText}`);
     }
 
     return new Response(res.body, {
@@ -151,13 +84,8 @@ ${contextText}
     });
 
   } catch (err: unknown) {
-    let errorMessage = "Analysis Failed";
-    if (err instanceof Error) {
-      errorMessage = err.name === "AbortError" 
-        ? "Uplink Timeout: Analysis took too long or network dropped." 
-        : err.message;
-    }
-    console.error("API Route Error:", errorMessage);
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error("Chat API Error:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
