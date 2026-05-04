@@ -51,6 +51,12 @@ interface Analysis {
     warning: string;
     safe_refactor_steps: string[];
   }[];
+  health_status?: {
+    grade: string;
+    score: number;
+    status: string;
+    refactor_plan: string[];
+  };
 }
 
 interface RepoData {
@@ -563,6 +569,86 @@ function AnalyzeContent() {
                   className="max-w-5xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 pb-12"
                 >
                   <div className="xl:col-span-8 space-y-6">
+                    {data.analysis.health_status && (
+                      <div className="glass-card relative overflow-hidden p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]">
+                        {/* Background Glow based on Grade */}
+                        <div
+                          className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${
+                            data.analysis.health_status.grade === "A"
+                              ? "bg-emerald-500"
+                              : data.analysis.health_status.grade === "B"
+                                ? "bg-blue-500"
+                                : data.analysis.health_status.grade === "C"
+                                  ? "bg-amber-500"
+                                  : data.analysis.health_status.grade === "D"
+                                    ? "bg-orange-500"
+                                    : "bg-red-500"
+                          }`}
+                        />
+
+                        <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
+                          {/* The Letter Grade Badge */}
+                          <div
+                            className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${
+                              data.analysis.health_status.grade === "A"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                : data.analysis.health_status.grade === "B"
+                                  ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                                  : data.analysis.health_status.grade === "C"
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                                    : data.analysis.health_status.grade === "D"
+                                      ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+                                      : "bg-red-500/10 border-red-500/30 text-red-400"
+                            }`}
+                          >
+                            <span className="text-6xl font-black cabinet leading-none tracking-tighter">
+                              {data.analysis.health_status.grade}
+                            </span>
+                            <span className="text-xs font-mono font-bold uppercase tracking-widest mt-2 opacity-80">
+                              {data.analysis.health_status.score} / 100
+                            </span>
+                          </div>
+
+                          {/* Status & AI Action Plan */}
+                          <div className="flex-1 space-y-4">
+                            <div>
+                              <h2 className="cabinet text-2xl font-bold text-white mb-1">
+                                {data.analysis.health_status.status}
+                              </h2>
+                              <p className="text-slate-400 text-sm">
+                                Based on live coupling, circular dependencies,
+                                and file bloat metrics.
+                              </p>
+                            </div>
+
+                            {data.analysis.health_status.refactor_plan && (
+                              <div className="space-y-2 mt-4">
+                                <h3 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                  AI Refactoring Directives
+                                </h3>
+                                {data.analysis.health_status.refactor_plan.map(
+                                  (step, i) => (
+                                    <div
+                                      key={i}
+                                      className="flex gap-3 items-start p-3 rounded-xl bg-white/[0.02] border border-white/5"
+                                    >
+                                      <div className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span className="mono text-[9px] text-slate-400 font-bold">
+                                          {i + 1}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                        {step}
+                                      </p>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
                       <h2 className="cabinet text-xl font-bold text-white mb-4 flex items-center gap-2">
                         <Layers className="w-4 h-4 text-slate-500" /> System

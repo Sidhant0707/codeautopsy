@@ -10,8 +10,9 @@ import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/depend
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
+import { calculateHealthGrade } from "@/lib/analyzer/health"; // ✨ IMPORTED NEW ALGORITHM
 
-const ANALYSIS_VERSION = 5;
+const ANALYSIS_VERSION = 6;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -135,10 +136,11 @@ export async function POST(req: NextRequest) {
           repo = parsed.repo;
 
           const meta = await fetchRepoMeta(owner, repo, githubToken);
-          commitSha = meta.default_branch;
-          description = meta.description;
-          stars = meta.stargazers_count;
-          language = meta.language;
+          commitSha = String(meta.default_branch);
+          description = String(meta.description ?? "");
+          stars = Number(meta.stargazers_count ?? 0);
+          // ensure language is a string to avoid 'unknown' type issues
+          language = String(meta.language ?? "");
 
           const { data: cached } = await supabase
             .from("analyses")
@@ -238,13 +240,27 @@ export async function POST(req: NextRequest) {
         const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
         const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
 
+        // ✨ NEW: CALCULATE HEALTH SCORE METRICS HERE ✨
+        const fanInValues = Object.values(fanIn) as number[];
+        const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
+        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length; // files > ~15KB
+        
+        const healthMetrics = calculateHealthGrade({
+          totalFiles: filteredPaths.length,
+          circularDependencies: 0, // Placeholder until circular detection is written
+          maxFanIn: maxFanInValue,
+          largeFilesCount: largeFilesCount
+        });
+
+        // ✨ NEW: Passed healthMetrics as the 7th parameter
         const analysis = await analyzeWithGemini(
           `${owner}/${repo}`,
           description || "No description provided",
           entryPoints,
           topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
           allFileContents.slice(0, 15),
-          blastRadiusTargets
+          blastRadiusTargets,
+          healthMetrics 
         );
 
         const result = {
@@ -261,7 +277,8 @@ export async function POST(req: NextRequest) {
           mermaidDiagram,
           analysis,
           fileContents: allFileContents.slice(0, 15),
-          fileMetrics
+          fileMetrics,
+          healthMetrics // ✨ NEW: Send straight to frontend for the UI badge!
         };
 
         if (!isLocal) {
@@ -275,7 +292,6 @@ export async function POST(req: NextRequest) {
           });
 
           // ✨ THE TRIGGER: Build the Copilot's memory bank!
-          // We await this so the Edge function doesn't kill the process before it finishes.
           await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
 

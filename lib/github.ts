@@ -41,7 +41,7 @@ export async function fetchRepoMeta(
   owner: string,
   repo: string,
   token?: string
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   const url = `https://api.github.com/repos/${owner}/${repo}`;
   const headers: HeadersInit = token
     ? { Authorization: `Bearer ${token}` }

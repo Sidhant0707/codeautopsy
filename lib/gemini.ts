@@ -7,6 +7,13 @@ export interface AnalysisResult {
   onboarding_guide: string[];
   evidence_paths: string[];
   blast_radius: { file: string; dependents: number; warning: string; safe_refactor_steps: string[] }[];
+  // ✨ NEW: Added health_status to the type interface
+  health_status: {
+    grade: string;
+    score: number;
+    status: string;
+    refactor_plan: string[];
+  };
 }
 
 export async function analyzeWithGemini(
@@ -15,7 +22,9 @@ export async function analyzeWithGemini(
   entryPoints: string[],
   topFiles: { path: string; role: string }[],
   fileContents: { path: string; content: string }[],
-  blastRadiusTargets: { file: string; dependentsCount: number }[]
+  blastRadiusTargets: { file: string; dependentsCount: number }[],
+  // ✨ NEW: Added healthMetrics as the 7th parameter
+  healthMetrics: { score: number; grade: string; color: string; status: string } 
 ): Promise<AnalysisResult> {
   if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
     throw new Error("Gemini is currently disabled. Please use Groq. Check Vercel Env Variables.");
@@ -41,6 +50,7 @@ export async function analyzeWithGemini(
     })
     .join("\n\n");
 
+  // ✨ NEW: Injected the Health Score Ultimatum into the System Prompt
   const systemPrompt = `You are a senior software engineer analyzing a GitHub repository.
 
 Repository: ${repoName}
@@ -48,6 +58,12 @@ Description: ${description}
 Entry Points: ${entryPoints.join(", ")}
 Important Files: ${topFiles.map((f) => f.path).join(", ")}
 High-Risk Blast Radius Targets: ${JSON.stringify(blastRadiusTargets)}
+
+CRITICAL ARCHITECTURE METRICS:
+- Health Grade: ${healthMetrics.grade} (Score: ${healthMetrics.score}/100)
+- System Status: ${healthMetrics.status}
+
+Because this codebase has a grade of ${healthMetrics.grade}, you MUST include a specific, actionable 3-step refactoring plan designed to fix the architectural bottlenecks and raise the score to an A. Do not give generic advice. Be specific to the provided files.
 
 FILE CONTENTS:
 ${fileContentText}
@@ -68,7 +84,13 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
       "warning": "Explain exactly what features or downstream systems will break if a junior dev edits this file incorrectly.",
       "safe_refactor_steps": ["step 1 to safely modify", "step 2"]
     }
-  ]
+  ],
+  "health_status": {
+    "grade": "${healthMetrics.grade}",
+    "score": ${healthMetrics.score},
+    "status": "${healthMetrics.status}",
+    "refactor_plan": ["step 1 specific refactor", "step 2 specific refactor", "step 3 specific refactor"]
+  }
 }`;
 
   const res = await fetch(url, {
