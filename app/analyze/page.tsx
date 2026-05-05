@@ -347,9 +347,7 @@ function AnalyzeContent() {
             {isRateLimit ? "Daily Limit Reached" : "Autopsy Failed"}
           </h2>
           <p className="text-slate-400 text-sm mb-8">
-            {isRateLimit
-              ? "You've hit your Free Tier limit of 10 autopsies for today. Upgrade your workspace to unlock unlimited scans and priority routing."
-              : error}
+            {error}
           </p>
           <div className="flex flex-col gap-3">
             {isRateLimit && (
@@ -449,7 +447,7 @@ function AnalyzeContent() {
         <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold h-9 flex-shrink-0"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Dashboard</span>
@@ -465,33 +463,35 @@ function AnalyzeContent() {
                 className="hidden sm:flex items-center mr-2"
               >
                 {!feedbackSubmitted ? (
-                  <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-1">
-                    <span className="text-[10px] uppercase font-mono text-slate-500 px-2 font-bold">
+                  <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-1 h-9 flex-shrink-0">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 px-3 font-bold whitespace-nowrap">
                       Helpful?
                     </span>
-                    <button
-                      type="button"
-                      aria-label="Mark feedback as helpful"
-                      title="Mark feedback as helpful"
-                      onClick={() => handleFeedback(true)}
-                      className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-green-400 transition-colors"
-                    >
-                      <ThumbsUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Mark feedback as not helpful"
-                      title="Mark feedback as not helpful"
-                      onClick={() => handleFeedback(false)}
-                      className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors"
-                    >
-                      <ThumbsDown className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 px-1">
+                      <button
+                        type="button"
+                        aria-label="Mark feedback as helpful"
+                        title="Mark feedback as helpful"
+                        onClick={() => handleFeedback(true)}
+                        className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-green-400 transition-colors"
+                      >
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Mark feedback as not helpful"
+                        title="Mark feedback as not helpful"
+                        onClick={() => handleFeedback(false)}
+                        className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/20 h-9 flex-shrink-0">
                     <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                    <span className="text-[10px] uppercase font-mono text-green-400 font-bold">
+                    <span className="text-[10px] uppercase font-mono text-green-400 font-bold whitespace-nowrap">
                       Thanks!
                     </span>
                   </div>
@@ -509,45 +509,41 @@ function AnalyzeContent() {
 
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          <div className="h-16 flex-shrink-0 border-b border-white/5 flex items-center px-4 sm:px-6 bg-[#0a0a0a]/50 backdrop-blur-sm z-20 overflow-hidden">
-            <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] items-center gap-2 bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] w-full sm:w-auto">
+          <div className="h-16 flex-shrink-0 border-b border-white/5 flex items-center justify-center px-4 sm:px-6 bg-[#0a0a0a]/50 backdrop-blur-sm z-20 overflow-hidden">
+            <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] items-center gap-2 bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] w-auto">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
-                  activeTab === "overview"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "overview"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
+                  }`}
               >
                 <FileCode className="w-3.5 h-3.5" /> Read Docs
               </button>
               <button
                 onClick={() => setActiveTab("visualizer")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
-                  activeTab === "visualizer"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "visualizer"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
+                  }`}
               >
                 <Layers className="w-3.5 h-3.5" /> Blueprint Map
               </button>
               <button
                 onClick={() => setActiveTab("doctor")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
-                  activeTab === "doctor"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "doctor"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
+                  }`}
               >
                 <Activity className="w-3.5 h-3.5" /> Diagnostic Engine
               </button>
               <button
                 onClick={() => setActiveTab("pr_impact")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
-                  activeTab === "pr_impact"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "pr_impact"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
+                  }`}
               >
                 <GitPullRequest className="w-3.5 h-3.5" /> PR Impact
               </button>
@@ -563,12 +559,12 @@ function AnalyzeContent() {
                   variants={fadeUp}
                   className="max-w-5xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 pb-12"
                 >
-                  <div className="xl:col-span-8 space-y-6">
+                  {/* Row 1: Health Status (Left) + Right Sidebar Content (Right) */}
+                  <div className="xl:col-span-8">
                     {data.analysis.health_status && (
-                      <div className="glass-card relative overflow-hidden p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]">
+                      <div className="glass-card relative overflow-hidden p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e] h-full transition-all">
                         <div
-                          className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${
-                            data.analysis.health_status.grade === "A"
+                          className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${data.analysis.health_status.grade === "A"
                               ? "bg-emerald-500"
                               : data.analysis.health_status.grade === "B"
                                 ? "bg-blue-500"
@@ -577,13 +573,12 @@ function AnalyzeContent() {
                                   : data.analysis.health_status.grade === "D"
                                     ? "bg-orange-500"
                                     : "bg-red-500"
-                          }`}
+                            }`}
                         />
 
                         <div className="flex flex-col md:flex-row gap-8 items-center md:items-start relative z-10 text-center md:text-left">
                           <div
-                            className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${
-                              data.analysis.health_status.grade === "A"
+                            className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${data.analysis.health_status.grade === "A"
                                 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                                 : data.analysis.health_status.grade === "B"
                                   ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
@@ -592,7 +587,7 @@ function AnalyzeContent() {
                                     : data.analysis.health_status.grade === "D"
                                       ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
                                       : "bg-red-500/10 border-red-500/30 text-red-400"
-                            }`}
+                              }`}
                           >
                             <span className="text-6xl font-black cabinet leading-none tracking-tighter">
                               {data.analysis.health_status.grade}
@@ -647,16 +642,137 @@ function AnalyzeContent() {
                         </div>
                       </div>
                     )}
-                    <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
-                      <h2 className="cabinet text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-slate-500" /> System
-                        Purpose
-                      </h2>
-                      <p className="text-slate-400 leading-relaxed text-sm">
-                        {data.analysis.what_it_does}
-                      </p>
-                    </div>
+                  </div>
 
+                  <div className="xl:col-span-4 h-full">
+                    <div className="glass-card p-6 rounded-2xl border border-white/10 bg-[#0e0e0e] h-full flex flex-col space-y-6">
+                      {data.analysis.blast_radius &&
+                        data.analysis.blast_radius.length > 0 && (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 mb-2 px-1">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500/80" />
+                              <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-amber-500/80">
+                                Blast Radius
+                              </h2>
+                            </div>
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                              {data.analysis.blast_radius.map((risk, i) => (
+                                <div
+                                  key={i}
+                                  className="glass-card p-4 rounded-xl border border-amber-500/10 bg-amber-500/[0.02]"
+                                >
+                                  <code
+                                    className="mono text-[11px] text-amber-400/80 mb-2 block truncate"
+                                    title={risk.file}
+                                  >
+                                    {risk.file.split("/").pop()}
+                                  </code>
+                                  <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+                                    {risk.warning}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[9px] text-amber-500/60 font-mono uppercase">
+                                    <Layers className="w-3 h-3" /> {risk.dependents}{" "}
+                                    Dependent File(s)
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                        <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">
+                          Key Modules
+                        </h2>
+                        <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                          {data.analysis.key_modules.map((mod, i) => (
+                            <div
+                              key={i}
+                              className="glass-card p-4 rounded-xl bg-white/[0.03] border border-white/5"
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <code
+                                  className="mono text-[11px] text-slate-300 truncate"
+                                  title={mod.file}
+                                >
+                                  {mod.file.split("/").pop()}
+                                </code>
+                                <span className="text-[8px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">
+                                  {mod.role}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-relaxed border-l-2 border-white/10 pl-2">
+                                {mod.why_it_exists}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 2: System Purpose (Left) + Execution/Onboarding (Right) */}
+                  <div className="xl:col-span-8">
+                    <div className="glass-card relative overflow-hidden p-6 sm:p-8 rounded-2xl border border-white/5 bg-[#0e0e0e] h-full flex flex-col group">
+                      <div className="relative z-10 flex-1 flex flex-col">
+                        <h2 className="cabinet text-xl font-bold text-white mb-4 flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-slate-500" /> System
+                          Purpose
+                        </h2>
+                        <p className="text-slate-400 leading-relaxed text-sm mb-12">
+                          {data.analysis.what_it_does}
+                        </p>
+
+                        {/* Stacked Layout to fill vertical space */}
+                        <div className="space-y-10">
+                          {/* Core Tech Stack - Horizontal List */}
+                          <div className="space-y-4">
+                            <h3 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2 px-1">
+                              <Cpu className="w-3 h-3" /> Core Tech Stack
+                            </h3>
+                            <div className="space-y-2">
+                              {data.analysis.tech_stack && data.analysis.tech_stack.slice(0, 10).map((tech, i) => (
+                                <div key={i} className="flex items-center gap-6 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group/item">
+                                  <div className="w-32 shrink-0">
+                                    <span className="text-xs font-bold text-slate-200 group-hover/item:text-blue-400 transition-colors">{tech.name}</span>
+                                  </div>
+                                  <div className="h-4 w-px bg-white/10 hidden sm:block" />
+                                  <span className="text-[11px] text-slate-500 leading-tight flex-1">{tech.purpose}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Repository Pulse - Grid below */}
+                          <div className="space-y-4">
+                            <h3 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2 px-1">
+                              <Activity className="w-3 h-3" /> Repository Pulse
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {[
+                                { label: "Primary Language", value: data.language, icon: Terminal },
+                                { label: "Project Complexity", value: `${data.totalFiles} Source Files`, icon: FileCode },
+                                { label: "Architecture Pattern", value: data.analysis.architecture_pattern, icon: Layers },
+                                { label: "Popularity / Stars", value: data.stars > 0 ? `${data.stars} Stars` : "Early Stage", icon: ThumbsUp }
+                              ].map((stat, i) => (
+                                <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:bg-white/[0.03] transition-all">
+                                  <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
+                                    <stat.icon className="w-5 h-5 text-slate-400" />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="mono text-[9px] text-slate-600 uppercase font-bold">{stat.label}</span>
+                                    <span className="text-xs font-mono text-slate-300">{stat.value}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="xl:col-span-4 space-y-6">
                     <div className="glass-card p-6 rounded-2xl border border-white/5 bg-[#0e0e0e]">
                       <h2 className="cabinet text-xl font-bold text-white mb-6 flex items-center gap-2">
                         <GitMerge className="w-4 h-4 text-slate-500" />{" "}
@@ -701,67 +817,6 @@ function AnalyzeContent() {
                       </div>
                     </div>
                   </div>
-
-                  <div className="xl:col-span-4 space-y-6">
-                    {data.analysis.blast_radius &&
-                      data.analysis.blast_radius.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 mb-2 px-1">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500/80" />
-                            <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-amber-500/80">
-                              Blast Radius
-                            </h2>
-                          </div>
-                          {data.analysis.blast_radius.map((risk, i) => (
-                            <div
-                              key={i}
-                              className="glass-card p-4 rounded-xl border border-amber-500/10 bg-amber-500/[0.02]"
-                            >
-                              <code
-                                className="mono text-[11px] text-amber-400/80 mb-2 block truncate"
-                                title={risk.file}
-                              >
-                                {risk.file.split("/").pop()}
-                              </code>
-                              <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
-                                {risk.warning}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-[9px] text-amber-500/60 font-mono uppercase">
-                                <Layers className="w-3 h-3" /> {risk.dependents}{" "}
-                                Dependent File(s)
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                    <div className="space-y-3">
-                      <h2 className="mono text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">
-                        Key Modules
-                      </h2>
-                      {data.analysis.key_modules.map((mod, i) => (
-                        <div
-                          key={i}
-                          className="glass-card p-4 rounded-xl bg-[#0e0e0e] border border-white/5"
-                        >
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <code
-                              className="mono text-[11px] text-slate-300 truncate"
-                              title={mod.file}
-                            >
-                              {mod.file.split("/").pop()}
-                            </code>
-                            <span className="text-[8px] uppercase tracking-widest font-bold text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">
-                              {mod.role}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 leading-relaxed border-l-2 border-white/10 pl-2">
-                            {mod.why_it_exists}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </motion.div>
               </div>
             )}
@@ -781,31 +836,28 @@ function AnalyzeContent() {
                   <div className="flex overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                     <button
                       onClick={() => setMapView("graph")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
-                        mapView === "graph"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "graph"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                      }`}
+                        }`}
                     >
                       Dependency Flow
                     </button>
                     <button
                       onClick={() => setMapView("directory")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
-                        mapView === "directory"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "directory"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                      }`}
+                        }`}
                     >
                       Folder Structure
                     </button>
                     <button
                       onClick={() => setMapView("treemap")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
-                        mapView === "treemap"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "treemap"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                      }`}
+                        }`}
                     >
                       Codebase Weight
                     </button>
@@ -815,7 +867,7 @@ function AnalyzeContent() {
                 <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
                   {mapView === "graph" ? (
                     data.dependencyGraph &&
-                    Object.keys(data.dependencyGraph).length > 0 ? (
+                      Object.keys(data.dependencyGraph).length > 0 ? (
                       <ArchitectureMap
                         dependencyGraph={data.dependencyGraph}
                         entryPoints={data.entryPoints}
@@ -950,11 +1002,10 @@ function AnalyzeContent() {
                           </p>
                         </div>
                         <div
-                          className={`flex-shrink-0 w-full md:w-auto px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-widest flex justify-center md:justify-start items-center gap-2 ${
-                            prResult.riskLevel === "high"
+                          className={`flex-shrink-0 w-full md:w-auto px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-widest flex justify-center md:justify-start items-center gap-2 ${prResult.riskLevel === "high"
                               ? "bg-red-500/10 border-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
                               : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                          }`}
+                            }`}
                         >
                           {prResult.riskLevel === "high" ? (
                             <AlertTriangle className="w-3.5 h-3.5" />

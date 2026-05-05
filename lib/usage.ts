@@ -6,6 +6,33 @@ const ADMIN_EMAILS = [
   "sidhantkumar0707@gmail.com",
 ];
 
+export async function getUsageCount(
+  supabase: SupabaseClient, 
+  userId: string
+): Promise<number> {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const startOfDay = today.toISOString();
+
+  const { count: repoCount, error: repoError } = await supabase
+    .from('analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (repoError) console.error("Error checking repo usage:", repoError);
+
+  const { count: prCount, error: prError } = await supabase
+    .from('pr_analyses')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay);
+
+  if (prError) console.error("Error checking PR usage:", prError);
+
+  return (repoCount || 0) + (prCount || 0);
+}
+
 export async function checkUsageLimit(
   supabase: SupabaseClient, 
   userId: string, 
@@ -19,32 +46,7 @@ export async function checkUsageLimit(
   }
 
   const MAX_DAILY_SCANS = 10;
-  
-  
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const startOfDay = today.toISOString();
-
-  
-  const { count: repoCount, error: repoError } = await supabase
-    .from('analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
-
-  if (repoError) console.error("Error checking repo usage:", repoError);
-
-  
-  const { count: prCount, error: prError } = await supabase
-    .from('pr_analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
-
-  if (prError) console.error("Error checking PR usage:", prError);
-
-  const totalUsage = (repoCount || 0) + (prCount || 0);
-
+  const totalUsage = await getUsageCount(supabase, userId);
   
   return totalUsage < MAX_DAILY_SCANS;
 }
