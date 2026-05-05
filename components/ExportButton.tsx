@@ -3,7 +3,17 @@
 import { Download } from "lucide-react";
 
 interface ExportButtonProps {
-  data: any;
+  data: {
+    owner: string;
+    repo: string;
+    analysis: {
+      what_it_does: string;
+      execution_flow: string[];
+      key_modules: { file: string; role: string; why_it_exists: string }[];
+      blast_radius?: { file: string; dependents: number; warning: string }[];
+      onboarding_guide: string[];
+    };
+  };
 }
 
 export default function ExportButton({ data }: ExportButtonProps) {
@@ -19,14 +29,14 @@ export default function ExportButton({ data }: ExportButtonProps) {
     md += `\n`;
     
     md += `## Key Modules\n`;
-    data.analysis.key_modules.forEach((mod: any) => {
+    data.analysis.key_modules.forEach((mod) => {
       md += `- **\`${mod.file.split('/').pop()}\`** (${mod.role}): ${mod.why_it_exists}\n`;
     });
     md += `\n`;
     
     if (data.analysis.blast_radius && data.analysis.blast_radius.length > 0) {
       md += `## Blast Radius (Critical Files)\n`;
-      data.analysis.blast_radius.forEach((risk: any) => {
+      data.analysis.blast_radius.forEach((risk) => {
         md += `- **\`${risk.file.split('/').pop()}\`** (${risk.dependents} dependents): ${risk.warning}\n`;
       });
       md += `\n`;
