@@ -19,15 +19,14 @@ export const metadata = {
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
   if (!user) {
     redirect("/login");
   }
 
-  
   const { data: analyses, error } = await supabase
     .from("analyses")
     .select("id, repo_url, repo_name, commit_sha, created_at")
@@ -35,13 +34,11 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f1f5f9] p-8 md:p-12 lg:p-24 font-satoshi relative overflow-hidden">
-      {}
+    <div className="min-h-screen bg-[#050505] text-[#f1f5f9] p-4 sm:p-8 md:p-12 lg:p-24 font-satoshi relative overflow-hidden">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent pointer-events-none z-0 blur-3xl" />
 
       <div className="max-w-6xl mx-auto relative z-10">
-        {}
         <BackButton />
 
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12 border-b border-white/5 pb-8">
@@ -62,13 +59,12 @@ export default async function DashboardPage() {
           </div>
           <Link
             href="/"
-            className="px-6 py-3 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] w-fit"
+            className="px-6 py-3 rounded-xl bg-slate-200 text-black font-bold text-xs uppercase tracking-[0.15em] hover:bg-white transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] w-full sm:w-fit"
           >
             <Plus className="w-4 h-4" /> New Autopsy
           </Link>
         </header>
 
-        {}
         <div className="mb-12">
           <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
             Workspace Tools
@@ -86,7 +82,6 @@ export default async function DashboardPage() {
                   <h3 className="text-slate-200 font-bold text-base">
                     PR Impact Analyzer
                   </h3>
-                  {}
                   <span className="px-2 py-0.5 rounded-md bg-slate-200/20 border border-slate-200/50 text-slate-100 text-[10px] font-black tracking-widest uppercase animate-pulse shadow-[0_0_10px_rgba(241,245,249,0.15)]">
                     New
                   </span>
@@ -99,7 +94,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {}
         <div>
           <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
             Historical Scans
@@ -113,18 +107,19 @@ export default async function DashboardPage() {
               <p className="text-xs opacity-80">{error.message}</p>
             </div>
           ) : !analyses || analyses.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-16 rounded-3xl border border-white/5 bg-white/[0.02] text-center">
+            <div className="flex flex-col items-center justify-center p-8 sm:p-16 rounded-3xl border border-white/5 bg-white/[0.02] text-center">
               <Database className="w-12 h-12 text-slate-600 mb-6" />
               <h3 className="text-xl font-bold text-white mb-2">
                 No Autopsies Found
               </h3>
               <p className="text-slate-400 text-sm mb-8 max-w-md">
-                You haven&apos;t analyzed any repositories yet. Start your first scan
-                to generate an architecture blueprint and diagnostic report.
+                You haven&apos;t analyzed any repositories yet. Start your first
+                scan to generate an architecture blueprint and diagnostic
+                report.
               </p>
               <Link
                 href="/"
-                className="px-6 py-3 rounded-xl bg-white/5 text-white border border-white/10 font-bold text-xs uppercase tracking-[0.15em] hover:bg-white/10 transition-all"
+                className="px-6 py-3 rounded-xl bg-white/5 text-white border border-white/10 font-bold text-xs uppercase tracking-[0.15em] hover:bg-white/10 transition-all w-full sm:w-fit"
               >
                 Initiate Scan
               </Link>
