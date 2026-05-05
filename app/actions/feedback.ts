@@ -20,7 +20,7 @@ export async function submitDiagnosisFeedback(isHelpful: boolean, debugId?: stri
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Ignore in server actions
+            
           }
         },
       },

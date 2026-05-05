@@ -1,4 +1,4 @@
-// lib/debug/stack-parser.ts
+
 
 import { CrashNode } from "./types";
 
@@ -48,12 +48,12 @@ export function parseStackTrace(
   const frames: StackFrame[] = [];
 
   for (const line of lines) {
-    // Skip empty lines and error messages
+    
     if (!line.trim() || !line.includes("at ")) continue;
 
-    // Extract file path and location
-    // Matches: "at functionName (/path/to/file.ts:42:10)"
-    // Also matches: "at /path/to/file.ts:42:10"
+    
+    
+    
     const match = line.match(
       /at\s+(?:(.+?)\s+\()?([^()]+):(\d+):(\d+)\)?/
     );
@@ -65,7 +65,7 @@ export function parseStackTrace(
     const lineNum = parseInt(match[3]);
     const colNum = parseInt(match[4]);
 
-    // Filter out framework noise
+    
     if (FRAMEWORK_NOISE.some((noise) => filePath.includes(noise))) {
       continue;
     }
@@ -79,7 +79,7 @@ export function parseStackTrace(
     });
   }
 
-  // Now map extracted paths to actual repository files
+  
   for (const frame of frames) {
     const matched = findMatchingFile(frame.file, allFiles);
 
@@ -93,21 +93,21 @@ export function parseStackTrace(
     }
   }
 
-  return null; // No valid crash node found
+  return null; 
 }
 
 function findMatchingFile(framePath: string, allFiles: string[]): string | null {
-  // 1. Try exact match
+  
   if (allFiles.includes(framePath)) return framePath;
 
-  // 2. Try extracting just the filename
+  
   const filename = framePath.split("/").pop();
   if (filename) {
     const match = allFiles.find((f) => f.endsWith(filename));
     if (match) return match;
   }
 
-  // 3. Try partial path matching (last 2 segments)
+  
   const segments = framePath.split("/");
   if (segments.length >= 2) {
     const partial = segments.slice(-2).join("/");
@@ -115,11 +115,11 @@ function findMatchingFile(framePath: string, allFiles: string[]): string | null 
     if (match) return match;
   }
 
-  // 4. Try matching against repo root patterns
+  
   for (const pattern of REPO_ROOT_PATTERNS) {
     const idx = framePath.indexOf(pattern);
     if (idx !== -1) {
-      const repoPath = framePath.substring(idx + 1); // Remove leading "/"
+      const repoPath = framePath.substring(idx + 1); 
       if (allFiles.includes(repoPath)) return repoPath;
     }
   }
@@ -127,7 +127,7 @@ function findMatchingFile(framePath: string, allFiles: string[]): string | null 
   return null;
 }
 
-// Extract error type and message from stack trace
+
 export function extractErrorInfo(trace: string): {
   error_type: string;
   error_message: string;
@@ -136,7 +136,7 @@ export function extractErrorInfo(trace: string): {
   const firstLine = lines[0]?.trim() || "";
 
   // Try to extract "ErrorType: message"
-  // Try to extract "ErrorType: message" (allows prefixes like "Uncaught ")
+  
   const errorMatch = firstLine.match(/(?:.*\s)?(\w+Error):\s*(.+)$/);
 
   if (errorMatch) {
@@ -146,14 +146,14 @@ export function extractErrorInfo(trace: string): {
     };
   }
 
-  // Fallback: use first line as message
+  
   return {
     error_type: "UnknownError",
     error_message: firstLine || "No error message provided",
   };
 }
 
-// Edge case handler: Multiple errors in one trace
+
 export function extractAllCrashNodes(
   trace: string,
   allFiles: string[]

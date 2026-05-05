@@ -19,7 +19,7 @@ export const metadata = {
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  // Secure the route
+  
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Fetch past autopsies for the authenticated user
+  
   const { data: analyses, error } = await supabase
     .from("analyses")
     .select("id, repo_url, repo_name, commit_sha, created_at")
@@ -36,12 +36,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#f1f5f9] p-8 md:p-12 lg:p-24 font-satoshi relative overflow-hidden">
-      {/* Background aesthetics */}
+      {}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent pointer-events-none z-0 blur-3xl" />
 
       <div className="max-w-6xl mx-auto relative z-10">
-        {/* ✨ Our new Client-Side Back Button Island ✨ */}
+        {}
         <BackButton />
 
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12 border-b border-white/5 pb-8">
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
           </Link>
         </header>
 
-        {/* Workspace Tools Section for PR Analyzer */}
+        {}
         <div className="mb-12">
           <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
             Workspace Tools
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
                   <h3 className="text-slate-200 font-bold text-base">
                     PR Impact Analyzer
                   </h3>
-                  {/* The Luminous NEW Badge */}
+                  {}
                   <span className="px-2 py-0.5 rounded-md bg-slate-200/20 border border-slate-200/50 text-slate-100 text-[10px] font-black tracking-widest uppercase animate-pulse shadow-[0_0_10px_rgba(241,245,249,0.15)]">
                     New
                   </span>
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Historical Autopsies Section */}
+        {}
         <div>
           <h2 className="text-sm font-mono text-slate-500 uppercase tracking-widest mb-4">
             Historical Scans

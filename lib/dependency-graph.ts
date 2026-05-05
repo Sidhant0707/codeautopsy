@@ -41,7 +41,7 @@ function extractImports(content: string, currentFile: string): string[] {
   const imports: string[] = [];
   const dir = currentFile.split("/").slice(0, -1).join("/");
 
-  // FIX: Added support for `export ... from '...'` syntax
+  
   const es6Regex = /(?:import|export)\s+(?:[\w*{},\s]+\s+from\s+)?['"`]([^'"`]+)['"`]/g;
   const cjsRegex = /require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
 
@@ -97,7 +97,7 @@ function resolveToActualFile(
 ): string | null {
   const extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".css", ".html"];
 
-  // FIX: Check standard path AND the "src/" fallback for Next.js aliases
+  
   const possibleBasePaths = [importPath, `src/${importPath}`];
 
   for (const basePath of possibleBasePaths) {
@@ -213,9 +213,9 @@ function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-// ==========================================
-// SPRINT 2: NEW BLAST RADIUS FUNCTION
-// ==========================================
+
+
+
 export function getBlastRadiusTargets(fanIn: Record<string, number>, limit: number = 3): { file: string; dependentsCount: number }[] {
   return Object.entries(fanIn)
     .sort(([, countA], [, countB]) => countB - countA)

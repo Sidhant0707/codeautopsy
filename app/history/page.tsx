@@ -90,14 +90,14 @@ export default function HistoryPage() {
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-[#f1f5f9] pb-32">
       
-      {/* Background glow */}
+      {}
       <div className="absolute top-0 left-0 w-full h-[40vh] pointer-events-none overflow-hidden">
         <div className="absolute top-[-20%] left-[10%] w-[40%] h-[100%] bg-white/[0.015] blur-[120px] rounded-full" />
       </div>
 
       <div className="max-w-5xl mx-auto px-6 pt-12 relative z-10">
         
-        {/* Back button */}
+        {}
         <button
           onClick={() => router.push("/")}
           className="group flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors mb-12"
@@ -106,7 +106,7 @@ export default function HistoryPage() {
           Back to Home
         </button>
 
-        {/* Header */}
+        {}
         <div className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-xl bg-[#141414] border border-white/5 flex items-center justify-center">
@@ -119,7 +119,7 @@ export default function HistoryPage() {
           </p>
         </div>
 
-        {/* Search */}
+        {}
         <div className="relative mb-8">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
@@ -131,7 +131,7 @@ export default function HistoryPage() {
           />
         </div>
 
-        {/* Content */}
+        {}
         {loading ? (
           <div className="flex items-center justify-center py-32">
             <div className="w-6 h-6 border-2 border-white/10 border-t-white rounded-full animate-spin" />

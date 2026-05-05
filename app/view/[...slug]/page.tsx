@@ -10,7 +10,7 @@ type Props = {
   params: Promise<{ slug: string[] }>;
 };
 
-// Social preview metadata
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
 
@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ViewAutopsyPage({ params }: Props) {
   const { slug } = await params;
 
-  // Validate URL format
+  
   if (!slug || slug.length !== 2) notFound();
 
   const owner = slug[0];
@@ -40,7 +40,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
 
   const repoName = `${owner}/${repo}`.toLowerCase();
 
-  // Query Supabase
+  
   const { data, error } = await supabase
     .from("analyses")
     .select("result_json")
@@ -82,7 +82,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 relative">
       <Header />
       <div className="py-24 px-6">
-      {/* Background glow */}
+      {}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.01] blur-[150px] rounded-full pointer-events-none" />
 
       <div className="max-w-4xl mx-auto relative z-10">
@@ -175,7 +175,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
   />
 </section>
 
-        {/* Future sections (Mermaid graph, modules, tech stack) */}
+        {}
       </div>
       </div>
     </div>

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Messages missing" }, { status: 400 });
     }
 
-    // 1. Anti-Bankruptcy Check (Kept this safe!)
+    
     const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Pre-RAG Logic: Just grab the frontend context directly
+    
     let contextText = "No repository context provided.";
     if (repoContext) {
-      // Stringify the context the frontend already has, capping it so Groq doesn't crash
+      
       contextText = JSON.stringify(repoContext).substring(0, 20000); 
     }
 
@@ -51,7 +51,7 @@ Use the provided JSON context about the repository to answer the user's question
 REPOSITORY CONTEXT (JSON):
 ${contextText}`;
 
-    // 3. Direct Groq Streaming
+    
     const res = await fetch(GROQ_URL, {
       method: "POST",
       headers: {

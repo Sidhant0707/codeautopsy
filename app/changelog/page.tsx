@@ -52,7 +52,7 @@ export default function ChangelogPage() {
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden">
       
-      {/* Background Orbs */}
+      {}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.02] blur-[150px] rounded-full pointer-events-none" />
 
       <div className="max-w-3xl mx-auto relative z-10">
@@ -76,7 +76,7 @@ export default function ChangelogPage() {
               transition={{ delay: idx * 0.1, duration: 0.5 }}
               className="mb-20 ml-8 relative"
             >
-              {/* Timeline Dot */}
+              {}
               <div className="absolute -left-[41px] top-1.5 w-5 h-5 rounded-full bg-[#0e0e0e] border-2 border-white/10" />
               
               <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4">

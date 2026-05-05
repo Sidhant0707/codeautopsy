@@ -20,7 +20,7 @@ import { createClient } from "@/lib/supabase-browser";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import Link from "next/link";
 
-// 1. Unified History Type for both Repos and PRs
+
 type HistoryItem = {
   id: string;
   type: "repo" | "pr";
@@ -67,7 +67,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabId>("account");
   const [user, setUser] = useState<SupabaseUser | null>(null);
 
-  // Real Database State
+  
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [usageCount, setUsageCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,13 +82,13 @@ export default function ProfilePage() {
       setUser(user);
 
       if (user) {
-        // 2. Fetch both tables in parallel!
+        
         const [repoRes, prRes] = await Promise.all([
           supabase.from("analyses").select("*").eq("user_id", user.id),
           supabase.from("pr_analyses").select("*").eq("user_id", user.id),
         ]);
 
-        // Define explicit types for rows returned from the DB to avoid `any`
+        
         type RepoRow = {
           id: number | string;
           repo_name: string;
@@ -105,7 +105,7 @@ export default function ProfilePage() {
         const repoData = (repoRes.data ?? []) as RepoRow[];
         const prData = (prRes.data ?? []) as PRRow[];
 
-        // 3. Format and Merge the data
+        
         const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
           id: `repo-${r.id}`,
           type: "repo",
@@ -121,17 +121,17 @@ export default function ProfilePage() {
           title: `${p.repo_name} #${p.pr_number}`,
           subtitle: p.title,
           created_at: p.created_at,
-          link: `#`, // We will wire this up to reload the PR view later!
+          link: `#`, 
         }));
 
-        // 4. Sort everything by newest first
+        
         const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
 
         setHistory(mergedHistory);
-        setUsageCount(mergedHistory.length); // Total scans used (Repos + PRs)
+        setUsageCount(mergedHistory.length); 
       }
       setIsLoading(false);
     }
@@ -144,7 +144,7 @@ export default function ProfilePage() {
       <Header />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
-        {/* LEFT SIDEBAR */}
+        {}
         <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
           <div className="mb-8 px-4">
             <button 
@@ -187,7 +187,7 @@ export default function ProfilePage() {
           </nav>
         </aside>
 
-        {/* MAIN CONTENT AREA */}
+        {}
         <section className="flex-1 min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
@@ -198,7 +198,7 @@ export default function ProfilePage() {
               transition={{ duration: 0.2 }}
               className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
             >
-              {/* --- ACCOUNT TAB --- */}
+              {}
               {activeTab === "account" && (
                 <div className="space-y-8">
                   <div>
@@ -271,7 +271,7 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* --- HISTORY TAB --- */}
+              {}
               {activeTab === "history" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
@@ -303,7 +303,7 @@ export default function ProfilePage() {
                         >
                           <div className="flex flex-col gap-1.5">
                             <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
-                              {/* 5. Dynamic Icons! Terminal for Repos, GitPullRequest for PRs */}
+                              {}
                               {scan.type === "repo" ? (
                                 <Terminal className="w-4 h-4 text-emerald-500" />
                               ) : (
@@ -331,7 +331,7 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* --- PREFERENCES TAB --- */}
+              {}
               {activeTab === "preferences" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">

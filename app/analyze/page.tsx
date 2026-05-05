@@ -22,7 +22,6 @@ import {
   LayoutGrid,
   Activity,
   GitPullRequest,
-  Copy,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -101,7 +100,7 @@ function AnalyzeContent() {
   const [loading, setLoading] = useState(true);
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
-  // 1. Initialize with defaults to prevent Next.js hydration errors
+  
   const [activeTab, setActiveTab] = useState<
     "overview" | "visualizer" | "doctor" | "pr_impact"
   >("overview");
@@ -110,7 +109,7 @@ function AnalyzeContent() {
   );
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // 2. On mount, check if we saved a previous location in this session
+  
   useEffect(() => {
     const savedTab = sessionStorage.getItem("codeautopsy_tab");
     const savedView = sessionStorage.getItem("codeautopsy_view");
@@ -123,7 +122,7 @@ function AnalyzeContent() {
         savedTab as "overview" | "visualizer" | "doctor" | "pr_impact",
       );
     }
-    // validate savedView before casting to the precise union type to avoid `any`
+    
     if (savedView && ["graph", "treemap", "directory"].includes(savedView)) {
       setMapView(savedView as "graph" | "treemap" | "directory");
     }
@@ -131,7 +130,7 @@ function AnalyzeContent() {
     setIsHydrated(true);
   }, []);
 
-  // 3. Whenever the user clicks a new tab or view, quietly save it
+  
   useEffect(() => {
     if (isHydrated) {
       sessionStorage.setItem("codeautopsy_tab", activeTab);
@@ -453,7 +452,7 @@ function AnalyzeContent() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
-          {/* ✨ NEW DASHBOARD BUTTON ADDED HERE ✨ */}
+          {}
           <Link
             href="/dashboard"
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold"
@@ -516,7 +515,7 @@ function AnalyzeContent() {
 
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          {/* ✨ UPGRADED GLOWING MAIN TABS ✨ */}
+          {}
           <div className="h-16 flex-shrink-0 border-b border-white/5 flex items-center px-4 sm:px-6 bg-[#0a0a0a]/50 backdrop-blur-sm z-20">
             <div className="flex bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)]">
               <button
@@ -574,7 +573,7 @@ function AnalyzeContent() {
                   <div className="xl:col-span-8 space-y-6">
                     {data.analysis.health_status && (
                       <div className="glass-card relative overflow-hidden p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]">
-                        {/* Background Glow based on Grade */}
+                        {}
                         <div
                           className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${
                             data.analysis.health_status.grade === "A"
@@ -590,7 +589,7 @@ function AnalyzeContent() {
                         />
 
                         <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
-                          {/* The Letter Grade Badge */}
+                          {}
                           <div
                             className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${
                               data.analysis.health_status.grade === "A"
@@ -612,7 +611,7 @@ function AnalyzeContent() {
                             </span>
                           </div>
 
-                          {/* Status & AI Action Plan */}
+                          {}
                           <div className="flex-1 space-y-4">
                             <div>
                               <h2 className="cabinet text-2xl font-bold text-white mb-1">
@@ -624,7 +623,7 @@ function AnalyzeContent() {
                               </p>
                             </div>
 
-                            {/* ✨ UPGRADED: Badge Toggle Component ✨ */}
+                            {}
                             <div className="pt-2 w-full">
                               <BadgeEmbed
                                 repoName={`${data.owner}/${data.repo}`}
@@ -780,14 +779,14 @@ function AnalyzeContent() {
 
             {activeTab === "visualizer" && data && (
               <div className="absolute inset-0 p-4 flex flex-col gap-3">
-                {/* 🛠️ TOP ROW: DOCKED VIEW TOGGLES */}
+                {}
                 <div className="w-full flex justify-between items-end px-1 flex-shrink-0">
                   <div className="flex flex-col gap-1">
                     <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase">
                       Blueprint Map
                     </h3>
                     <span className="text-[10px] font-mono text-slate-500">
-                      VISUAL LAYOUT // {mapView.toUpperCase()}
+                      VISUAL LAYOUT 
                     </span>
                   </div>
 
@@ -825,7 +824,7 @@ function AnalyzeContent() {
                   </div>
                 </div>
 
-                {/* 🚀 BOTTOM ROW: THE CANVAS AREA */}
+                {}
                 <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
                   {mapView === "graph" ? (
                     data.dependencyGraph &&
@@ -886,7 +885,7 @@ function AnalyzeContent() {
                 </div>
               </div>
             )}
-            {/* ✨ NEW PR IMPACT WORKSPACE ✨ */}
+            {}
             {activeTab === "pr_impact" && (
               <div className="absolute inset-0 p-6 flex flex-col items-center justify-center overflow-y-auto">
                 <div className="max-w-xl w-full glass-card p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]/80 text-center shadow-2xl transition-all">
@@ -943,9 +942,9 @@ function AnalyzeContent() {
                       )}
                     </>
                   ) : (
-                    /* ✨ PR ANALYSIS RESULT DASHBOARD ✨ */
+                    
                     <div className="w-full text-left animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      {/* Header */}
+                      {}
                       <div className="flex items-start justify-between mb-6 pb-6 border-b border-white/10">
                         <div className="pr-4">
                           <div className="flex items-center gap-3 mb-2">
@@ -980,7 +979,7 @@ function AnalyzeContent() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        {/* Blast Radius column */}
+                        {}
                         <div className="space-y-4">
                           <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                             <Activity className="w-4 h-4" /> Blast Radius
@@ -1012,7 +1011,7 @@ function AnalyzeContent() {
                           </div>
                         </div>
 
-                        {/* Changes & Dependencies column */}
+                        {}
                         <div className="space-y-6">
                           <div className="space-y-3">
                             <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">

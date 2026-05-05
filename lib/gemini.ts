@@ -7,7 +7,7 @@ export interface AnalysisResult {
   onboarding_guide: string[];
   evidence_paths: string[];
   blast_radius: { file: string; dependents: number; warning: string; safe_refactor_steps: string[] }[];
-  // ✨ NEW: Added health_status to the type interface
+  
   health_status: {
     grade: string;
     score: number;
@@ -23,7 +23,7 @@ export async function analyzeWithGemini(
   topFiles: { path: string; role: string }[],
   fileContents: { path: string; content: string }[],
   blastRadiusTargets: { file: string; dependentsCount: number }[],
-  // ✨ NEW: Added healthMetrics as the 7th parameter
+  
   healthMetrics: { score: number; grade: string; color: string; status: string } 
 ): Promise<AnalysisResult> {
   if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
@@ -50,7 +50,7 @@ export async function analyzeWithGemini(
     })
     .join("\n\n");
 
-  // ✨ NEW: Injected the Health Score Ultimatum into the System Prompt
+  
   const systemPrompt = `You are a senior software engineer analyzing a GitHub repository.
 
 Repository: ${repoName}

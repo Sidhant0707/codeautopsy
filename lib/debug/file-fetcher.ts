@@ -1,4 +1,4 @@
-// lib/debug/file-fetcher.ts
+
 
 import { TraversalNode } from "./types";
 import { fetchFileContent } from "@/lib/github";
@@ -12,7 +12,7 @@ export async function fetchMissingFiles(
 ): Promise<Map<string, string>> {
   const missing = traversalPath
     .filter((n) => !existingContents.has(n.file))
-    .slice(0, 10); // Limit to avoid rate limits
+    .slice(0, 10); 
 
   const fetched = new Map(existingContents);
 
@@ -24,11 +24,11 @@ export async function fetchMissingFiles(
         node.file,
         providerToken
       );
-      // Truncate to save tokens (first 100 lines)
+      
       fetched.set(node.file, content.split("\n").slice(0, 100).join("\n"));
     } catch (err) {
       console.warn(`Failed to fetch ${node.file}:`, err);
-      // Add placeholder for missing files
+      
       fetched.set(node.file, "// Content not available");
     }
   }
@@ -36,7 +36,7 @@ export async function fetchMissingFiles(
   return fetched;
 }
 
-// Extract relevant lines around crash location
+
 export function extractLineContext(
   content: string,
   crashLine: number,

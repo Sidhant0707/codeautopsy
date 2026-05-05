@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr"; 
-import { checkUsageLimit } from "@/lib/usage"; // ✨ Import the Shield helper
+import { checkUsageLimit } from "@/lib/usage"; 
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing parameters." }, { status: 400 });
     }
 
-    // --- 1. Identify the User via Supabase ---
+    
     const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,12 +21,12 @@ export async function POST(req: Request) {
     );
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    // Ensure the user is actually logged in
+    
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
 
-    // ✨ THE SHIELD: Check usage limit before spending tokens (with Admin Bypass) ✨
+    
     const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
     if (!isUnderLimit) {
       return NextResponse.json(
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // --- 2. Fetch PR Metadata & Diffs ---
+    
     const prMetaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`, { headers: { Accept: "application/vnd.github.v3+json" } });
     if (!prMetaRes.ok) throw new Error("Pull Request not found.");
     const prMeta = await prMetaRes.json();
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       return `=== FILE: ${f.filename} (Status: ${f.status}) ===\n${patch}`;
     }).join("\n\n");
 
-    // --- 3. Prompt & Groq Call ---
+    
     const systemPrompt = `You are a senior software engineer conducting a strict code review on a Pull Request.
 Repository: ${owner}/${repo}
 PR Title: ${prMeta.title}
@@ -86,14 +86,14 @@ Analyze these code changes and return ONLY a valid JSON object with EXACTLY this
     const data = await groqRes.json();
     const finalResult = JSON.parse(data.choices[0].message.content);
 
-    // --- 4. SAVE TO SUPABASE BEFORE RETURNING! ---
+    
     const { error: dbError } = await supabase.from('pr_analyses').insert({
       user_id: user.id,
       repo_name: `${owner}/${repo}`,
       pr_number: prNumber,
       title: finalResult.title,
       risk_level: finalResult.riskLevel,
-      analysis_data: finalResult // We save the whole JSON so the user can view it later without recalling the API!
+      analysis_data: finalResult 
     });
     
     if (dbError) console.error("Failed to save PR analysis to Supabase:", dbError);

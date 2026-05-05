@@ -38,7 +38,7 @@ export default function PrivacyPage() {
 
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden">
-      {/* Background Ambient Glow */}
+      {}
       <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-white/[0.01] blur-[120px] rounded-full pointer-events-none" />
 
       <div className="max-w-4xl mx-auto relative z-10">

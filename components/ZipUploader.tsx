@@ -80,7 +80,7 @@ export default function ZipUploader() {
           return;
         }
 
-        // Fixed with backticks:
+        
         console.log(
           `Sending ${prioritizedFiles.length} prioritized files to AI...`,
         );

@@ -51,7 +51,7 @@ export default function DocsPage() {
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-[#0e0e0e] text-slate-300 py-24 px-6">
       
-      {/* Background Glow */}
+      {}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none">
         <div className="absolute top-[5%] left-[20%] w-[30%] h-[30%] bg-white/[0.02] blur-[120px] rounded-full" />
       </div>
@@ -81,7 +81,7 @@ export default function DocsPage() {
           A deep dive into the engineering principles behind the world&apos;s first AI-powered codebase visualization tool.
         </motion.p>
 
-        {/* Documentation Grid */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
           {sections.map((section, i) => (
             <motion.div 
@@ -98,7 +98,7 @@ export default function DocsPage() {
           ))}
         </div>
 
-        {/* Pro Tip Section */}
+        {}
         <motion.div 
           variants={fadeUp} 
           className="p-8 rounded-3xl bg-gradient-to-br from-[#141414] to-[#0a0a0a] border border-white/5 relative overflow-hidden"

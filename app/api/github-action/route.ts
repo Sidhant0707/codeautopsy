@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    // Parse the incoming request from your GitHub Action
+    
     const body = await req.json();
     const { owner, repo, commitSha } = body;
 
-    // Validate that all required payload data is present
+    
     if (!owner || !repo || !commitSha) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -14,8 +14,8 @@ export async function POST(req: Request) {
     const shortSha = commitSha.substring(0, 7);
     const reportUrl = `https://codeautopsy-lyart.vercel.app/analyze?url=https://github.com/${owner}/${repo}`;
 
-    // Generate the dynamic markdown snippet that the Action will inject into the README.
-    // We wrap it in the specific start/end tags so the Action knows exactly what to replace next time.
+    
+    
     const markdownSnippet = `
 <!-- CODEAUTOPSY:START -->
 <div align="center">
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 <!-- CODEAUTOPSY:END -->
 `.trim();
 
-    // Send the generated markdown back to the GitHub Action
+    
     return NextResponse.json({ markdownSnippet });
 
   } catch (error: unknown) {

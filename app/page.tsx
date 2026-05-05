@@ -83,7 +83,7 @@ export default function Home() {
     const parts = trimmed.replace("https://github.com/", "").split("/");
     if (parts.length < 2 || !parts[0] || !parts[1]) {
       alert(
-        "Please enter a full repo URL like https://github.com/facebook/react",
+        "Please enter a full repo URL like https://github.com/facebook/react"
       );
       return;
     }
@@ -184,7 +184,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-gradient-to-b from-[#0e0e0e] via-[#0e0e0e] to-[#1a1a1a]">
-      {/* Background glow */}
+      {}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
@@ -202,7 +202,7 @@ export default function Home() {
 
       <Header />
 
-      {/* Hero */}
+      {}
       <motion.section
         variants={staggerContainer}
         initial="hidden"
@@ -218,13 +218,13 @@ export default function Home() {
             AI-Powered Code Analysis
           </motion.div>
 
-          {/* ✨ RESPONSIVE TELEMETRY PILL ✨ */}
+          {}
           {telemetry.totalScans > 0 && (
             <motion.div
               variants={fadeUp}
               className="flex items-center justify-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 sm:py-3 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-md w-fit max-w-[95vw] mx-auto mb-8 overflow-hidden transition-all"
             >
-              {/* Telemetry Label */}
+              {}
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 animate-pulse" />
                 <span className="text-[9px] sm:text-[10px] font-mono font-bold tracking-widest text-slate-300 uppercase">
@@ -234,7 +234,7 @@ export default function Home() {
 
               <div className="w-px h-3 sm:h-4 bg-white/10" />
 
-              {/* Accuracy */}
+              {}
               <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 <span className="text-[8px] sm:text-[9px] font-mono text-slate-500 uppercase tracking-widest">
                   Acc<span className="hidden sm:inline">uracy</span>
@@ -246,7 +246,7 @@ export default function Home() {
 
               <div className="w-px h-3 sm:h-4 bg-white/10" />
 
-              {/* Scans Logged */}
+              {}
               <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 <span className="text-[8px] sm:text-[9px] font-mono text-slate-500 uppercase tracking-widest">
                   Scans<span className="hidden sm:inline">_Logged</span>
@@ -304,7 +304,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* System Status Meter */}
+            {}
             <div className="flex items-center justify-center gap-3 mt-6 mb-2">
               <div
                 className={`w-1.5 h-1.5 rounded-full animate-pulse ${remaining === 0 ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"}`}
@@ -343,7 +343,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* Trusted by engineers at section */}
+      {}
       <motion.section
         initial="hidden"
         whileInView="show"
@@ -376,7 +376,7 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* The Autopsy Process section */}
+      {}
       <section id="how-it-works" className="py-32 px-6">
         <motion.div
           initial="hidden"
@@ -418,7 +418,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Dissection features section */}
+      {}
       <section id="features" className="py-32 bg-black/40 px-6">
         <motion.div
           initial="hidden"
@@ -521,7 +521,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Tailored Ecosystem section */}
+      {}
       <section className="py-32 px-6">
         <motion.div
           initial="hidden"
@@ -563,7 +563,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Pricing section */}
+      {}
       <section id="pricing" className="py-32 bg-black/40 px-6">
         <motion.div
           initial="hidden"
@@ -654,7 +654,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Footer */}
+      {}
       <footer className="py-20 px-6 border-t border-white/5">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">

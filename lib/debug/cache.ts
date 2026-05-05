@@ -1,4 +1,4 @@
-// lib/debug/cache.ts
+
 import crypto from "crypto";
 import { redis } from "@/lib/ratelimit";
 import { DebugResult } from "./types";
@@ -24,14 +24,14 @@ export async function cacheDebug(
 ): Promise<void> {
   try {
     const key = `debug:${repoUrl}:${stackTraceHash}`;
-    await redis.set(key, JSON.stringify(result), { ex: 3600 * 24 }); // 24h TTL
+    await redis.set(key, JSON.stringify(result), { ex: 3600 * 24 }); 
   } catch (err) {
     console.error("Cache write error:", err);
   }
 }
 
-// Hash function for stack traces
+
 export function hashStackTrace(trace: string): string {
-  // Simple hash using built-in crypto
+  
   return crypto.createHash("sha256").update(trace).digest("hex").slice(0, 16);
 }

@@ -29,7 +29,7 @@ const fadeUp = {
 export default function ContactPage() {
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-gradient-to-b from-[#0e0e0e] via-[#0e0e0e] to-[#1a1a1a] flex items-center justify-center py-24 px-6">
-      {/* Ambient Background Glows (Same as Landing Page) */}
+      {}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
@@ -82,7 +82,7 @@ export default function ContactPage() {
           variants={fadeUp}
           className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left"
         >
-          {/* Main Email Card */}
+          {}
           <div className="glass-card p-8 rounded-2xl border border-white/5 hover:bg-white/[0.02] hover:border-white/20 transition-all duration-300 group md:col-span-2 relative overflow-hidden premium-shadow">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.01] rounded-bl-full pointer-events-none group-hover:bg-white/[0.03] transition-colors duration-500" />
             <div className="w-12 h-12 rounded-xl bg-[#141414] border border-white/5 flex items-center justify-center text-slate-400 mb-6 group-hover:text-white transition-colors duration-300">
@@ -91,7 +91,7 @@ export default function ContactPage() {
             <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-2">
               Direct Email
             </p>
-            {/* Swap with your actual email */}
+            {}
             <a
               href="mailto:sidhantkumar0707@gmail.com"
               className="text-2xl md:text-3xl font-bold text-slate-200 group-hover:text-white transition-colors duration-300"
@@ -100,7 +100,7 @@ export default function ContactPage() {
             </a>
           </div>
 
-          {/* Twitter Card */}
+          {}
           <a
             href="https://twitter.com/SiDHANT0707"
             target="_blank"
@@ -116,7 +116,7 @@ export default function ContactPage() {
             <span className="text-slate-500 text-sm mt-1">@SiDHANT0707</span>
           </a>
 
-          {/* LinkedIn Card */}
+          {}
           <a
             href="https://www.linkedin.com/in/sidhant07"
             target="_blank"

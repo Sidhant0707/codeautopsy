@@ -11,17 +11,17 @@ export async function getSystemTelemetry() {
     {
       cookies: {
         getAll() { return cookieStore.getAll() },
-        setAll() {} // Read-only action, no need to set cookies
+        setAll() {} 
       },
     }
   );
 
-  // Get total feedback count
+  
   const { count: totalVotes, error: totalError } = await supabase
     .from("debug_feedback")
     .select("*", { count: "exact", head: true });
 
-  // Get successful (thumbs up) count
+  
   const { count: upVotes, error: upError } = await supabase
     .from("debug_feedback")
     .select("*", { count: "exact", head: true })

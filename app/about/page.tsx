@@ -21,7 +21,7 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-gradient-to-b from-[#0e0e0e] via-[#0e0e0e] to-[#1a1a1a] py-24 px-6">
       
-      {/* Background Glows */}
+      {}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-white/[0.02] blur-[120px] rounded-full" />
         <div className="absolute bottom-[20%] left-[-10%] w-[35%] h-[35%] bg-white/[0.01] blur-[100px] rounded-full" />
@@ -48,17 +48,17 @@ export default function AboutPage() {
 
         <motion.div variants={fadeUp} className="glass-card p-10 rounded-3xl border border-white/5 mb-16 leading-relaxed text-slate-300 space-y-6">
           <p className="text-xl text-slate-100 font-medium">
-            CodeAutopsy started with a simple problem: Codebases are getting bigger, but our time isn't.
+            CodeAutopsy started with a simple problem: Codebases are getting bigger, but our time isn&apos;t.
           </p>
           <p>
-            As a Computer Science student specializing in Data Science at **GL Bajaj Institute of Technology and Management**, I found myself constantly diving into massive GitHub repositories to learn. The friction was always the same—spending hours just trying to find the "entry point" or understanding how data flows from a UI component to the database.
+            As a Computer Science student specializing in Data Science at **GL Bajaj Institute of Technology and Management**, I found myself constantly diving into massive GitHub repositories to learn. The friction was always the same—spending hours just trying to find the &quot;entry point&quot; or understanding how data flows from a UI component to the database.
           </p>
           <p>
-            I built CodeAutopsy to act as a **Precision Surgical Tool** for developers. Instead of reading thousands of files, our AI-driven engine performs a "post-mortem" on a repo, identifying the vital organs (core modules) and mapping the nervous system (dependencies) in seconds.
+            I built CodeAutopsy to act as a **Precision Surgical Tool** for developers. Instead of reading thousands of files, our AI-driven engine performs a &quot;post-mortem&quot; on a repo, identifying the vital organs (core modules) and mapping the nervous system (dependencies) in seconds.
           </p>
         </motion.div>
 
-        {/* Vision Grid */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-20">
           {[
             { icon: FaCode, title: "Code", desc: "Built with Next.js, TypeScript, and Supabase for a seamless full-stack experience." },
@@ -73,14 +73,14 @@ export default function AboutPage() {
           ))}
         </div>
 
-        {/* Founder Section */}
+        {}
         <motion.div variants={fadeUp} className="border-t border-white/5 pt-16 text-center">
           <h2 className="text-3xl font-bold text-white mb-12 italic uppercase tracking-tighter">
             The Founder
           </h2>
           
           <div className="flex flex-col items-center group">
-            {/* Avatar Container with Pulse Effect */}
+            {}
             <div className="relative mb-8">
               <div className="absolute -inset-1.5 bg-gradient-to-r from-slate-500 via-slate-100 to-slate-600 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-300 animate-pulse"></div>
               
@@ -100,7 +100,7 @@ export default function AboutPage() {
               </div>
             </div>
 
-            {/* Bio Info */}
+            {}
             <div className="space-y-2">
               <h3 className="text-2xl font-bold text-white tracking-tight">Sidhant Kumar</h3>
               <p className="text-slate-500 uppercase tracking-[0.2em] text-[10px] font-black bg-white/5 px-3 py-1 rounded-full inline-block">
@@ -111,12 +111,12 @@ export default function AboutPage() {
               </p>
             </div>
             
-            {/* Social Links */}
+            {}
             <div className="flex gap-4 mt-8">
-              <a href="https://github.com/Sidhant0707" target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl bg-[#141414] border border-white/5 text-slate-500 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-300 transform hover:-translate-y-1">
+              <a href="https://github.com/Sidhant0707" target="_blank" rel="noopener noreferrer" title="GitHub profile" aria-label="GitHub profile" className="p-3 rounded-xl bg-[#141414] border border-white/5 text-slate-500 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-300 transform hover:-translate-y-1">
                 <FaGithub className="w-5 h-5" />
               </a>
-              <a href="https://www.linkedin.com/in/sidhant07" target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl bg-[#141414] border border-white/5 text-slate-500 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-300 transform hover:-translate-y-1">
+              <a href="https://www.linkedin.com/in/sidhant07" target="_blank" rel="noopener noreferrer" title="LinkedIn profile" aria-label="LinkedIn profile" className="p-3 rounded-xl bg-[#141414] border border-white/5 text-slate-500 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-300 transform hover:-translate-y-1">
                 <FaLinkedin className="w-5 h-5" />
               </a>
             </div>

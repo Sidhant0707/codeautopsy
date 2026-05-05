@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 export function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Header Skeleton */}
+      {}
       <div className="flex items-center gap-4">
         <div className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
         <div className="space-y-2 flex-1">
@@ -14,7 +14,7 @@ export function LoadingSkeleton() {
         </div>
       </div>
 
-      {/* Analysis Progress */}
+      {}
       <div className="p-6 rounded-xl bg-white/[0.02] border border-white/10 space-y-4">
         <div className="flex items-center gap-3">
           <motion.div
@@ -42,7 +42,7 @@ export function LoadingSkeleton() {
         </div>
       </div>
 
-      {/* Content Skeletons */}
+      {}
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
           <div key={i} className="p-6 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">

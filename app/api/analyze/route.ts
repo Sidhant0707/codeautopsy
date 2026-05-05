@@ -10,7 +10,7 @@ import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/depend
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
-import { calculateHealthGrade } from "@/lib/analyzer/health"; // ✨ IMPORTED NEW ALGORITHM
+import { calculateHealthGrade } from "@/lib/analyzer/health"; 
 
 const ANALYSIS_VERSION = 6;
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       if (!userError && user) {
         authUser = user;
 
-        // ✨ THE SHIELD: Check usage limit before spending tokens ✨
+        
         const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
         if (!isUnderLimit) {
           return NextResponse.json(
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
               const safeContent = content.split("\n").slice(0, 500).join("\n");
               allFileContents.push({ path: file.path, content: safeContent });
             } catch {
-              // Silently continue on fetch errors
+              
             }
           }
         }
@@ -240,19 +240,19 @@ export async function POST(req: NextRequest) {
         const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
         const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
 
-        // ✨ NEW: CALCULATE HEALTH SCORE METRICS HERE ✨
+        
         const fanInValues = Object.values(fanIn) as number[];
         const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
-        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length; // files > ~15KB
+        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length; 
         
         const healthMetrics = calculateHealthGrade({
           totalFiles: filteredPaths.length,
-          circularDependencies: 0, // Placeholder until circular detection is written
+          circularDependencies: 0, 
           maxFanIn: maxFanInValue,
           largeFilesCount: largeFilesCount
         });
 
-        // ✨ NEW: Passed healthMetrics as the 7th parameter
+        
         const analysis = await analyzeWithGemini(
           `${owner}/${repo}`,
           description || "No description provided",
@@ -278,7 +278,7 @@ export async function POST(req: NextRequest) {
           analysis,
           fileContents: allFileContents.slice(0, 15),
           fileMetrics,
-          healthMetrics // ✨ NEW: Send straight to frontend for the UI badge!
+          healthMetrics 
         };
 
         if (!isLocal) {
@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
             user_id: userId
           });
 
-          // ✨ THE TRIGGER: Build the Copilot's memory bank!
+          
           await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
 

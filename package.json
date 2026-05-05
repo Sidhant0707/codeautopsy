@@ -29,7 +29,8 @@
     "react-markdown": "^10.1.0",
     "react-zoom-pan-pinch": "^4.0.3",
     "reactflow": "^11.11.4",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "strip-comments": "^2.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -39,9 +40,11 @@
     "@types/node": "^20",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/strip-comments": "^2.0.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "description": "<div align=\"center\">   <img src=\"./public/codeautopsy-logo1.png\" alt=\"CodeAutopsy Logo\" width=\"80\" height=\"80\" />   <h1>CodeAutopsy</h1>   <p><b>An AI-powered diagnostic engine that reverse-engineers, maps, and analyzes complex codebases in seconds.</b></p>",

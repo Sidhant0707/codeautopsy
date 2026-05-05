@@ -12,17 +12,17 @@ interface TreemapVisualizerProps {
   metrics: FileMetric[];
 }
 
-// A sleek color palette matching the CodeFlow aesthetic
+
 const FOLDER_COLORS = [
   "bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-amber-500",
   "bg-pink-500", "bg-cyan-500", "bg-rose-500", "bg-indigo-500",
   "bg-teal-500", "bg-orange-500"
 ];
 
-// Helper to estimate Lines of Code (LOC) from byte size (approx 30 bytes per line)
+
 const estimateLOC = (bytes: number) => Math.max(1, Math.round(bytes / 30));
 
-// Recursive Binary Split Algorithm for Treemap Layout
+
 function calculateLayout(
   items: any[],
   x: number,
@@ -45,7 +45,7 @@ function calculateLayout(
     }
   }
 
-  // Prevent infinite loops if one massive file dominates
+  
   if (splitIndex === items.length) splitIndex = items.length - 1;
 
   const group1 = items.slice(0, splitIndex);
@@ -54,7 +54,7 @@ function calculateLayout(
   const weight1 = group1.reduce((sum, item) => sum + item.size, 0);
   const ratio1 = weight1 / totalWeight;
 
-  // Split along the longest edge to keep boxes as square as possible
+  
   if (width > height) {
     const w1 = width * ratio1;
     const w2 = width - w1;
@@ -78,13 +78,13 @@ export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
   const { layout, totalLOC } = useMemo(() => {
     if (!metrics || metrics.length === 0) return { layout: [], totalLOC: 0 };
 
-    // 1. Filter out extremely tiny files (e.g., empty files)
+    
     let validMetrics = metrics.filter(m => m.size > 0);
 
-    // 2. Sort largest to smallest for the algorithm to pack them cleanly
+    
     validMetrics.sort((a, b) => b.size - a.size);
 
-    // 3. Assign colors based on top-level directory
+    
     const colorMap = new Map<string, string>();
     let colorIndex = 0;
 
@@ -108,7 +108,7 @@ export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
 
     const totalLOC = enrichedItems.reduce((sum, item) => sum + item.loc, 0);
 
-    // 4. Calculate coordinates (using percentages 0-100%)
+    
     const rawLayout = calculateLayout(enrichedItems, 0, 0, 100, 100);
 
     return { layout: rawLayout, totalLOC };
@@ -124,14 +124,14 @@ export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
 
   return (
     <div className="w-full h-full min-h-[500px] rounded-2xl border border-white/5 bg-[#0e0e0e] relative overflow-hidden p-4">
-      {/* Top Bar Info */}
+      {}
       <div className="absolute top-4 left-4 z-10 flex gap-2 pointer-events-none">
         <div className="text-[10px] font-mono text-slate-400 bg-[#141414] px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2 shadow-lg">
           Total Estimated LOC: <span className="text-white font-bold">{totalLOC.toLocaleString()}</span>
         </div>
       </div>
 
-      {/* The Treemap Grid */}
+      {}
       <div className="relative w-full h-[600px] mt-10 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
         {layout.map((box, idx) => (
           <motion.div
@@ -149,7 +149,7 @@ export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
               height: `${box.height}%`,
             }}
           >
-            {/* Only show text if the rendered box is large enough */}
+            {}
             {box.width > 6 && box.height > 6 && (
               <div className="p-2 w-full h-full flex flex-col items-start justify-start bg-black/20 hover:bg-transparent transition-colors">
                 <span className="text-white font-bold text-xs truncate w-full shadow-black drop-shadow-md">
@@ -164,7 +164,7 @@ export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
         ))}
       </div>
 
-      {/* Floating Interactive Tooltip */}
+      {}
       {hoveredFile && (
         <div className="absolute bottom-6 right-6 z-40 bg-[#141414]/95 border border-white/10 p-4 rounded-xl shadow-2xl backdrop-blur-xl min-w-[250px] pointer-events-none">
           <div className="flex items-center gap-2 mb-2">

@@ -39,8 +39,8 @@ export default function PRAnalyzer() {
       if (!res.ok) throw new Error(json.error || "Failed to analyze PR");
 
       setData(json);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -71,7 +71,7 @@ export default function PRAnalyzer() {
         </p>
       </div>
 
-      {/* Input Section */}
+      {}
       <div className="flex gap-3 mb-8">
         <input
           type="text"
@@ -90,14 +90,14 @@ export default function PRAnalyzer() {
         </button>
       </div>
 
-      {/* Error State */}
+      {}
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm mb-6">
           {error}
         </div>
       )}
 
-      {/* Results Section */}
+      {}
       {data && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between pb-4 border-b border-white/10">

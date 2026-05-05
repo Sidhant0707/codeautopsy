@@ -13,7 +13,7 @@ export default function Header() {
   const [showPulse, setShowPulse] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
-  // 1. Auth State Effect (Runs independently to ensure user data always loads)
+  
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
@@ -28,7 +28,7 @@ export default function Header() {
     return () => listener.subscription.unsubscribe();
   }, [supabase.auth]);
 
-  // 2. Dashboard Pulse UI Effect (Runs independently to handle the local storage logic)
+  
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hasSeenTool = localStorage.getItem("seenPRTool");
@@ -91,7 +91,7 @@ export default function Header() {
       <div className="flex items-center gap-4">
         {user ? (
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Desktop Dashboard Link */}
+            {}
             <Link
               href="/dashboard"
               onClick={handleDashboardClick}
@@ -108,7 +108,7 @@ export default function Header() {
             </Link>
 
             <div className="relative">
-              {/* ✨ GOOGLE-STYLE CIRCULAR AVATAR BUTTON ✨ */}
+              {}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 title={user.email || "Account settings"}
@@ -121,14 +121,14 @@ export default function Header() {
 
               {menuOpen && (
                 <>
-                  {/* Invisible backdrop to catch clicks outside the menu */}
+                  {}
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => setMenuOpen(false)}
                   />
 
                   <div className="absolute right-0 mt-2 w-56 rounded-xl overflow-hidden shadow-2xl z-50 bg-[#141414] border border-white/10">
-                    {/* We keep the email visible inside the dropdown menu */}
+                    {}
                     <div className="px-4 py-3 border-b border-white/5 bg-[#1a1a1a]/50">
                       <p className="text-sm font-medium text-slate-200 truncate">
                         {user.email}
@@ -138,7 +138,7 @@ export default function Header() {
                       </p>
                     </div>
 
-                    {/* Mobile Dashboard Link */}
+                    {}
                     <Link
                       href="/dashboard"
                       onClick={handleDashboardClick}
@@ -161,7 +161,7 @@ export default function Header() {
                       className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
                     >
                       <div className="w-4 h-4 rounded-full border border-current flex items-center justify-center overflow-hidden">
-                        {/* A tiny user icon fallback */}
+                        {}
                         <svg
                           viewBox="0 0 24 24"
                           fill="none"

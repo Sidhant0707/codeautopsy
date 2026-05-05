@@ -29,33 +29,33 @@ export function classifyAndScoreFiles(paths: string[]): RepoFile[] {
     let score = 0;
     let role: RepoFile["role"] = "other";
 
-    // Entry points — highest value
+    
     if (ENTRY_PATTERNS.some((p) => filename === p || path.endsWith("/" + p))) {
       score += 10;
       role = "entry";
     }
 
-    // Config files — high value
+    
     if (CONFIG_PATTERNS.some((p) => filename.startsWith(p) || path.endsWith(p))) {
       score += 6;
       role = "config";
     }
 
-    // Test files — deprioritize
+    
     if (TEST_PATTERNS.some((p) => path.includes(p))) {
       score -= 4;
       role = "test";
     }
 
-    // Files in root or src/ — more important
+    
     const depth = path.split("/").length;
     if (depth === 1) score += 3;
     if (path.startsWith("src/") || path.startsWith("lib/")) score += 2;
 
-    // Penalize deeply nested files
+    
     if (depth > 4) score -= 2;
 
-    // Deprioritize example/demo folders
+    
     if (path.startsWith("examples/") || path.startsWith("demo/") || path.startsWith("sample/")) {
       score -= 5;
       if (role === "entry") role = "other";

@@ -70,7 +70,7 @@ export default function RepoChat({ repoContext }: { repoContext: RepoContextType
       content: query,
     };
     
-    // Add user message to local state
+    
     const updatedMessages = [...messages, newUserMsg];
     setMessages(updatedMessages);
     setInput("");
@@ -92,7 +92,7 @@ export default function RepoChat({ repoContext }: { repoContext: RepoContextType
       if (!response.ok) throw new Error("Network response was not ok");
       if (!response.body) throw new Error("No response body");
 
-      // Setup the empty AI message block we will stream text into
+      
       const aiMsgId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
@@ -273,7 +273,7 @@ export default function RepoChat({ repoContext }: { repoContext: RepoContextType
                   >
                     {msg.role === "user" && (
                       <span className="block text-[9px] text-slate-500 mb-2 uppercase tracking-widest text-right">
-                        Sys_User // Query
+                        Sys_User 
                       </span>
                     )}
                     {msg.role === "ai" && (

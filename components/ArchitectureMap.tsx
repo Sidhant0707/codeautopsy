@@ -23,7 +23,7 @@ interface GlassNodeData {
   label: string;
 }
 
-// 🔥 DEFINED OUTSIDE: Prevents node re-mounting on every render
+
 const GlassNode = ({ data }: { data: GlassNodeData }) => {
   const isBlastRadius = data.isBlastRadius;
   const isDimmed = data.isDimmed;
@@ -125,7 +125,7 @@ export default function ArchitectureMap({
 }) {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
+  
   const nodeTypes = useMemo(() => ({ glass: GlassNode }), []);
 
   const adjacencyList = useMemo(() => {

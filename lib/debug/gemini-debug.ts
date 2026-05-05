@@ -3,7 +3,7 @@ import { DebugContext, DebugResult } from "./types";
 export async function analyzeDebugWithGemini(
   input: DebugContext
 ): Promise<DebugResult> {
-  // Ensure we are strictly using the new Groq pipeline
+  
   if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
     throw new Error("Gemini is currently disabled. Please use Groq. Check Vercel Env Variables.");
   }

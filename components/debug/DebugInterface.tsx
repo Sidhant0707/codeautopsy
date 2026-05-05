@@ -51,7 +51,7 @@ export default function DebugInterface({ repoUrl }: { initialChart?: string; rep
         </motion.div>
         <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
 
-        {/* 🛠️ FIX 2: LOWERED Z-INDEX TO 20 AND ADJUSTED POSITION */}
+        {}
         <button
           onClick={() => setIsMaximized(!isMaximized)}
           className={`absolute z-20 p-2 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md ${

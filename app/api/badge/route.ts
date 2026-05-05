@@ -3,8 +3,8 @@ export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// We use the standard supabase-js client here because this is a public GET request
-// triggered by GitHub's image caching servers. There are no cookies to pass.
+
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       return new NextResponse("Missing repo parameter", { status: 400 });
     }
 
-    // Handle both raw "owner/repo" and full "https://github.com/owner/repo" formats
+    
     const repoPath = repoParam.replace("https://github.com/", "").replace(".git", "");
     const repoUrl = `https://github.com/${repoPath}`;
 
@@ -32,30 +32,30 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    // Default Fallback values if the repo hasn't been scanned yet
+    
     let grade = "-";
     let score = "0";
-    let colorHex = "#64748b"; // Slate-500
+    let colorHex = "#64748b"; 
     let statusText = "Unscanned";
 
-    // If we have data, extract the exact metrics your AI generated
+    
     if (cached?.result_json?.healthMetrics) {
       const metrics = cached.result_json.healthMetrics;
       grade = metrics.grade;
       score = metrics.score.toString();
       statusText = metrics.status || "Analyzed";
 
-      // Match the exact Tailwind colors from our UI
-      if (grade === "A") colorHex = "#10b981"; // Emerald-500
-      else if (grade === "B") colorHex = "#3b82f6"; // Blue-500
-      else if (grade === "C") colorHex = "#f59e0b"; // Amber-500
-      else if (grade === "D") colorHex = "#f97316"; // Orange-500
-      else if (grade === "F") colorHex = "#ef4444"; // Red-500
+      
+      if (grade === "A") colorHex = "#10b981"; 
+      else if (grade === "B") colorHex = "#3b82f6"; 
+      else if (grade === "C") colorHex = "#f59e0b"; 
+      else if (grade === "D") colorHex = "#f97316"; 
+      else if (grade === "F") colorHex = "#ef4444"; 
     }
 
-    // Generate the raw SVG string
-    // This creates a sleek, dark-mode badge matching your UI aesthetics
-    // ✨ UPGRADED: Zero whitespace at the start, premium system fonts, and better spacing
+    
+    
+    
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="310" height="44" viewBox="0 0 310 44" fill="none">
       <rect width="310" height="44" rx="8" fill="#0a0a0a" stroke="#222222" stroke-width="1.5"/>
       
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       <text x="275" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="${colorHex}" text-anchor="middle">${score}/100</text>
     </svg>`;
 
-    // Return the SVG with aggressive caching headers to prevent spamming your database
+    
     return new NextResponse(svg.trim(), {
       status: 200,
       headers: {

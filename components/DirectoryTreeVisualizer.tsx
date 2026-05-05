@@ -29,7 +29,7 @@ interface TreeNodeData {
   isDimmed: boolean;
 }
 
-// 🔥 DEFINED OUTSIDE: Prevents re-renders
+
 const TreeNode = ({ data }: { data: TreeNodeData }) => {
   return (
     <div

@@ -1,4 +1,4 @@
-// lib/debug/graph-traversal.ts
+
 
 import { DependencyGraph } from "@/lib/dependency-graph";
 import { TraversalNode } from "./types";
@@ -22,17 +22,17 @@ export function traverseFromCrash(
   const result: TraversalNode[] = [];
   const visited = new Set<string>();
 
-  // Add crash site
+  
   result.push({
     file: crashNode,
     distance: 0,
     fan_in: fanIn[crashNode] || 0,
     relationship: "crash_site",
-    relevance_score: 1000, // Always highest priority
+    relevance_score: 1000, 
   });
   visited.add(crashNode);
 
-  // BFS for downstream (what crash node imports)
+  
   const downstreamNodes = bfsTraversal(
     crashNode,
     graph,
@@ -42,7 +42,7 @@ export function traverseFromCrash(
     visited
   );
 
-  // BFS for upstream (who imports crash node)
+  
   const upstreamNodes = bfsTraversal(
     crashNode,
     buildReverseGraph(graph),
@@ -54,10 +54,10 @@ export function traverseFromCrash(
 
   result.push(...downstreamNodes, ...upstreamNodes);
 
-  // Sort by relevance score (distance penalty × fan-in boost)
+  
   result.sort((a, b) => b.relevance_score - a.relevance_score);
 
-  // Limit to maxNodes
+  
   return result.slice(0, config.maxNodes);
 }
 
@@ -88,8 +88,8 @@ function bfsTraversal(
       const distance = depth + 1;
       const fanInScore = fanIn[neighbor] || 0;
 
-      // Heuristic: Closer nodes + higher fan-in = more relevant
-      // Formula: relevance = (maxDepth - distance) * (1 + log(fan_in + 1))
+      
+      
       const relevance_score =
         (maxDepth - distance) * (1 + Math.log(fanInScore + 1));
 

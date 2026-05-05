@@ -7,13 +7,13 @@ export default function ShareButton({ owner, repo }: { owner: string; repo: stri
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
-    // Dynamically grabs your actual domain (localhost or codeautopsy.com)
+    
     const url = `${window.location.origin}/view/${owner}/${repo}`;
     
     await navigator.clipboard.writeText(url);
     setCopied(true);
     
-    setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+    setTimeout(() => setCopied(false), 2000); 
   };
 
   return (

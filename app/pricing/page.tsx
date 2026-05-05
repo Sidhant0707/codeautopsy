@@ -13,7 +13,7 @@ const fadeUp = {
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden font-satoshi">
-      {/* Background Ambient Glow */}
+      {}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none" />
 
       <div className="max-w-6xl mx-auto relative z-10">
@@ -38,7 +38,7 @@ export default function PricingPage() {
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* STUDENT PLAN (Active) */}
+          {}
           <motion.div
             initial="hidden"
             animate="show"
@@ -75,7 +75,7 @@ export default function PricingPage() {
             </Link>
           </motion.div>
 
-          {/* ARCHITECT PLAN (Coming Soon) */}
+          {}
           <motion.div
             initial="hidden"
             animate="show"
@@ -115,7 +115,7 @@ export default function PricingPage() {
             </button>
           </motion.div>
 
-          {/* SURGICAL PLAN (Coming Soon) */}
+          {}
           <motion.div
             initial="hidden"
             animate="show"

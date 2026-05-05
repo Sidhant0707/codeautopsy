@@ -44,7 +44,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        // ✨ THE FIX: Only ask for the 'repo' scope if the provider is GitHub
+        
         scopes: provider === "github" ? "repo" : undefined,
         redirectTo: `${window.location.origin}/auth/callback`,
       },
@@ -55,7 +55,7 @@ export default function LoginPage() {
     }
   }
 
-  // ✨ Added the Forgot Password handler we discussed earlier
+  
   const handleForgotPassword = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (!email) {
@@ -79,7 +79,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-[#f1f5f9] flex flex-col md:flex-row">
       <div className="hidden md:flex md:w-1/2 lg:w-3/5 p-12 lg:p-24 flex-col justify-between relative overflow-hidden border-r border-white/5">
-        {/* Styles moved to external CSS: .radial-bg */}
+        {}
         <div className="absolute inset-0 opacity-30 radial-bg" />
         <div
           className="absolute top-1/4 -left-20 w-96 h-96 bg-white/5 rounded-full blur-[120px] animate-pulse pulse-circle"
@@ -284,7 +284,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-16 flex justify-center gap-6">
-            {/* ✨ Linked up your footer as discussed */}
+            {}
             <Link
               href="/terms"
               className="text-[11px] text-slate-600 hover:text-slate-400 uppercase tracking-widest transition-colors"

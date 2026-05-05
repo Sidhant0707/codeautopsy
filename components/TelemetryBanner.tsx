@@ -2,10 +2,10 @@ import { getSystemTelemetry } from "@/app/actions/telemetry";
 import { Activity } from "lucide-react";
 
 export async function TelemetryBanner() {
-  // This fetches securely on the server before the page loads!
+  
   const { successRate, totalScans } = await getSystemTelemetry();
 
-  // If there's no data yet, don't show the banner
+  
   if (totalScans === 0) return null;
 
   return (

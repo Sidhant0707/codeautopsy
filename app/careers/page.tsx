@@ -36,7 +36,7 @@ export default function CareersPage() {
 
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden">
-      {/* Ambient background light */}
+      {}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.01] blur-[150px] rounded-full pointer-events-none" />
 
       <div className="max-w-5xl mx-auto relative z-10">
@@ -63,7 +63,7 @@ export default function CareersPage() {
           </p>
         </motion.div>
 
-        {/* Perks Grid */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-24">
           {[
             {
@@ -94,7 +94,7 @@ export default function CareersPage() {
           ))}
         </div>
 
-        {/* Open Roles */}
+        {}
         <div className="mb-12">
           <motion.div
             variants={fadeUp}
@@ -116,7 +116,7 @@ export default function CareersPage() {
           </motion.div>
         </div>
 
-        {/* Stealth Mode / Future Positions */}
+        {}
         <div className="space-y-12">
           <motion.div
             variants={fadeUp}
@@ -163,7 +163,7 @@ export default function CareersPage() {
             ))}
           </div>
 
-          {/* Talent Pool Call to Action */}
+          {}
           <motion.div
             variants={fadeUp}
             className="p-10 rounded-3xl bg-gradient-to-br from-[#141414] to-transparent border border-white/5 text-center"
@@ -185,7 +185,7 @@ export default function CareersPage() {
           </motion.div>
         </div>
 
-        {/* Footer Note */}
+        {}
         <motion.div
           variants={fadeUp}
           className="mt-32 p-12 rounded-3xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/5 text-center"

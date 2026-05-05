@@ -183,7 +183,7 @@ ${result.verification_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
         </div>
       )}
 
-      {/* RED ALERT CRITICAL PATH DESIGN */}
+      {}
       <div className="relative overflow-hidden rounded-xl border border-red-500/30 bg-gradient-to-br from-red-500/10 via-orange-500/5 to-transparent p-6 shadow-2xl shadow-red-900/20">
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <span className="text-[10px] font-bold text-red-500 font-mono tracking-widest">
