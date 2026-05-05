@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { BadgeEmbed } from "@/components/BadgeEmbed";
 import ExportButton from "@/components/ExportButton";
 import {
   ArrowLeft,
@@ -144,15 +145,7 @@ function AnalyzeContent() {
   const [showExitModal, setShowExitModal] = useState(false);
 
   const [prInput, setPrInput] = useState("");
-  const [copiedBadge, setCopiedBadge] = useState(false);
 
-  const handleCopyBadge = () => {
-    if (!data) return;
-    const markdown = `[![CodeAutopsy Health](https://codeautopsy-lyart.vercel.app/api/badge?repo=${data.owner}/${data.repo}&v=1)](https://codeautopsy-lyart.vercel.app/analyze?repo=${data.owner}/${data.repo})`;
-    navigator.clipboard.writeText(markdown);
-    setCopiedBadge(true);
-    setTimeout(() => setCopiedBadge(false), 2000);
-  };
   const [isAnalyzingPR, setIsAnalyzingPR] = useState(false);
   const [prResult, setPrResult] = useState<PRAnalysisResult | null>(null);
   const [prError, setPrError] = useState<string | null>(null);
@@ -631,25 +624,11 @@ function AnalyzeContent() {
                               </p>
                             </div>
 
-                            {/* ✨ NEW: Copy Badge Button ✨ */}
-                            <div className="pt-2">
-                              <button
-                                onClick={handleCopyBadge}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all group"
-                              >
-                                {copiedBadge ? (
-                                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                ) : (
-                                  <Copy className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                                )}
-                                <span
-                                  className={`text-xs font-bold font-mono tracking-widest uppercase ${copiedBadge ? "text-emerald-400" : "text-slate-300 group-hover:text-white"}`}
-                                >
-                                  {copiedBadge
-                                    ? "Copied to Clipboard"
-                                    : "Get README Badge"}
-                                </span>
-                              </button>
+                            {/* ✨ UPGRADED: Badge Toggle Component ✨ */}
+                            <div className="pt-2 w-full">
+                              <BadgeEmbed
+                                repoName={`${data.owner}/${data.repo}`}
+                              />
                             </div>
 
                             {data.analysis.health_status.refactor_plan && (
