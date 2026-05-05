@@ -13,7 +13,8 @@ import {
   Clock,
   GitBranch,
   GitPullRequest,
-  ArrowLeft
+  ArrowLeft,
+  ChevronDown
 } from "lucide-react";
 import Header from "@/components/Header";
 import { createClient } from "@/lib/supabase-browser";
@@ -50,11 +51,10 @@ function TabButton({
   return (
     <button
       onClick={() => onSelect(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
-        activeTab === id
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${activeTab === id
           ? "bg-white/10 text-white shadow-inner border border-white/5"
           : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
-      }`}
+        }`}
     >
       <Icon className="w-4 h-4" />
       {label}
@@ -67,10 +67,13 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabId>("account");
   const [user, setUser] = useState<SupabaseUser | null>(null);
 
-  
+
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [usageCount, setUsageCount] = useState(0);
+  const [maxLimit, setMaxLimit] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedView, setSelectedView] = useState("Read_Docs");
 
   useEffect(() => {
     const supabase = createClient();
@@ -83,12 +86,20 @@ export default function ProfilePage() {
 
       if (user) {
         
+        fetch("/api/limits")
+          .then(res => res.json())
+          .then(data => {
+            setUsageCount(data.maxTokens - data.remaining);
+            setMaxLimit(data.maxTokens);
+          })
+          .catch(err => console.error("Error fetching limits:", err));
+
         const [repoRes, prRes] = await Promise.all([
           supabase.from("analyses").select("*").eq("user_id", user.id),
           supabase.from("pr_analyses").select("*").eq("user_id", user.id),
         ]);
 
-        
+
         type RepoRow = {
           id: number | string;
           repo_name: string;
@@ -105,7 +116,7 @@ export default function ProfilePage() {
         const repoData = (repoRes.data ?? []) as RepoRow[];
         const prData = (prRes.data ?? []) as PRRow[];
 
-        
+
         const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
           id: `repo-${r.id}`,
           type: "repo",
@@ -121,17 +132,16 @@ export default function ProfilePage() {
           title: `${p.repo_name} #${p.pr_number}`,
           subtitle: p.title,
           created_at: p.created_at,
-          link: `#`, 
+          link: `#`,
         }));
 
-        
+
         const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
 
         setHistory(mergedHistory);
-        setUsageCount(mergedHistory.length); 
       }
       setIsLoading(false);
     }
@@ -144,14 +154,14 @@ export default function ProfilePage() {
       <Header />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
-        {}
+        { }
         <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
           <div className="mb-8 px-4">
-            <button 
-              onClick={() => router.back()} 
+            <button
+              onClick={() => router.back()}
               className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors mb-6 group w-fit"
             >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> 
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
               Back
             </button>
             <h1 className="text-2xl font-bold text-white tracking-tight cabinet">
@@ -187,7 +197,7 @@ export default function ProfilePage() {
           </nav>
         </aside>
 
-        {}
+        { }
         <section className="flex-1 min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
@@ -198,7 +208,7 @@ export default function ProfilePage() {
               transition={{ duration: 0.2 }}
               className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
             >
-              {}
+              { }
               {activeTab === "account" && (
                 <div className="space-y-8">
                   <div>
@@ -216,25 +226,24 @@ export default function ProfilePage() {
                           Free Tier (Intern)
                         </span>
                         <span className="text-sm font-bold text-white">
-                          {usageCount} / 10{" "}
+                          {usageCount} / {maxLimit}{" "}
                           <span className="text-slate-500 font-normal">
                             Scans Used
                           </span>
                         </span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden flex gap-[2px] p-[2px]">
-                        {Array.from({ length: 10 }).map((_, index) => {
+                        {Array.from({ length: maxLimit }).map((_, index) => {
                           const filled = index < usageCount;
                           return (
                             <div
                               key={index}
-                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${
-                                filled
-                                  ? usageCount >= 10
+                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${filled
+                                  ? usageCount >= maxLimit
                                     ? "bg-red-500"
                                     : "bg-emerald-500"
                                   : "bg-white/10"
-                              }`}
+                                }`}
                             />
                           );
                         })}
@@ -271,7 +280,7 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {}
+              { }
               {activeTab === "history" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
@@ -303,7 +312,7 @@ export default function ProfilePage() {
                         >
                           <div className="flex flex-col gap-1.5">
                             <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
-                              {}
+                              { }
                               {scan.type === "repo" ? (
                                 <Terminal className="w-4 h-4 text-emerald-500" />
                               ) : (
@@ -331,7 +340,7 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {}
+              { }
               {activeTab === "preferences" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
@@ -352,14 +361,50 @@ export default function ProfilePage() {
                           Which tab opens when an autopsy finishes?
                         </p>
                       </div>
-                      <select
-                        aria-label="Default view"
-                        className="bg-[#141414] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-slate-300 outline-none focus:border-slate-500"
-                      >
-                        <option>Read_Docs</option>
-                        <option>Blueprint_Map</option>
-                        <option>Diagnostic_Engine</option>
-                      </select>
+                      <div className="relative">
+                        <button
+                          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                          className="flex items-center gap-4 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-all font-medium text-sm min-w-[180px] justify-between shadow-inner"
+                        >
+                          {selectedView.replace("_", " ")}
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-200 ${
+                              isDropdownOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+
+                        {isDropdownOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setIsDropdownOpen(false)}
+                            />
+                            <div className="absolute right-0 mt-2 w-full min-w-[180px] rounded-xl overflow-hidden shadow-2xl z-50 bg-[#141414] border border-white/10 p-1 animate-in fade-in zoom-in duration-100">
+                              {[
+                                "Read_Docs",
+                                "Blueprint_Map",
+                                "Diagnostic_Engine",
+                              ].map((option) => (
+                                <button
+                                  key={option}
+                                  onClick={() => {
+                                    setSelectedView(option);
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                    selectedView === option
+                                      ? "bg-white/10 text-white"
+                                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                                  }`}
+                                >
+                                  {option.replace("_", " ")}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

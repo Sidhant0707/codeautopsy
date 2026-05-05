@@ -3,7 +3,17 @@
 import { Download } from "lucide-react";
 
 interface ExportButtonProps {
-  data: any;
+  data: {
+    owner: string;
+    repo: string;
+    analysis: {
+      what_it_does: string;
+      execution_flow: string[];
+      key_modules: { file: string; role: string; why_it_exists: string }[];
+      blast_radius?: { file: string; dependents: number; warning: string }[];
+      onboarding_guide: string[];
+    };
+  };
 }
 
 export default function ExportButton({ data }: ExportButtonProps) {
@@ -19,14 +29,14 @@ export default function ExportButton({ data }: ExportButtonProps) {
     md += `\n`;
     
     md += `## Key Modules\n`;
-    data.analysis.key_modules.forEach((mod: any) => {
+    data.analysis.key_modules.forEach((mod) => {
       md += `- **\`${mod.file.split('/').pop()}\`** (${mod.role}): ${mod.why_it_exists}\n`;
     });
     md += `\n`;
     
     if (data.analysis.blast_radius && data.analysis.blast_radius.length > 0) {
       md += `## Blast Radius (Critical Files)\n`;
-      data.analysis.blast_radius.forEach((risk: any) => {
+      data.analysis.blast_radius.forEach((risk) => {
         md += `- **\`${risk.file.split('/').pop()}\`** (${risk.dependents} dependents): ${risk.warning}\n`;
       });
       md += `\n`;
@@ -54,7 +64,7 @@ export default function ExportButton({ data }: ExportButtonProps) {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold ml-2"
+      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold h-9 flex-shrink-0"
     >
       <Download className="w-3.5 h-3.5" />
       <span className="hidden sm:inline">Export .md</span>

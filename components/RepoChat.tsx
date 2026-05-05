@@ -127,7 +127,7 @@ export default function RepoChat({ repoContext }: { repoContext: RepoContextType
                     )
                   );
                 }
-              } catch (e) {
+              } catch {
                 // Ignore incomplete JSON chunks, they will complete on the next pass
               }
             }

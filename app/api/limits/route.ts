@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { ratelimitFree, ratelimitAuth } from "@/lib/ratelimit"; 
+import { getUsageCount } from "@/lib/usage";
 
 export async function GET() {
   try {
@@ -28,8 +29,13 @@ export async function GET() {
     const maxTokens = userId ? 10 : 3;
 
     const limitState = await limiter.getRemaining(identifier);
+    let remaining = limitState ? limitState.remaining : maxTokens;
 
-    const remaining = limitState ? limitState.remaining : maxTokens;
+    if (userId) {
+      const dbUsage = await getUsageCount(supabase, userId);
+      const dbRemaining = Math.max(0, 10 - dbUsage);
+      remaining = Math.min(remaining, dbRemaining);
+    }
 
     return NextResponse.json({ remaining, maxTokens });
   } catch {

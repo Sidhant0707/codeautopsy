@@ -20,16 +20,29 @@ const FOLDER_COLORS = [
 ];
 
 
+interface EnrichedFileMetric extends FileMetric {
+  folder: string;
+  name: string | undefined;
+  color: string | undefined;
+  loc: number;
+}
+
+interface LayoutBox extends EnrichedFileMetric {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const estimateLOC = (bytes: number) => Math.max(1, Math.round(bytes / 30));
 
-
 function calculateLayout(
-  items: any[],
+  items: EnrichedFileMetric[],
   x: number,
   y: number,
   width: number,
   height: number
-): any[] {
+): LayoutBox[] {
   if (items.length === 0) return [];
   if (items.length === 1) return [{ ...items[0], x, y, width, height }];
 
@@ -73,13 +86,13 @@ function calculateLayout(
 }
 
 export default function TreemapVisualizer({ metrics }: TreemapVisualizerProps) {
-  const [hoveredFile, setHoveredFile] = useState<any | null>(null);
+  const [hoveredFile, setHoveredFile] = useState<LayoutBox | null>(null);
 
   const { layout, totalLOC } = useMemo(() => {
     if (!metrics || metrics.length === 0) return { layout: [], totalLOC: 0 };
 
     
-    let validMetrics = metrics.filter(m => m.size > 0);
+    const validMetrics = metrics.filter(m => m.size > 0);
 
     
     validMetrics.sort((a, b) => b.size - a.size);

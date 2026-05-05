@@ -165,7 +165,13 @@ export async function POST(req: NextRequest) {
 
           if (!success) {
             clearInterval(keepAlive);
-            controller.enqueue(encoder.encode(JSON.stringify({ error: "Daily limit reached.", limit, remaining, reset })));
+            controller.enqueue(encoder.encode(JSON.stringify({ 
+              error: "RATE_LIMIT_REACHED", 
+              message: "24-hour sliding window limit reached. Please try again later or upgrade for higher limits.",
+              limit, 
+              remaining, 
+              reset 
+            })));
             controller.close();
             return;
           }

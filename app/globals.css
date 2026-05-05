@@ -33,7 +33,8 @@
 
 body {
   /* Safely combined your original body styles with the new ones */
-  background: var(--bg-deep); /* Uses the dark theme background from the spec */
+  background: var(--bg-deep);
+  /* Uses the dark theme background from the spec */
   color: var(--accent-gray);
   font-family: 'Satoshi', Arial, Helvetica, sans-serif;
   overflow-x: hidden;
@@ -41,8 +42,13 @@ body {
 }
 
 /* The new motion spec classes */
-.cabinet { font-family: 'Cabinet Grotesk', sans-serif; }
-.mono { font-family: 'Azeret Mono', monospace; }
+.cabinet {
+  font-family: 'Cabinet Grotesk', sans-serif;
+}
+
+.mono {
+  font-family: 'Azeret Mono', monospace;
+}
 
 .hover-depth-card {
   transition: transform 0.4s var(--easing-expo), border-color 0.4s ease;
@@ -53,6 +59,7 @@ body {
   transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(-8px);
   border-color: rgba(255, 255, 255, 0.2);
 }
+
 .glass-card {
   background: rgba(22, 22, 22, 0.6);
   -webkit-backdrop-filter: blur(12px);
@@ -88,11 +95,40 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
 @keyframes scan {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(500%); }
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(500%);
+  }
 }
 
 .animate-scan {
   animation: scan 2s linear infinite;
+}
+
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }

@@ -2,7 +2,6 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
-import MermaidDiagram from "@/components/MermaidDiagram";
 import Header from "@/components/Header";
 import DebugInterface from "@/components/debug/DebugInterface";
 
@@ -10,6 +9,17 @@ type Props = {
   params: Promise<{ slug: string[] }>;
 };
 
+
+interface TechStackItem {
+  name: string;
+  purpose: string;
+}
+
+interface KeyModuleItem {
+  file: string;
+  role?: string;
+  why_it_exists: string;
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -117,7 +127,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
           </div>
 
           <p className="text-lg text-slate-400 leading-relaxed italic">
-            "{result?.analysis?.what_it_does || "No description available."}"
+            &quot;{result?.analysis?.what_it_does || "No description available."}&quot;
           </p>
         </section>
 
@@ -138,7 +148,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
   <h3 className="text-lg font-bold text-white mb-4">Tech Stack</h3>
 
   <div className="flex flex-wrap gap-3">
-    {result?.analysis?.tech_stack?.map((tech: any, i: number) => (
+    {result?.analysis?.tech_stack?.map((tech: TechStackItem, i: number) => (
       <span
         key={i}
         className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm"
@@ -156,7 +166,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
   <h3 className="text-lg font-bold text-white mb-4">Key Modules</h3>
 
   <div className="space-y-4">
-    {result?.analysis?.key_modules?.map((mod: any, i: number) => (
+    {result?.analysis?.key_modules?.map((mod: KeyModuleItem, i: number) => (
       <div
         key={i}
         className="p-4 border border-white/10 rounded-xl bg-white/5"

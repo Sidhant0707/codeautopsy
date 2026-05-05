@@ -32,7 +32,14 @@ export async function getPullRequestDiff(prUrl: string, token?: string) {
   const files = await response.json();
 
   
-  const modifiedFiles = files.map((file: any) => ({
+  interface GitHubFile {
+    filename: string;
+    status: string;
+    additions: number;
+    changes: number;
+  }
+
+  const modifiedFiles = files.map((file: GitHubFile) => ({
     filename: file.filename,     
     status: file.status,         
     additions: file.additions,
