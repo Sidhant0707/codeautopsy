@@ -1,0 +1,13 @@
+name: Update Architecture Map
+on:
+  push:
+    branches: [ main, master ]
+jobs:
+  update-map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CodeAutopsy Architecture Sync
+        uses: Sidhant0707/codeautopsy-action@v1.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
