@@ -24,6 +24,7 @@ import {
   Activity,
   GitPullRequest,
   Users,
+  Target,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -33,6 +34,7 @@ import DebugInterface from "@/components/debug/DebugInterface";
 import ArchitectureMap from "@/components/ArchitectureMap";
 import TreemapVisualizer from "@/components/TreemapVisualizer";
 import DirectoryTreeVisualizer from "@/components/DirectoryTreeVisualizer";
+import RiskDashboard from "@/components/RiskDashboard"; // <-- SPRINT 4: Imported Component
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -74,6 +76,15 @@ interface RepoData {
   analysis: Analysis;
   dependencyGraph?: Record<string, string[]>;
   fileMetrics: { path: string; size: number }[];
+  // --- SPRINT 4: New Payload Data ---
+  coverageGaps?: {
+    file: string;
+    fanIn: number;
+    riskScore: number;
+    isTested: boolean;
+    testFiles: string[];
+  }[];
+  fileContents?: { path: string; content: string }[];
 }
 
 interface PRAnalysisResult {
@@ -103,9 +114,11 @@ function AnalyzeContent() {
   const [loading, setLoading] = useState(true);
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
+  // --- SPRINT 4: Added "risk_radar" to activeTab state ---
   const [activeTab, setActiveTab] = useState<
-    "overview" | "visualizer" | "doctor" | "pr_impact"
+    "overview" | "visualizer" | "doctor" | "pr_impact" | "risk_radar"
   >("overview");
+
   const [mapView, setMapView] = useState<"graph" | "treemap" | "directory">(
     "graph",
   );
@@ -117,10 +130,17 @@ function AnalyzeContent() {
 
     if (
       savedTab &&
-      ["overview", "visualizer", "doctor", "pr_impact"].includes(savedTab)
+      ["overview", "visualizer", "doctor", "pr_impact", "risk_radar"].includes(
+        savedTab,
+      )
     ) {
       setActiveTab(
-        savedTab as "overview" | "visualizer" | "doctor" | "pr_impact",
+        savedTab as
+          | "overview"
+          | "visualizer"
+          | "doctor"
+          | "pr_impact"
+          | "risk_radar",
       );
     }
 
@@ -551,6 +571,17 @@ function AnalyzeContent() {
                 }`}
               >
                 <GitPullRequest className="w-3.5 h-3.5" /> PR Impact
+              </button>
+
+              <button
+                onClick={() => setActiveTab("risk_radar")}
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "risk_radar"
+                    ? "bg-white/10 text-white shadow-inner"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" /> Risk Radar
               </button>
             </div>
           </div>
@@ -1202,6 +1233,23 @@ function AnalyzeContent() {
                 </div>
               </div>
             )}
+
+            {/* --- 🚀 SPRINT 4: NEW DEDICATED TAB --- */}
+            {activeTab === "risk_radar" && (
+              <div className="absolute inset-0 p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+                {data.coverageGaps && data.fileContents ? (
+                  <RiskDashboard
+                    coverageGaps={data.coverageGaps}
+                    fileContents={data.fileContents}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-500 font-mono text-sm">
+                    No risk data available for this codebase.
+                  </div>
+                )}
+              </div>
+            )}
+            {/* ------------------------------------- */}
           </div>
         </div>
 

@@ -12,7 +12,8 @@ import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
 import { calculateHealthGrade } from "@/lib/analyzer/health"; 
 
-const ANALYSIS_VERSION = 6;
+// BUMPED TO 8: Busts the cache so the Risk Algorithm actually runs!
+const ANALYSIS_VERSION = 8;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -57,7 +58,6 @@ export async function POST(req: NextRequest) {
       if (!userError && user) {
         authUser = user;
 
-        
         const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
         if (!isUnderLimit) {
           return NextResponse.json(
@@ -139,7 +139,6 @@ export async function POST(req: NextRequest) {
           commitSha = String(meta.default_branch);
           description = String(meta.description ?? "");
           stars = Number(meta.stargazers_count ?? 0);
-          // ensure language is a string to avoid 'unknown' type issues
           language = String(meta.language ?? "");
 
           const { data: cached } = await supabase
@@ -216,7 +215,7 @@ export async function POST(req: NextRequest) {
               const safeContent = content.split("\n").slice(0, 500).join("\n");
               allFileContents.push({ path: file.path, content: safeContent });
             } catch {
-              
+              // Ignore individual file fetch errors
             }
           }
         }
@@ -245,7 +244,6 @@ export async function POST(req: NextRequest) {
 
         const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
         const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
-
         
         const fanInValues = Object.values(fanIn) as number[];
         const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
@@ -258,7 +256,6 @@ export async function POST(req: NextRequest) {
           largeFilesCount: largeFilesCount
         });
 
-        
         const analysis = await analyzeWithGemini(
           `${owner}/${repo}`,
           description || "No description provided",
@@ -268,6 +265,59 @@ export async function POST(req: NextRequest) {
           blastRadiusTargets,
           healthMetrics 
         );
+
+        // --- 🚀 SPRINT 4: TEST COVERAGE STRATEGIST (PHASE 1) ---
+        type TestCoverageMap = Record<string, { isTested: boolean; testFiles: string[] }>;
+        const testCoverageMap: TestCoverageMap = {};
+
+        const isTestFile = (path: string) => /\.(test|spec)\.[jt]sx?$/i.test(path) || /__(tests|mocks)__\//i.test(path);
+        
+        const getSourcePathFromTest = (testPath: string) => {
+          return testPath
+            .replace(/\.(test|spec)(\.[jt]sx?)$/i, '$2')
+            .replace(/__(tests|mocks)__\//i, '');
+        };
+
+        filteredPaths.forEach(path => {
+          if (!isTestFile(path)) {
+            testCoverageMap[path] = { isTested: false, testFiles: [] };
+          }
+        });
+
+        filteredPaths.forEach(path => {
+          if (isTestFile(path)) {
+            const presumedSource = getSourcePathFromTest(path);
+            if (testCoverageMap[presumedSource]) {
+              testCoverageMap[presumedSource].isTested = true;
+              testCoverageMap[presumedSource].testFiles.push(path);
+            }
+          }
+        });
+
+        console.log("🧪 [Sprint 4] Test Coverage Map Generated!");
+        console.log(Object.entries(testCoverageMap).filter(([_, data]) => data.isTested).slice(0, 3));
+
+        // --- 🚀 SPRINT 4: RISK ALGORITHM (PHASE 2) ---
+        const coverageGaps = Object.entries(fanIn)
+          .map(([filePath, fanInScore]) => {
+            const coverageData = testCoverageMap[filePath] || { isTested: false, testFiles: [] };
+            const riskScore = coverageData.isTested ? 0 : (fanInScore as number);
+            
+            return {
+              file: filePath,
+              fanIn: fanInScore as number,
+              isTested: coverageData.isTested,
+              testFiles: coverageData.testFiles,
+              riskScore: riskScore
+            };
+          })
+          .filter(gap => gap.riskScore > 0) 
+          .sort((a, b) => b.riskScore - a.riskScore) 
+          .slice(0, 10); 
+
+        console.log("💣 [Sprint 4] Top 3 Ticking Time Bombs:");
+        console.log(coverageGaps.slice(0, 3));
+        // --- END SPRINT 4 DATA PIPELINE ---
 
         const result = {
           owner,
@@ -284,7 +334,9 @@ export async function POST(req: NextRequest) {
           analysis,
           fileContents: allFileContents.slice(0, 15),
           fileMetrics,
-          healthMetrics 
+          healthMetrics,
+          testCoverageMap,
+          coverageGaps // Safely injected here!
         };
 
         if (!isLocal) {
@@ -296,7 +348,6 @@ export async function POST(req: NextRequest) {
             result_json: result,
             user_id: userId
           });
-
           
           await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
