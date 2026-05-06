@@ -40,3 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local
+
+# AI Context & Repo Packing Files
+CLAUDE.md
+AGENTS.md
+repomix-output.xml
+
+# Custom Utility Scripts
+remove-comments.ts
+proxy.ts
