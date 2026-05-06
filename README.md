@@ -51,6 +51,8 @@ Reading someone else's code is hard. Figuring out the blast radius of a Pull Req
 
 Make your repository self-documenting. Add the CodeAutopsy Action to automatically generate and inject a live architecture map directly into your repository's README.
 
+<!-- Bot Webhook Test -->
+
 **1. Place the Map Beacon**
 
 Add these invisible HTML comments anywhere in your `README.md`. The action will automatically replace the space between them on every push.
