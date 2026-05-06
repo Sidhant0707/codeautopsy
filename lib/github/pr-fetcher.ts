@@ -53,3 +53,38 @@ export async function getPullRequestDiff(prUrl: string, token?: string) {
     modifiedFiles
   };
 }
+export async function getFileContributors(owner: string, repo: string, path: string, token?: string) {
+  const headers: Record<string, string> = { 
+    Accept: "application/vnd.github.v3+json" 
+  };
+  
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=10`, 
+      { headers }
+    );
+    
+    if (!res.ok) return [];
+    
+    const commits = await res.json();
+    const authorCounts: Record<string, number> = {};
+    
+    commits.forEach((c: { author?: { login?: string } }) => {
+      const login = c.author?.login;
+      if (login) {
+        authorCounts[login] = (authorCounts[login] || 0) + 1;
+      }
+    });
+
+    return Object.entries(authorCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([login, count]) => `${login} (${count} recent commits)`);
+  } catch {
+    return [];
+  }
+}
