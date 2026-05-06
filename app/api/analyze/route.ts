@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
         });
 
         console.log("🧪 [Sprint 4] Test Coverage Map Generated!");
-        console.log(Object.entries(testCoverageMap).filter(([_, data]) => data.isTested).slice(0, 3));
+        console.log(Object.entries(testCoverageMap).filter(([, data]) => data.isTested).slice(0, 3));
 
         // --- 🚀 SPRINT 4: RISK ALGORITHM (PHASE 2) ---
         const coverageGaps = Object.entries(fanIn)
