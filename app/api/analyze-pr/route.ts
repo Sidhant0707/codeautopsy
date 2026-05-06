@@ -122,6 +122,7 @@ Analyze these code changes and return ONLY a valid JSON object with EXACTLY this
     if (!groqRes.ok) throw new Error(`Groq API error ${groqRes.status}`);
     const data = await groqRes.json();
     const finalResult = JSON.parse(data.choices[0].message.content);
+    console.log("🤖 RAW AI PAYLOAD:", JSON.stringify(finalResult.suggestedReviewers, null, 2));
 
     if (securityAlerts.length > 0) {
       finalResult.riskLevel = "high";

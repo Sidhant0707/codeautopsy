@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { BadgeEmbed } from "@/components/BadgeEmbed";
 import ExportButton from "@/components/ExportButton";
 import {
@@ -22,6 +23,7 @@ import {
   LayoutGrid,
   Activity,
   GitPullRequest,
+  Users,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import RepoChat from "@/components/RepoChat";
@@ -82,6 +84,7 @@ interface PRAnalysisResult {
   architecturalChanges: string[];
   breakingDependencies: string[];
   riskLevel: "low" | "medium" | "high";
+  suggestedReviewers?: { username: string; reason: string }[];
 }
 
 interface PRBlastRadiusItem {
@@ -346,9 +349,7 @@ function AnalyzeContent() {
           <h2 className="cabinet text-2xl font-bold text-white mb-2">
             {isRateLimit ? "Daily Limit Reached" : "Autopsy Failed"}
           </h2>
-          <p className="text-slate-400 text-sm mb-8">
-            {error}
-          </p>
+          <p className="text-slate-400 text-sm mb-8">{error}</p>
           <div className="flex flex-col gap-3">
             {isRateLimit && (
               <button
@@ -513,37 +514,41 @@ function AnalyzeContent() {
             <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] items-center gap-2 bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] w-auto">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "overview"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "overview"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
+                }`}
               >
                 <FileCode className="w-3.5 h-3.5" /> Read Docs
               </button>
               <button
                 onClick={() => setActiveTab("visualizer")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "visualizer"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "visualizer"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
+                }`}
               >
                 <Layers className="w-3.5 h-3.5" /> Blueprint Map
               </button>
               <button
                 onClick={() => setActiveTab("doctor")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "doctor"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "doctor"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
+                }`}
               >
                 <Activity className="w-3.5 h-3.5" /> Diagnostic Engine
               </button>
               <button
                 onClick={() => setActiveTab("pr_impact")}
-                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${activeTab === "pr_impact"
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-2 ${
+                  activeTab === "pr_impact"
                     ? "bg-white/10 text-white shadow-inner"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
+                }`}
               >
                 <GitPullRequest className="w-3.5 h-3.5" /> PR Impact
               </button>
@@ -564,7 +569,8 @@ function AnalyzeContent() {
                     {data.analysis.health_status && (
                       <div className="glass-card relative overflow-hidden p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e] h-full transition-all">
                         <div
-                          className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${data.analysis.health_status.grade === "A"
+                          className={`absolute -right-20 -top-20 w-64 h-64 blur-[100px] rounded-full opacity-20 pointer-events-none ${
+                            data.analysis.health_status.grade === "A"
                               ? "bg-emerald-500"
                               : data.analysis.health_status.grade === "B"
                                 ? "bg-blue-500"
@@ -573,12 +579,13 @@ function AnalyzeContent() {
                                   : data.analysis.health_status.grade === "D"
                                     ? "bg-orange-500"
                                     : "bg-red-500"
-                            }`}
+                          }`}
                         />
 
                         <div className="flex flex-col md:flex-row gap-8 items-center md:items-start relative z-10 text-center md:text-left">
                           <div
-                            className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${data.analysis.health_status.grade === "A"
+                            className={`flex-shrink-0 w-32 h-32 rounded-3xl flex flex-col items-center justify-center border-2 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${
+                              data.analysis.health_status.grade === "A"
                                 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                                 : data.analysis.health_status.grade === "B"
                                   ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
@@ -587,7 +594,7 @@ function AnalyzeContent() {
                                     : data.analysis.health_status.grade === "D"
                                       ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
                                       : "bg-red-500/10 border-red-500/30 text-red-400"
-                              }`}
+                            }`}
                           >
                             <span className="text-6xl font-black cabinet leading-none tracking-tighter">
                               {data.analysis.health_status.grade}
@@ -671,8 +678,8 @@ function AnalyzeContent() {
                                     {risk.warning}
                                   </p>
                                   <div className="flex items-center gap-1.5 text-[9px] text-amber-500/60 font-mono uppercase">
-                                    <Layers className="w-3 h-3" /> {risk.dependents}{" "}
-                                    Dependent File(s)
+                                    <Layers className="w-3 h-3" />{" "}
+                                    {risk.dependents} Dependent File(s)
                                   </div>
                                 </div>
                               ))}
@@ -731,15 +738,25 @@ function AnalyzeContent() {
                               <Cpu className="w-3 h-3" /> Core Tech Stack
                             </h3>
                             <div className="space-y-2">
-                              {data.analysis.tech_stack && data.analysis.tech_stack.slice(0, 10).map((tech, i) => (
-                                <div key={i} className="flex items-center gap-6 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group/item">
-                                  <div className="w-32 shrink-0">
-                                    <span className="text-xs font-bold text-slate-200 group-hover/item:text-blue-400 transition-colors">{tech.name}</span>
-                                  </div>
-                                  <div className="h-4 w-px bg-white/10 hidden sm:block" />
-                                  <span className="text-[11px] text-slate-500 leading-tight flex-1">{tech.purpose}</span>
-                                </div>
-                              ))}
+                              {data.analysis.tech_stack &&
+                                data.analysis.tech_stack
+                                  .slice(0, 10)
+                                  .map((tech, i) => (
+                                    <div
+                                      key={i}
+                                      className="flex items-center gap-6 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group/item"
+                                    >
+                                      <div className="w-32 shrink-0">
+                                        <span className="text-xs font-bold text-slate-200 group-hover/item:text-blue-400 transition-colors">
+                                          {tech.name}
+                                        </span>
+                                      </div>
+                                      <div className="h-4 w-px bg-white/10 hidden sm:block" />
+                                      <span className="text-[11px] text-slate-500 leading-tight flex-1">
+                                        {tech.purpose}
+                                      </span>
+                                    </div>
+                                  ))}
                             </div>
                           </div>
 
@@ -750,18 +767,44 @@ function AnalyzeContent() {
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               {[
-                                { label: "Primary Language", value: data.language, icon: Terminal },
-                                { label: "Project Complexity", value: `${data.totalFiles} Source Files`, icon: FileCode },
-                                { label: "Architecture Pattern", value: data.analysis.architecture_pattern, icon: Layers },
-                                { label: "Popularity / Stars", value: data.stars > 0 ? `${data.stars} Stars` : "Early Stage", icon: ThumbsUp }
+                                {
+                                  label: "Primary Language",
+                                  value: data.language,
+                                  icon: Terminal,
+                                },
+                                {
+                                  label: "Project Complexity",
+                                  value: `${data.totalFiles} Source Files`,
+                                  icon: FileCode,
+                                },
+                                {
+                                  label: "Architecture Pattern",
+                                  value: data.analysis.architecture_pattern,
+                                  icon: Layers,
+                                },
+                                {
+                                  label: "Popularity / Stars",
+                                  value:
+                                    data.stars > 0
+                                      ? `${data.stars} Stars`
+                                      : "Early Stage",
+                                  icon: ThumbsUp,
+                                },
                               ].map((stat, i) => (
-                                <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:bg-white/[0.03] transition-all">
+                                <div
+                                  key={i}
+                                  className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:bg-white/[0.03] transition-all"
+                                >
                                   <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
                                     <stat.icon className="w-5 h-5 text-slate-400" />
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="mono text-[9px] text-slate-600 uppercase font-bold">{stat.label}</span>
-                                    <span className="text-xs font-mono text-slate-300">{stat.value}</span>
+                                    <span className="mono text-[9px] text-slate-600 uppercase font-bold">
+                                      {stat.label}
+                                    </span>
+                                    <span className="text-xs font-mono text-slate-300">
+                                      {stat.value}
+                                    </span>
                                   </div>
                                 </div>
                               ))}
@@ -836,28 +879,31 @@ function AnalyzeContent() {
                   <div className="flex overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                     <button
                       onClick={() => setMapView("graph")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "graph"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "graph"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                        }`}
+                      }`}
                     >
                       Dependency Flow
                     </button>
                     <button
                       onClick={() => setMapView("directory")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "directory"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "directory"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                        }`}
+                      }`}
                     >
                       Folder Structure
                     </button>
                     <button
                       onClick={() => setMapView("treemap")}
-                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === "treemap"
+                      className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${
+                        mapView === "treemap"
                           ? "bg-white/10 text-white font-bold shadow-inner"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
-                        }`}
+                      }`}
                     >
                       Codebase Weight
                     </button>
@@ -867,7 +913,7 @@ function AnalyzeContent() {
                 <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
                   {mapView === "graph" ? (
                     data.dependencyGraph &&
-                      Object.keys(data.dependencyGraph).length > 0 ? (
+                    Object.keys(data.dependencyGraph).length > 0 ? (
                       <ArchitectureMap
                         dependencyGraph={data.dependencyGraph}
                         entryPoints={data.entryPoints}
@@ -1002,10 +1048,11 @@ function AnalyzeContent() {
                           </p>
                         </div>
                         <div
-                          className={`flex-shrink-0 w-full md:w-auto px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-widest flex justify-center md:justify-start items-center gap-2 ${prResult.riskLevel === "high"
+                          className={`flex-shrink-0 w-full md:w-auto px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-widest flex justify-center md:justify-start items-center gap-2 ${
+                            prResult.riskLevel === "high"
                               ? "bg-red-500/10 border-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
                               : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                            }`}
+                          }`}
                         >
                           {prResult.riskLevel === "high" ? (
                             <AlertTriangle className="w-3.5 h-3.5" />
@@ -1076,22 +1123,68 @@ function AnalyzeContent() {
                             </h4>
                             <div className="p-3 rounded-lg border border-amber-500/10 bg-amber-500/[0.02]">
                               <ul className="space-y-2">
-                                {prResult.breakingDependencies.map(
-                                  (dep: string, i: number) => (
-                                    <li
-                                      key={i}
-                                      className="flex items-start gap-2 text-xs text-amber-500/80"
-                                    >
-                                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                                      {dep}
-                                    </li>
-                                  ),
-                                )}
+                                {(Array.isArray(prResult.breakingDependencies)
+                                  ? prResult.breakingDependencies
+                                  : [
+                                      prResult.breakingDependencies ||
+                                        "None detected",
+                                    ]
+                                ).map((dep: unknown, i: number) => (
+                                  <li
+                                    key={i}
+                                    className="flex items-start gap-2 text-xs text-amber-500/80"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                                    {String(dep)}
+                                  </li>
+                                ))}
                               </ul>
                             </div>
                           </div>
                         </div>
                       </div>
+
+                      {prResult.suggestedReviewers &&
+                        prResult.suggestedReviewers.length > 0 && (
+                          <div className="mt-8 space-y-4 text-left border-t border-white/5 pt-6">
+                            <h4 className="text-xs font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                              <Users className="w-4 h-4" /> Context-Aware
+                              Reviewers
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {prResult.suggestedReviewers.map(
+                                (reviewer, i) => (
+                                  <div
+                                    key={i}
+                                    className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors"
+                                  >
+                                    <Image
+                                      src={`https://github.com/${reviewer.username}.png`}
+                                      alt={reviewer.username}
+                                      width={40}
+                                      height={40}
+                                      unoptimized
+                                      className="w-10 h-10 rounded-full border border-white/10 flex-shrink-0 bg-[#141414]"
+                                      onError={(e) => {
+                                        e.currentTarget.src =
+                                          "https://github.com/ghost.png";
+                                      }}
+                                    />
+                                    <div>
+                                      <span className="text-sm font-bold text-slate-200 block mb-1">
+                                        @{reviewer.username}
+                                      </span>
+                                      <p className="text-xs text-slate-400 leading-relaxed">
+                                        {reviewer.reason}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      {/* ------------------------------------- */}
 
                       <div className="flex justify-center border-t border-white/10 pt-6">
                         <button
