@@ -14,13 +14,12 @@ import {
   GitBranch,
   GitPullRequest,
   ArrowLeft,
-  ChevronDown
+  ChevronDown,
 } from "lucide-react";
 import Header from "@/components/Header";
 import { createClient } from "@/lib/supabase-browser";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import Link from "next/link";
-
 
 type HistoryItem = {
   id: string;
@@ -51,10 +50,11 @@ function TabButton({
   return (
     <button
       onClick={() => onSelect(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${activeTab === id
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
+        activeTab === id
           ? "bg-white/10 text-white shadow-inner border border-white/5"
           : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
-        }`}
+      }`}
     >
       <Icon className="w-4 h-4" />
       {label}
@@ -67,13 +67,27 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabId>("account");
   const [user, setUser] = useState<SupabaseUser | null>(null);
 
-
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [usageCount, setUsageCount] = useState(0);
   const [maxLimit, setMaxLimit] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("Read_Docs");
+
+  // GitHub Link Handler
+  async function handleGitHubLink() {
+    const supabase = createClient();
+    const { error } = await supabase.auth.linkIdentity({
+      provider: "github",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/profile`,
+      },
+    });
+
+    if (error) {
+      console.error("Link error:", error.message);
+    }
+  }
 
   useEffect(() => {
     const supabase = createClient();
@@ -85,20 +99,18 @@ export default function ProfilePage() {
       setUser(user);
 
       if (user) {
-        
         fetch("/api/limits")
-          .then(res => res.json())
-          .then(data => {
+          .then((res) => res.json())
+          .then((data) => {
             setUsageCount(data.maxTokens - data.remaining);
             setMaxLimit(data.maxTokens);
           })
-          .catch(err => console.error("Error fetching limits:", err));
+          .catch((err) => console.error("Error fetching limits:", err));
 
         const [repoRes, prRes] = await Promise.all([
           supabase.from("analyses").select("*").eq("user_id", user.id),
           supabase.from("pr_analyses").select("*").eq("user_id", user.id),
         ]);
-
 
         type RepoRow = {
           id: number | string;
@@ -115,7 +127,6 @@ export default function ProfilePage() {
 
         const repoData = (repoRes.data ?? []) as RepoRow[];
         const prData = (prRes.data ?? []) as PRRow[];
-
 
         const formattedRepos: HistoryItem[] = repoData.map((r: RepoRow) => ({
           id: `repo-${r.id}`,
@@ -135,7 +146,6 @@ export default function ProfilePage() {
           link: `#`,
         }));
 
-
         const mergedHistory = [...formattedRepos, ...formattedPRs].sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -150,11 +160,10 @@ export default function ProfilePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-slate-200 font-satoshi flex flex-col">
+    <div className="min-h-screen bg-[#0a0a0a] text-white pt-28 pb-12">
       <Header />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 flex flex-col md:flex-row gap-8">
-        { }
         <aside className="w-full md:w-64 flex-shrink-0 space-y-2">
           <div className="mb-8 px-4">
             <button
@@ -197,7 +206,6 @@ export default function ProfilePage() {
           </nav>
         </aside>
 
-        { }
         <section className="flex-1 min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
@@ -208,7 +216,6 @@ export default function ProfilePage() {
               transition={{ duration: 0.2 }}
               className="glass-card p-6 md:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]"
             >
-              { }
               {activeTab === "account" && (
                 <div className="space-y-8">
                   <div>
@@ -238,12 +245,13 @@ export default function ProfilePage() {
                           return (
                             <div
                               key={index}
-                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${filled
+                              className={`h-full flex-1 rounded-full transition-colors duration-700 ${
+                                filled
                                   ? usageCount >= maxLimit
                                     ? "bg-red-500"
                                     : "bg-emerald-500"
                                   : "bg-white/10"
-                                }`}
+                              }`}
                             />
                           );
                         })}
@@ -256,6 +264,7 @@ export default function ProfilePage() {
 
                   <div className="h-px w-full bg-white/5" />
 
+                  {/* Properly Integrated Connections Section */}
                   <div>
                     <h2 className="text-xl font-bold text-white mb-2">
                       Connections
@@ -272,7 +281,10 @@ export default function ProfilePage() {
                           </p>
                         </div>
                       </div>
-                      <button className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors">
+                      <button
+                        onClick={handleGitHubLink}
+                        className="px-4 py-2 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors cursor-pointer"
+                      >
                         Manage
                       </button>
                     </div>
@@ -280,7 +292,6 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              { }
               {activeTab === "history" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
@@ -312,7 +323,6 @@ export default function ProfilePage() {
                         >
                           <div className="flex flex-col gap-1.5">
                             <span className="text-sm font-bold text-slate-200 font-mono flex items-center gap-2">
-                              { }
                               {scan.type === "repo" ? (
                                 <Terminal className="w-4 h-4 text-emerald-500" />
                               ) : (
@@ -340,7 +350,6 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              { }
               {activeTab === "preferences" && (
                 <div>
                   <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
