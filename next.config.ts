@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "vgbujcuwptvheqijyjbe.supabase.co",
       },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
+      },
     ],
   },
 };

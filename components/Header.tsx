@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
-import { LayoutGrid, LogOut, Menu, X } from "lucide-react";
+import { LayoutGrid, LogOut, Menu, X, BadgeCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase-browser";
 import { User } from "@supabase/supabase-js";
 
@@ -103,6 +103,23 @@ export default function Header() {
     { id: "pricing", label: "Pricing", href: "/pricing" },
   ];
 
+  // Helper to get avatar
+  const getAvatarUrl = (user: User) => {
+    return (
+      user.user_metadata?.avatar_url ||
+      `https://api.dicebear.com/7.x/shapes/svg?seed=${user.email}&backgroundColor=0a0a0a,141414`
+    );
+  };
+
+  // Helper to get display name
+  const getDisplayName = (user: User) => {
+    return (
+      user.user_metadata?.full_name?.split(" ")[0] ||
+      user.user_metadata?.user_name ||
+      user.email?.split("@")[0]
+    );
+  };
+
   return (
     <>
       <motion.header
@@ -194,15 +211,38 @@ export default function Header() {
                 </Link>
 
                 <div className="relative">
+                  {/* Premium Desktop Profile Button */}
                   <motion.button
                     onClick={() => setMenuOpen(!menuOpen)}
                     title={user.email || "Account settings"}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-10 h-10 rounded-full flex items-center justify-center bg-[#141414] hover:bg-white/[0.08] border border-white/[0.12] transition-all focus:outline-none z-50 relative shadow-lg"
+                    className="relative flex items-center gap-3 pl-3 pr-1 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.15] transition-all duration-300 focus:outline-none z-50 shadow-lg group"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-white shadow-inner">
-                      {user.email?.[0].toUpperCase()}
+                    <div className="hidden sm:flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors max-w-[120px] truncate">
+                        {getDisplayName(user)}
+                      </span>
+                      <BadgeCheck className="text-emerald-400 w-4 h-4 flex-shrink-0" />
+                    </div>
+
+                    <div className="relative">
+                      <Image
+                        src={getAvatarUrl(user)}
+                        alt="Profile"
+                        width={32}
+                        height={32}
+                        className="w-8 h-8 rounded-full object-cover border-2 border-[#141414] group-hover:border-white/20 transition-colors shadow-inner bg-slate-800"
+                      />
+                      <motion.div
+                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0a0a0a]"
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
                     </div>
                   </motion.button>
 
@@ -215,17 +255,28 @@ export default function Header() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.96 }}
                           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                          className="absolute right-0 mt-3 w-60 rounded-2xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.6)] z-50 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08]"
+                          className="absolute right-0 mt-3 w-64 rounded-2xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.6)] z-50 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08]"
                         >
                           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent" />
 
-                          <div className="px-4 py-4 bg-gradient-to-b from-white/[0.04] to-transparent border-b border-white/[0.06]">
-                            <p className="text-sm font-semibold text-slate-100 truncate">
-                              {user.email}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest mt-1">
-                              Free Tier
-                            </p>
+                          {/* Upgraded Desktop Dropdown Header */}
+                          <div className="px-4 py-4 bg-gradient-to-b from-white/[0.04] to-transparent border-b border-white/[0.06] flex items-center gap-3">
+                            <Image
+                              src={getAvatarUrl(user)}
+                              alt="Profile"
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-xl object-cover border border-white/[0.12] shadow-sm bg-slate-800"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-100 truncate flex items-center gap-1.5">
+                                {getDisplayName(user)}
+                                <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest mt-0.5 truncate">
+                                {user.email}
+                              </p>
+                            </div>
                           </div>
 
                           <div className="py-2">
@@ -388,6 +439,27 @@ export default function Header() {
 
                 {user ? (
                   <div className="flex flex-col gap-2 pt-6 mt-4 border-t border-white/[0.06]">
+                    
+                    {/* Upgraded Mobile Menu Profile Header */}
+                    <div className="px-1 py-3 mb-2 flex items-center gap-3">
+                      <Image
+                        src={getAvatarUrl(user)}
+                        alt="Profile"
+                        width={44}
+                        height={44}
+                        className="w-11 h-11 rounded-xl object-cover border border-white/[0.12] shadow-sm bg-slate-800"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-100 truncate flex items-center gap-1.5">
+                          {getDisplayName(user)}
+                          <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        </p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
+                          {user.email}
+                        </p>
+                      </div>
+                    </div>
+
                     <Link
                       href="/dashboard"
                       onClick={() => setMobileNavOpen(false)}
