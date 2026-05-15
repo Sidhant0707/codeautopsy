@@ -12,8 +12,159 @@ import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
 import { calculateHealthGrade } from "@/lib/analyzer/health"; 
 
-// BUMPED TO 8: Busts the cache so the Risk Algorithm actually runs!
-const ANALYSIS_VERSION = 8;
+const ANALYSIS_VERSION = 10;
+
+// ============================================================================
+// HELPER FUNCTIONS - Extracted for clarity and reusability
+// ============================================================================
+
+const IGNORE_PATTERNS = [
+  "node_modules", "dist", "build", ".next", ".git", "coverage", 
+  "__pycache__", ".yarn", "vendor", "package-lock.json", 
+  "yarn.lock", "pnpm-lock.yaml", "repomix-output.xml"
+] as const;
+
+const IGNORE_EXTENSIONS = [
+  ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", 
+  ".lock", ".min.js", ".map", ".woff", ".woff2"
+] as const;
+
+const CONFIG_FILE_PATTERN = /\.(json|md|ya?ml|config\.(js|mjs|ts|cjs))$/i;
+const TEST_FILE_PATTERN = /\.(test|spec)\.[jt]sx?$/i;
+const TEST_DIR_PATTERN = /__(tests|mocks)__\//i;
+
+function isIgnoredFile(path: string): boolean {
+  return IGNORE_PATTERNS.some(pattern => path.includes(pattern)) ||
+         IGNORE_EXTENSIONS.some(ext => path.endsWith(ext));
+}
+
+function isConfigFile(path: string): boolean {
+  return CONFIG_FILE_PATTERN.test(path);
+}
+
+function isTestFile(path: string): boolean {
+  return TEST_FILE_PATTERN.test(path) || TEST_DIR_PATTERN.test(path);
+}
+
+function getSourcePathFromTest(testPath: string): string {
+  return testPath
+    .replace(/\.(test|spec)(\.[jt]sx?)$/i, '$2')
+    .replace(TEST_DIR_PATTERN, '');
+}
+
+function boostEntryPointScores(files: Array<{ path: string; role: string; score: number }>) {
+  files.forEach(file => {
+    if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
+      file.role = "entry";
+      file.score += 500;
+    }
+  });
+}
+
+// ============================================================================
+// DEPENDENCY GRAPH SANITIZATION - Fixes React Flow floating node bug
+// ============================================================================
+
+function sanitizeDependencyGraph(
+  graph: Record<string, string[]>
+): Record<string, string[]> {
+  const sanitized: Record<string, string[]> = {};
+  
+  // Step 1: Remove config files as sources and filter them from targets
+  for (const [source, targets] of Object.entries(graph)) {
+    if (isConfigFile(source)) continue;
+    
+    const validTargets = targets.filter(t => !isConfigFile(t));
+    if (validTargets.length > 0 || targets.length === 0) {
+      sanitized[source] = validTargets;
+    }
+  }
+  
+  // Step 2: React Flow validation - ensure every referenced target exists as a key
+  // This prevents the "floating window" bug where edges point to non-existent nodes
+  const allReferencedTargets = new Set<string>();
+  for (const targets of Object.values(sanitized)) {
+    targets.forEach(t => allReferencedTargets.add(t));
+  }
+  
+  for (const target of allReferencedTargets) {
+    if (!sanitized[target]) {
+      sanitized[target] = [];
+    }
+  }
+  
+  return sanitized;
+}
+
+// ============================================================================
+// TEST COVERAGE MAP GENERATION - Optimized single-pass algorithm
+// ============================================================================
+
+type TestCoverageMap = Record<string, { isTested: boolean; testFiles: string[] }>;
+
+function generateTestCoverageMap(allPaths: string[]): TestCoverageMap {
+  const coverageMap: TestCoverageMap = {};
+  const testFiles: string[] = [];
+  
+  // Single pass: separate test files and initialize source files
+  for (const path of allPaths) {
+    if (isTestFile(path)) {
+      testFiles.push(path);
+    } else {
+      coverageMap[path] = { isTested: false, testFiles: [] };
+    }
+  }
+  
+  // Map test files to their sources
+  for (const testPath of testFiles) {
+    const presumedSource = getSourcePathFromTest(testPath);
+    if (coverageMap[presumedSource]) {
+      coverageMap[presumedSource].isTested = true;
+      coverageMap[presumedSource].testFiles.push(testPath);
+    }
+  }
+  
+  return coverageMap;
+}
+
+// ============================================================================
+// RISK ANALYSIS - Identifies untested high-fan-in files
+// ============================================================================
+
+interface CoverageGap {
+  file: string;
+  fanIn: number;
+  isTested: boolean;
+  testFiles: string[];
+  riskScore: number;
+}
+
+function computeCoverageGaps(
+  fanIn: Record<string, number>,
+  testCoverageMap: TestCoverageMap,
+  topN: number = 10
+): CoverageGap[] {
+  return Object.entries(fanIn)
+    .map(([filePath, fanInScore]) => {
+      const coverageData = testCoverageMap[filePath] || { isTested: false, testFiles: [] };
+      const riskScore = coverageData.isTested ? 0 : fanInScore;
+      
+      return {
+        file: filePath,
+        fanIn: fanInScore,
+        isTested: coverageData.isTested,
+        testFiles: coverageData.testFiles,
+        riskScore
+      };
+    })
+    .filter(gap => gap.riskScore > 0)
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, topN);
+}
+
+// ============================================================================
+// MAIN API HANDLER
+// ============================================================================
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -22,11 +173,11 @@ export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
   const headerList = await headers();
 
-  const ip =
-    headerList.get("x-forwarded-for")?.split(",")[0] ||
-    headerList.get("x-real-ip") ||
-    "127.0.0.1";
+  const ip = headerList.get("x-forwarded-for")?.split(",")[0] ||
+             headerList.get("x-real-ip") ||
+             "127.0.0.1";
 
+  // Initialize Supabase client
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -45,6 +196,7 @@ export async function POST(req: NextRequest) {
     }
   );
 
+  // Auth and rate limit check
   let session = null;
   let authUser = null;
 
@@ -79,7 +231,8 @@ export async function POST(req: NextRequest) {
   const userId = authUser?.id ?? undefined;
   const provider = authUser?.app_metadata?.provider;
 
-  let githubToken: string | undefined = undefined;
+  // GitHub token resolution
+  let githubToken: string | undefined;
 
   if (provider === 'github' && session?.provider_token) {
     githubToken = session.provider_token;
@@ -94,6 +247,7 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
+  // Streaming response
   const stream = new ReadableStream({
     async start(controller) {
       const keepAlive = setInterval(() => {
@@ -115,15 +269,19 @@ export async function POST(req: NextRequest) {
         let filteredPaths: string[] = [];
         let fileMetrics: { path: string; size: number }[] = [];
 
+        // ====================================================================
+        // LOCAL VS GITHUB BRANCH
+        // ====================================================================
+
         if (isLocal && localFiles) {
           allFileContents = localFiles;
           filteredPaths = localFiles.map((f: { path: string }) => f.path);
-
           fileMetrics = localFiles.map((f: { path: string; content: string }) => ({
             path: f.path,
             size: f.content.length 
           }));
         } else {
+          // GitHub repository analysis
           const parsed = parseRepoUrl(repoUrl);
           if (!parsed) {
             clearInterval(keepAlive);
@@ -135,12 +293,14 @@ export async function POST(req: NextRequest) {
           owner = parsed.owner;
           repo = parsed.repo;
 
+          // Fetch repo metadata
           const meta = await fetchRepoMeta(owner, repo, githubToken);
           commitSha = String(meta.default_branch);
           description = String(meta.description ?? "");
           stars = Number(meta.stargazers_count ?? 0);
           language = String(meta.language ?? "");
 
+          // Check cache
           const { data: cached } = await supabase
             .from("analyses")
             .select("result_json")
@@ -153,12 +313,16 @@ export async function POST(req: NextRequest) {
 
           if (cached?.result_json) {
             clearInterval(keepAlive);
-            controller.enqueue(encoder.encode(JSON.stringify({ ...cached.result_json, cached: true })));
+            controller.enqueue(encoder.encode(JSON.stringify({ 
+              ...cached.result_json, 
+              cached: true 
+            })));
             controller.close();
             return;
           }
 
-          const identifier = userId ? userId : ip;
+          // Rate limiting
+          const identifier = userId ?? ip;
           const limiter = userId ? ratelimitAuth : ratelimitFree;
           const { success, limit, reset, remaining } = await limiter.limit(identifier);
 
@@ -175,157 +339,129 @@ export async function POST(req: NextRequest) {
             return;
           }
 
+          // Fetch repo tree
           const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
 
-          const IGNORE = [
-            "node_modules", "dist", "build", ".next", ".git", "coverage", 
-            "__pycache__", ".yarn", "vendor", "package-lock.json", 
-            "yarn.lock", "pnpm-lock.yaml", "repomix-output.xml" 
-          ];
-          const IGNORE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".min.js", ".map", ".woff", ".woff2"];
-
+          // Filter valid files with optimized single-pass
           const validFiles = (treeData.tree as { type: string; path: string; size?: number }[])
-            .filter((file) => {
-              if (file.type !== "blob") return false;
-              if (IGNORE.some((ig) => file.path.includes(ig))) return false;
-              if (IGNORE_EXTENSIONS.some((ext) => file.path.endsWith(ext))) return false;
-              return true;
-            });
+            .filter(file => file.type === "blob" && !isIgnoredFile(file.path));
 
-          filteredPaths = validFiles.map((file) => file.path);
-          
-          fileMetrics = validFiles.map((file) => ({
+          filteredPaths = validFiles.map(file => file.path);
+          fileMetrics = validFiles.map(file => ({
             path: file.path,
             size: file.size || 0
           }));
           
+          // Score and classify files
           const scoredFiles = classifyAndScoreFiles(filteredPaths);
-          scoredFiles.forEach(file => {
-            if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
-              file.role = "entry";
-              file.score += 500;
-            }
-          });
+          boostEntryPointScores(scoredFiles);
 
           const topFiles = getTopFiles(scoredFiles, 20);
 
-          for (const file of topFiles.slice(0, 30)) {
+          // Ensure tsconfig.json is included for alias resolution
+          const tsconfigEntry = scoredFiles.find(f => 
+            f.path === "tsconfig.json" || f.path === "src/tsconfig.json"
+          );
+          if (tsconfigEntry && !topFiles.find(f => f.path === tsconfigEntry.path)) {
+            topFiles.unshift(tsconfigEntry);
+          }
+
+          // Fetch file contents (limit to first 500 lines per file)
+          const fetchPromises = topFiles.slice(0, 30).map(async file => {
             try {
               const content = await fetchFileContent(owner, repo, file.path, githubToken);
               const safeContent = content.split("\n").slice(0, 500).join("\n");
-              allFileContents.push({ path: file.path, content: safeContent });
+              return { path: file.path, content: safeContent };
             } catch {
-              // Ignore individual file fetch errors
+              return null;
             }
-          }
+          });
+
+          const results = await Promise.all(fetchPromises);
+          allFileContents = results.filter((r): r is { path: string; content: string } => r !== null);
         }
+
+        // ====================================================================
+        // EARLY EXIT: No readable files
+        // ====================================================================
 
         if (allFileContents.length === 0) {
           clearInterval(keepAlive);
-          controller.enqueue(encoder.encode(JSON.stringify({ error: "No readable code files found." })));
+          controller.enqueue(encoder.encode(JSON.stringify({ 
+            error: "No readable code files found." 
+          })));
           controller.close();
           return;
         }
 
+        // ====================================================================
+        // CORE ANALYSIS PIPELINE
+        // ====================================================================
+
+        // Re-score all files for analysis (includes entry point boosting)
         const scoredAllFiles = classifyAndScoreFiles(filteredPaths);
-        scoredAllFiles.forEach(file => {
-          if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
-            file.role = "entry";
-            file.score += 500;
-          }
-        });
+        boostEntryPointScores(scoredAllFiles);
 
         const topFilesForGroq = getTopFiles(scoredAllFiles, 20);
-        const entryPoints = scoredAllFiles.filter((f) => f.role === "entry").map((f) => f.path);
+        const entryPoints = scoredAllFiles
+          .filter(f => f.role === "entry")
+          .slice(0, 5)
+          .map(f => f.path);
 
-        const dependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+        // Build dependency graph
+        const rawDependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
+        
+        // 🔧 FIX: Sanitize graph to prevent React Flow floating window bug
+        const dependencyGraph = sanitizeDependencyGraph(rawDependencyGraph);
+        
         const fanIn = computeFanIn(dependencyGraph);
         const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
 
+        // Blast radius analysis
         const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
         const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
         
+        // Health metrics
         const fanInValues = Object.values(fanIn) as number[];
         const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
-        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length; 
+        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length;
         
         const healthMetrics = calculateHealthGrade({
           totalFiles: filteredPaths.length,
-          circularDependencies: 0, 
+          circularDependencies: 0,
           maxFanIn: maxFanInValue,
-          largeFilesCount: largeFilesCount
+          largeFilesCount
         });
 
+        // LLM analysis
         const analysis = await analyzeWithGemini(
           `${owner}/${repo}`,
           description || "No description provided",
           entryPoints,
-          topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
+          topFilesForGroq.map(f => ({ path: f.path, role: f.role })),
           allFileContents.slice(0, 15),
           blastRadiusTargets,
           healthMetrics 
         );
 
-        // --- 🚀 SPRINT 4: TEST COVERAGE STRATEGIST (PHASE 1) ---
-        type TestCoverageMap = Record<string, { isTested: boolean; testFiles: string[] }>;
-        const testCoverageMap: TestCoverageMap = {};
-
-        const isTestFile = (path: string) => /\.(test|spec)\.[jt]sx?$/i.test(path) || /__(tests|mocks)__\//i.test(path);
-        
-        const getSourcePathFromTest = (testPath: string) => {
-          return testPath
-            .replace(/\.(test|spec)(\.[jt]sx?)$/i, '$2')
-            .replace(/__(tests|mocks)__\//i, '');
-        };
-
-        filteredPaths.forEach(path => {
-          if (!isTestFile(path)) {
-            testCoverageMap[path] = { isTested: false, testFiles: [] };
-          }
-        });
-
-        filteredPaths.forEach(path => {
-          if (isTestFile(path)) {
-            const presumedSource = getSourcePathFromTest(path);
-            if (testCoverageMap[presumedSource]) {
-              testCoverageMap[presumedSource].isTested = true;
-              testCoverageMap[presumedSource].testFiles.push(path);
-            }
-          }
-        });
+        // 🧪 Test Coverage Analysis (Sprint 4)
+        const testCoverageMap = generateTestCoverageMap(filteredPaths);
+        const coverageGaps = computeCoverageGaps(fanIn, testCoverageMap, 10);
 
         console.log("🧪 [Sprint 4] Test Coverage Map Generated!");
-        console.log(Object.entries(testCoverageMap).filter(([, data]) => data.isTested).slice(0, 3));
+        console.log("💣 [Sprint 4] Coverage Gaps Computed:", coverageGaps.length);
 
-        // --- 🚀 SPRINT 4: RISK ALGORITHM (PHASE 2) ---
-        const coverageGaps = Object.entries(fanIn)
-          .map(([filePath, fanInScore]) => {
-            const coverageData = testCoverageMap[filePath] || { isTested: false, testFiles: [] };
-            const riskScore = coverageData.isTested ? 0 : (fanInScore as number);
-            
-            return {
-              file: filePath,
-              fanIn: fanInScore as number,
-              isTested: coverageData.isTested,
-              testFiles: coverageData.testFiles,
-              riskScore: riskScore
-            };
-          })
-          .filter(gap => gap.riskScore > 0) 
-          .sort((a, b) => b.riskScore - a.riskScore) 
-          .slice(0, 10); 
-
-        console.log("💣 [Sprint 4] Top 3 Ticking Time Bombs:");
-        console.log(coverageGaps.slice(0, 3));
-        // --- END SPRINT 4 DATA PIPELINE ---
+        // ====================================================================
+        // ASSEMBLE RESULT
+        // ====================================================================
 
         const result = {
           owner,
           repo,
           branch: commitSha,
-          description: description,
-          stars: stars,
-          language: language,
+          description,
+          stars,
+          language,
           totalFiles: filteredPaths.length,
           entryPoints,
           dependencyGraph,
@@ -336,9 +472,10 @@ export async function POST(req: NextRequest) {
           fileMetrics,
           healthMetrics,
           testCoverageMap,
-          coverageGaps // Safely injected here!
+          coverageGaps
         };
 
+        // Persist to database (GitHub repos only)
         if (!isLocal) {
           await supabase.from("analyses").insert({
             repo_url: repoUrl,
@@ -352,6 +489,7 @@ export async function POST(req: NextRequest) {
           await processAndStoreCodebase(supabase, repoUrl, allFileContents);
         }
 
+        // Send result and close stream
         clearInterval(keepAlive);
         controller.enqueue(encoder.encode(JSON.stringify(result)));
         controller.close();
@@ -359,13 +497,17 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         clearInterval(keepAlive);
         const message = err instanceof Error ? err.message : "Unknown error";
+        
         if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
           controller.enqueue(encoder.encode(JSON.stringify({ 
             error: 'REQUIRE_GITHUB_AUTH',
             message: 'This repository requires GitHub authentication. Please sign in with GitHub to analyze private repositories.'
           })));
         } else {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: message })));
+          console.error("Analysis error:", err);
+          controller.enqueue(encoder.encode(JSON.stringify({ 
+            error: message 
+          })));
         }
         controller.close();
       }

@@ -355,7 +355,7 @@ function AnalyzeContent() {
     return (
       <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center font-satoshi p-4">
         <div
-          className={`glass-card p-8 rounded-2xl max-w-md w-full text-center border ${isRateLimit ? "border-amber-500/20" : "border-red-500/10"}`}
+          className={`glass-card p-8 rounded-2xl max-w-lg w-full text-center border ${isRateLimit ? "border-amber-500/20" : "border-red-500/10"}`}
         >
           <div
             className={`w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-6 border ${isRateLimit ? "bg-amber-500/10 border-amber-500/20" : "bg-red-500/10 border-red-500/20"}`}
@@ -366,10 +366,17 @@ function AnalyzeContent() {
               <Terminal className="w-6 h-6 text-red-400" />
             )}
           </div>
-          <h2 className="cabinet text-2xl font-bold text-white mb-2">
+          <h2 className="cabinet text-2xl font-bold text-white mb-4">
             {isRateLimit ? "Daily Limit Reached" : "Autopsy Failed"}
           </h2>
-          <p className="text-slate-400 text-sm mb-8">{error}</p>
+          
+          {/* THE FIX: Scrollable, word-wrapping terminal box for the error */}
+          <div className="w-full max-h-[200px] overflow-y-auto custom-scrollbar p-4 mb-8 rounded-lg bg-[#0e0e0e] border border-white/5 shadow-inner text-left">
+            <p className="text-xs leading-relaxed font-mono text-red-400 break-words whitespace-pre-wrap">
+              {error}
+            </p>
+          </div>
+
           <div className="flex flex-col gap-3">
             {isRateLimit && (
               <button

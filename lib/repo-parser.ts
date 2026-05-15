@@ -66,8 +66,22 @@ export function classifyAndScoreFiles(paths: string[]): RepoFile[] {
 }
 
 export function getTopFiles(files: RepoFile[], limit = 30): RepoFile[] {
-  return files
-    .filter((f) => f.role !== "test")
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  // 1. We MUST allow config files through so the Alias Resolver can read tsconfig.json!
+  const cleanFiles = files.filter(
+    (f) => f.role !== "test" && !f.path.endsWith('.md')
+  );
+
+  // 2. Separate into categories
+  const entries = cleanFiles.filter(f => f.role === "entry").sort((a, b) => b.score - a.score);
+  const coreFiles = cleanFiles.filter(f => f.role !== "entry").sort((a, b) => b.score - a.score);
+
+  // 3. Force Diversity: Cap entry points to 8
+  const maxEntries = 8;
+  const selectedEntries = entries.slice(0, maxEntries);
+  
+  // 4. Fill remaining slots
+  const remainingSlots = limit - selectedEntries.length;
+  const selectedCore = coreFiles.slice(0, remainingSlots);
+
+  return [...selectedEntries, ...selectedCore];
 }
