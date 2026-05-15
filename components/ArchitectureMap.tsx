@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Controls,
   useNodesState,
   useEdgesState,
@@ -459,7 +460,14 @@ export default function ArchitectureMap({
         minZoom={0.3}
         maxZoom={2}
       >
-        <Background color="#333" gap={16} />
+        {/* A subtle, dark blueprint grid */}
+<Background 
+  variant={BackgroundVariant.Lines} 
+  color="#ffffff" 
+  gap={32} 
+  size={1} 
+  className="opacity-[0.03]" 
+/>
         <Controls
           className="!bg-[#141414] !rounded-lg overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-white/10 [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button]:!fill-slate-400 hover:[&>button]:!bg-white/5 hover:[&>button]:!fill-white transition-colors"
           showInteractive={false}

@@ -49,6 +49,30 @@ const fadeUp = {
   },
 };
 
+// A sleek number counter for the telemetry badge
+const Counter = ({ value }: { value: number }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let start = 0;
+    const end = parseInt(String(value).substring(0, 3)); // Handle safe parsing
+    if (start === end) return;
+
+    const totalMiliseconds = 1000;
+    const incrementTime = totalMiliseconds / end;
+
+    const timer = setInterval(() => {
+      start += 1;
+      setCount(start);
+      if (start === end) clearInterval(timer);
+    }, incrementTime);
+
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <span>{count}</span>;
+};
+
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -235,7 +259,7 @@ export default function Home() {
                   Acc<span className="hidden sm:inline">uracy</span>
                 </span>
                 <span className="text-[10px] sm:text-sm font-mono font-bold text-emerald-500/80">
-                  {telemetry.successRate}%
+                  <Counter value={telemetry.successRate} />%
                 </span>
               </div>
 
@@ -245,8 +269,8 @@ export default function Home() {
                 <span className="text-[8px] sm:text-[9px] font-mono text-slate-500 uppercase tracking-widest">
                   Scans<span className="hidden sm:inline">_Logged</span>
                 </span>
-                <span className="text-[10px] sm:text-sm font-mono font-bold text-slate-300">
-                  {telemetry.totalScans}
+                <span className="text-[10px] sm:text-sm font-mono font-bold text-emerald-500/80">
+                  <Counter value={telemetry.totalScans} />
                 </span>
               </div>
             </motion.div>
