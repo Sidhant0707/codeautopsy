@@ -118,7 +118,7 @@ function getForceLayoutedElements(
   const maxDegree = Math.max(...Array.from(nodeDegree.values()), 1);
   const hubNodes = new Set(
     Array.from(nodeDegree.entries())
-      .filter(([_, degree]) => degree > maxDegree * 0.5)
+      .filter(([, degree]) => degree > maxDegree * 0.5)
       .map(([id]) => id)
   );
 

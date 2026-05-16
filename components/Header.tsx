@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import { LayoutGrid, LogOut, Menu, X, BadgeCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase-browser";
 import { User } from "@supabase/supabase-js";
@@ -26,9 +31,11 @@ export default function Header() {
       setUser(data.user);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+      },
+    );
 
     return () => listener.subscription.unsubscribe();
   }, [supabase.auth]);
@@ -47,7 +54,7 @@ export default function Header() {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
 
-      const sections = ["features", "pricing"];
+      const sections = ["features", "about", "pricing"];
       for (const section of sections) {
         const element = document.getElementById(section);
         if (element) {
@@ -98,9 +105,9 @@ export default function Header() {
   };
 
   const navItems = [
-    { id: "about", label: "About", href: "/about" },
     { id: "features", label: "Features", href: "/#features" },
-    { id: "pricing", label: "Pricing", href: "/pricing" },
+    { id: "about", label: "About", href: "/#about" },
+    { id: "pricing", label: "Pricing", href: "/#pricing" },
   ];
 
   // Helper to get avatar
@@ -127,8 +134,8 @@ export default function Header() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-700 ${
-          isScrolled 
-            ? "bg-[#0a0a0a]/80 border-b border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)]" 
+          isScrolled
+            ? "bg-[#0a0a0a]/80 border-b border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
             : "bg-transparent"
         }`}
         style={{ backdropFilter: isScrolled ? `blur(${navBlur}px)` : "none" }}
@@ -143,11 +150,16 @@ export default function Header() {
         )}
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[4.5rem] flex items-center justify-between">
-          
-          <Link href="/" className="flex items-center gap-3 cursor-pointer group relative z-50">
+          <Link
+            href="/"
+            className="flex items-center gap-3 cursor-pointer group relative z-50"
+          >
             <motion.div
               className="absolute inset-0 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }}
+              style={{
+                background:
+                  "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)",
+              }}
             />
             <div className="relative">
               <Image
@@ -175,8 +187,8 @@ export default function Header() {
                   }
                 }}
                 className={`relative px-5 py-2 rounded-full text-sm font-semibold transition-all duration-300 ${
-                  activeSection === item.id 
-                    ? "text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]" 
+                  activeSection === item.id
+                    ? "text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
                     : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
                 }`}
               >
@@ -249,12 +261,18 @@ export default function Header() {
                   <AnimatePresence>
                     {menuOpen && (
                       <>
-                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setMenuOpen(false)}
+                        />
                         <motion.div
                           initial={{ opacity: 0, y: 8, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                          transition={{
+                            duration: 0.2,
+                            ease: [0.22, 1, 0.36, 1],
+                          }}
                           className="absolute right-0 mt-3 w-64 rounded-2xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.6)] z-50 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08]"
                         >
                           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent" />
@@ -306,13 +324,25 @@ export default function Header() {
                             >
                               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] group-hover:bg-white/[0.08] border border-white/[0.06] transition-all">
                                 <div className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center overflow-hidden">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 mt-1">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className="w-3 h-3 mt-1"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                                    />
                                     <circle cx="12" cy="7" r="4" />
                                   </svg>
                                 </div>
                               </div>
-                              <span className="font-medium">Account Settings</span>
+                              <span className="font-medium">
+                                Account Settings
+                              </span>
                             </Link>
                           </div>
 
@@ -433,13 +463,14 @@ export default function Header() {
                         className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-slate-300 rounded-r-full"
                       />
                     )}
-                    <span className={activeSection === item.id ? "ml-2" : ""}>{item.label}</span>
+                    <span className={activeSection === item.id ? "ml-2" : ""}>
+                      {item.label}
+                    </span>
                   </Link>
                 ))}
 
                 {user ? (
                   <div className="flex flex-col gap-2 pt-6 mt-4 border-t border-white/[0.06]">
-                    
                     {/* Upgraded Mobile Menu Profile Header */}
                     <div className="px-1 py-3 mb-2 flex items-center gap-3">
                       <Image
@@ -474,8 +505,18 @@ export default function Header() {
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-300 hover:text-white bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] transition-all"
                     >
                       <div className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center overflow-hidden">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 mt-1">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="w-3 h-3 mt-1"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                          />
                           <circle cx="12" cy="7" r="4" />
                         </svg>
                       </div>
