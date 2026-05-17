@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { animate } from "framer-motion";
 import {
   Sparkles,
   GitBranch,
@@ -291,33 +292,30 @@ const Icon3D = ({ icon: Icon, className = "" }: Icon3DProps) => {
 
 const Counter = ({
   value,
-  duration = 1000,
+  duration = 2,
 }: {
   value: number;
   duration?: number;
 }) => {
-  const [count, setCount] = useState(0);
+  const nodeRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    let start = 0;
-    const end = parseInt(String(value).substring(0, 3));
-    if (start === end) return;
+    const node = nodeRef.current;
+    if (!node) return;
 
-    const increment = end / (duration / 16);
-    const timer = setInterval(() => {
-      start += increment;
-      if (start >= end) {
-        setCount(end);
-        clearInterval(timer);
-      } else {
-        setCount(Math.floor(start));
-      }
-    }, 16);
+    // Framer motion handles the buttery-smooth deceleration mathematically
+    const controls = animate(0, value, {
+      duration: duration,
+      ease: "easeOut",
+      onUpdate(v) {
+        node.textContent = Math.floor(v).toString();
+      },
+    });
 
-    return () => clearInterval(timer);
+    return () => controls.stop();
   }, [value, duration]);
 
-  return <span>{count}</span>;
+  return <span ref={nodeRef} />;
 };
 
 const FloatingOrbs = () => {
