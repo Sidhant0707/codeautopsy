@@ -1,6 +1,8 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Download, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface ExportButtonProps {
   data: {
@@ -17,7 +19,10 @@ interface ExportButtonProps {
 }
 
 export default function ExportButton({ data }: ExportButtonProps) {
-  const handleExport = () => {
+  const [isExported, setIsExported] = useState(false);
+
+  // --- PRINCIPAL UPGRADE: Memoized to prevent unnecessary re-renders
+  const handleExport = useCallback(() => {
     let md = `# CodeAutopsy Report: ${data.owner}/${data.repo}\n\n`;
     
     md += `## System Purpose\n${data.analysis.what_it_does}\n\n`;
@@ -53,21 +58,60 @@ export default function ExportButton({ data }: ExportButtonProps) {
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+    
     a.href = url;
     a.download = `${data.repo}-autopsy.md`;
     document.body.appendChild(a);
     a.click();
+    
+    // Cleanup
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+
+    // --- PRINCIPAL UPGRADE: Trigger Success Micro-Interaction
+    setIsExported(true);
+    setTimeout(() => setIsExported(false), 2000);
+  }, [data]);
 
   return (
-    <button
+    <motion.button
+      whileTap={{ scale: 0.95 }}
       onClick={handleExport}
-      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all font-mono text-[10px] uppercase tracking-widest font-bold h-9 flex-shrink-0"
+      disabled={isExported}
+      aria-label="Export Markdown Report"
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-mono text-[10px] uppercase tracking-widest font-bold h-9 flex-shrink-0 transition-all duration-300 ${
+        isExported 
+          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]" 
+          : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white"
+      }`}
     >
-      <Download className="w-3.5 h-3.5" />
-      <span className="hidden sm:inline">Export .md</span>
-    </button>
+      <AnimatePresence mode="wait" initial={false}>
+        {isExported ? (
+          <motion.div
+            key="check"
+            initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Exported</span>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="download"
+            initial={{ opacity: 0, scale: 0.5, rotate: 90 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.5, rotate: -90 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export .md</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.button>
   );
 }

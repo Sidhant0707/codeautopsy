@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, memo } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -13,64 +13,132 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { hierarchy, tree } from "d3-hierarchy";
+import { FolderOpen, FileCode, Network } from "lucide-react";
 
 interface DirectoryNode {
   name: string;
   path: string;
   isFolder: boolean;
-  color?: string;
+  themeIndex: number;
   children?: DirectoryNode[];
 }
 
 interface TreeNodeData {
   name: string;
   isFolder: boolean;
-  color?: string;
+  themeIndex: number;
   isDimmed: boolean;
 }
 
+// --- PRINCIPAL UPGRADE: Safe Tailwind Themes ---
+// Prevents Tailwind from purging dynamic classes and adds premium styling
+const NODE_THEMES = [
+  {
+    text: "text-blue-400",
+    bg: "bg-blue-500/10",
+    border: "border-blue-500/30",
+    dot: "bg-blue-500",
+  },
+  {
+    text: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/30",
+    dot: "bg-emerald-500",
+  },
+  {
+    text: "text-purple-400",
+    bg: "bg-purple-500/10",
+    border: "border-purple-500/30",
+    dot: "bg-purple-500",
+  },
+  {
+    text: "text-amber-400",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/30",
+    dot: "bg-amber-500",
+  },
+  {
+    text: "text-pink-400",
+    bg: "bg-pink-500/10",
+    border: "border-pink-500/30",
+    dot: "bg-pink-500",
+  },
+  {
+    text: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    border: "border-cyan-500/30",
+    dot: "bg-cyan-500",
+  },
+  {
+    text: "text-rose-400",
+    bg: "bg-rose-500/10",
+    border: "border-rose-500/30",
+    dot: "bg-rose-500",
+  },
+];
 
-const TreeNode = ({ data }: { data: TreeNodeData }) => {
+const DEFAULT_THEME = {
+  text: "text-slate-300",
+  bg: "bg-slate-500/10",
+  border: "border-slate-500/30",
+  dot: "bg-slate-500",
+};
+
+// --- PRINCIPAL UPGRADE: Memoized Premium Node ---
+const TreeNode = memo(({ data }: { data: TreeNodeData }) => {
+  const theme = data.isFolder
+    ? DEFAULT_THEME
+    : NODE_THEMES[data.themeIndex % NODE_THEMES.length];
+
   return (
     <div
-      className={`flex items-center gap-2 relative transition-all duration-300 cursor-pointer ${
-        data.isDimmed ? "opacity-20 grayscale" : "opacity-100 hover:scale-105"
+      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg border bg-[#0e0e0e]/80 backdrop-blur-md transition-all duration-300 cursor-crosshair shadow-lg ${
+        data.isDimmed
+          ? "opacity-30 grayscale border-transparent"
+          : `opacity-100 hover:scale-105 hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] ${theme.border}`
       }`}
     >
-      <Handle type="target" position={Position.Left} className="opacity-0" />
-      <div
-        className={`w-3 h-3 rounded-full border-2 border-[#0e0e0e] shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-colors ${
-          data.isFolder ? "bg-slate-600" : `bg-${data.color}-500`
-        }`}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!opacity-0 !w-full !h-full !absolute !z-0 !bg-transparent !border-none"
       />
+
+      <div
+        className={`w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] ${theme.dot}`}
+      />
+
+      {data.isFolder ? (
+        <FolderOpen
+          className={`w-3.5 h-3.5 ${data.isDimmed ? "text-slate-600" : "text-slate-400"}`}
+        />
+      ) : (
+        <FileCode
+          className={`w-3.5 h-3.5 ${data.isDimmed ? "text-slate-600" : theme.text}`}
+        />
+      )}
+
       <div
         className={`font-mono text-xs whitespace-nowrap transition-colors ${
-          data.isFolder
-            ? data.isDimmed
-              ? "text-slate-600"
-              : "text-slate-400 font-bold"
-            : data.isDimmed
-              ? "text-slate-700"
+          data.isDimmed
+            ? "text-slate-600"
+            : data.isFolder
+              ? "text-slate-300 font-bold"
               : "text-slate-200"
         }`}
       >
         {data.name}
       </div>
-      <Handle type="source" position={Position.Right} className="opacity-0" />
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!opacity-0 !w-full !h-full !absolute !z-0 !bg-transparent !border-none"
+      />
     </div>
   );
-};
-
-const COLORS = [
-  "blue",
-  "emerald",
-  "purple",
-  "amber",
-  "pink",
-  "cyan",
-  "rose",
-  "indigo",
-];
+});
+TreeNode.displayName = "TreeNode";
 
 export default function DirectoryTreeVisualizer({
   metrics,
@@ -79,7 +147,6 @@ export default function DirectoryTreeVisualizer({
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-  // 🔥 MEMOIZED nodeTypes - prevents re-creation on every render
   const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
 
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -90,12 +157,12 @@ export default function DirectoryTreeVisualizer({
       name: "root",
       path: "root",
       isFolder: true,
-      color: "slate",
+      themeIndex: 0,
       children: [],
     };
 
-    let colorIndex = 0;
-    const folderColorMap = new Map<string, string>();
+    let themeCounter = 0;
+    const folderThemeMap = new Map<string, number>();
 
     metrics.forEach((metric) => {
       const parts = metric.path.split("/");
@@ -109,15 +176,15 @@ export default function DirectoryTreeVisualizer({
 
         if (!existing) {
           const topFolder = parts.length > 1 ? parts[0] : "root";
-          if (!folderColorMap.has(topFolder)) {
-            folderColorMap.set(topFolder, COLORS[colorIndex % COLORS.length]);
-            colorIndex++;
+          if (!folderThemeMap.has(topFolder)) {
+            folderThemeMap.set(topFolder, themeCounter);
+            themeCounter++;
           }
           existing = {
             name: part,
             path: currentPath,
             isFolder: !isFile,
-            color: folderColorMap.get(topFolder),
+            themeIndex: folderThemeMap.get(topFolder) || 0,
             children: isFile ? undefined : [],
           };
           currentLevel.push(existing);
@@ -129,7 +196,8 @@ export default function DirectoryTreeVisualizer({
     });
 
     const d3Root = hierarchy(rootNode);
-    const treeLayout = tree<DirectoryNode>().nodeSize([25, 250]);
+    // Adjusted nodeSize to give more breathing room for the new wider premium nodes
+    const treeLayout = tree<DirectoryNode>().nodeSize([45, 300]);
     treeLayout(d3Root);
 
     const rfNodes: Node<TreeNodeData>[] = [];
@@ -143,7 +211,7 @@ export default function DirectoryTreeVisualizer({
         data: {
           name: node.data.name,
           isFolder: node.data.isFolder,
-          color: node.data.color,
+          themeIndex: node.data.themeIndex,
           isDimmed: false,
         },
       });
@@ -154,9 +222,11 @@ export default function DirectoryTreeVisualizer({
         id: `e-${link.source.data.path}-${link.target.data.path}`,
         source: link.source.data.path,
         target: link.target.data.path,
-        type: "default",
+        type: "smoothstep", // Keep the structured layout
         animated: false,
-        style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.4 },
+        style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.3 },
+        // Add this property to slightly round the sharp 90-degree corners!
+        pathOptions: { borderRadius: 12 },
       });
     });
 
@@ -179,9 +249,10 @@ export default function DirectoryTreeVisualizer({
       setEdges((eds) =>
         eds.map((e) => ({
           ...e,
+          animated: false,
           style: {
             ...e.style,
-            opacity: 0.4,
+            opacity: 0.3,
             strokeWidth: 1.5,
             stroke: "#334155",
           },
@@ -211,29 +282,43 @@ export default function DirectoryTreeVisualizer({
           selectedPath.startsWith(e.target + "/") ||
           e.target.startsWith(selectedPath + "/");
         const isActiveEdge = sActive && tActive;
+
         return {
           ...e,
+          // --- PRINCIPAL UPGRADE: Active flow animation on isolated paths ---
+          animated: isActiveEdge,
           style: {
             ...e.style,
             opacity: isActiveEdge ? 1 : 0.05,
             strokeWidth: isActiveEdge ? 2.5 : 1,
-            stroke: isActiveEdge ? "#94a3b8" : "#1e293b",
+            stroke: isActiveEdge ? "#10b981" : "#1e293b", // Emerald glow for active flow
           },
         };
       }),
     );
   }, [selectedPath, setNodes, setEdges]);
 
-  if (nodes.length === 0) return null;
+  // --- PRINCIPAL UPGRADE: Premium Empty State ---
+  if (nodes.length === 0) {
+    return (
+      <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center rounded-2xl border border-white/5 bg-[#0a0a0a]">
+        <Network className="w-8 h-8 text-slate-600 mb-3" />
+        <p className="text-slate-500 font-mono text-xs uppercase tracking-widest">
+          No directory structure parsed
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-white/5 bg-[#0a0a0a] relative">
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <div className="text-[10px] font-mono text-slate-400 bg-black/40 px-3 py-1.5 rounded border border-white/5 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Click any folder/file to isolate path
+        <div className="text-[10px] font-mono text-slate-400 bg-white/[0.02] backdrop-blur-md px-3 py-2 rounded-lg border border-white/5 flex items-center gap-2 shadow-lg">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
+          Click any node to isolate dependency path
         </div>
       </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -246,7 +331,12 @@ export default function DirectoryTreeVisualizer({
         fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1.5 }}
         className="bg-[#0e0e0e]"
       >
-        <Background color="#222" gap={16} />
+        <Background
+          color="#ffffff"
+          gap={16}
+          size={1}
+          style={{ opacity: 0.03 }}
+        />
         <Controls
           className="!bg-[#141414] !rounded-lg overflow-hidden border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] [&>button]:!bg-[#141414] [&>button]:!border-b-white/10 [&>button>svg]:!fill-slate-400 hover:[&>button>svg]:!fill-white hover:[&>button]:!bg-white/5 transition-all"
           showInteractive={false}
