@@ -204,6 +204,13 @@ const TreemapNode = memo(
 
     const isLargeEnough = box.width > 8 && box.height > 6;
 
+    const nodeStyle = {
+      left: `${box.x}%`,
+      top: `${box.y}%`,
+      width: `${box.width}%`,
+      height: `${box.height}%`,
+    };
+
 
 
     return (
@@ -216,17 +223,7 @@ const TreemapNode = memo(
 
         className={`absolute border-[0.5px] overflow-hidden cursor-crosshair transition-colors duration-300 hover:z-30 hover:shadow-[0_0_30px_rgba(0,0,0,0.8)] backdrop-blur-sm ${box.theme}`}
 
-        style={{
-
-          left: `${box.x}%`,
-
-          top: `${box.y}%`,
-
-          width: `${box.width}%`,
-
-          height: `${box.height}%`,
-
-        }}
+        style={nodeStyle}
 
       >
 
