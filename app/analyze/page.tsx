@@ -10,6 +10,7 @@ import {
   useMemo,
   useCallback,
   useRef,
+  memo,
 } from "react";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -34,17 +35,12 @@ import { FaGithub } from "react-icons/fa";
 
 // Global Components
 import ExportButton from "@/components/ExportButton";
-import RepoChat from "@/components/RepoChat";
 import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
 import { RepoData } from "@/lib/types/analyze";
 
-// Tab Components
-import OverviewTab from "@/components/analyze/OverviewTab";
-import PrImpactTab from "@/components/analyze/PrImpactTab";
-
-// --- SKELETON & LAZY LOADING ---
-const SkeletonLoader = () => (
+// --- PRINCIPAL UPGRADE: Skeleton Extracted (No Re-allocation) ---
+const SkeletonLoader = memo(() => (
   <div className="w-full h-full space-y-4 p-6 animate-pulse">
     <div className="h-8 bg-white/5 rounded-lg w-1/3" />
     <div className="h-64 bg-white/5 rounded-xl" />
@@ -53,8 +49,18 @@ const SkeletonLoader = () => (
       <div className="h-32 bg-white/5 rounded-lg" />
     </div>
   </div>
-);
+));
+SkeletonLoader.displayName = "SkeletonLoader";
 
+// --- PRINCIPAL UPGRADE: Lazy Load ALL Tab Components ---
+const OverviewTab = dynamic(() => import("@/components/analyze/OverviewTab"), {
+  loading: () => <SkeletonLoader />,
+  ssr: false,
+});
+const PrImpactTab = dynamic(() => import("@/components/analyze/PrImpactTab"), {
+  loading: () => <SkeletonLoader />,
+  ssr: false,
+});
 const DebugInterface = dynamic(
   () => import("@/components/debug/DebugInterface"),
   { loading: () => <SkeletonLoader />, ssr: false },
@@ -75,18 +81,44 @@ const RiskDashboard = dynamic(() => import("@/components/RiskDashboard"), {
   loading: () => <SkeletonLoader />,
   ssr: false,
 });
+const RepoChat = dynamic(() => import("@/components/RepoChat"), {
+  loading: () => <SkeletonLoader />,
+  ssr: false,
+});
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-type TabType =
-  | "overview"
-  | "visualizer"
-  | "doctor"
-  | "pr_impact"
-  | "risk_radar";
-type MapViewType = "graph" | "treemap" | "directory";
+// --- PRINCIPAL UPGRADE: Extract Tab Config (No Re-allocation) ---
+const TAB_CONFIG = [
+  { id: "overview" as const, icon: FileCode, label: "Read Docs" },
+  { id: "visualizer" as const, icon: Layers, label: "Blueprint Map" },
+  { id: "doctor" as const, icon: Activity, label: "Diagnostic Engine" },
+  { id: "pr_impact" as const, icon: GitPullRequest, label: "PR Impact" },
+  { id: "risk_radar" as const, icon: Target, label: "Risk Radar" },
+] as const;
 
-function AnalyzeContent() {
+const MAP_VIEW_CONFIG = [
+  { id: "graph" as const, label: "Dependency Flow" },
+  { id: "directory" as const, label: "Folder Structure" },
+  { id: "treemap" as const, label: "Codebase Weight" },
+] as const;
+
+const LOADING_PHRASES = [
+  "Cloning repository...",
+  "Decrypting source tree...",
+  "Mapping AST nodes...",
+  "Tracing execution flows...",
+  "Calculating blast radius...",
+  "Evaluating test coverage...",
+  "Querying Groq LLM...",
+  "Compiling health report...",
+] as const;
+
+type TabType = (typeof TAB_CONFIG)[number]["id"];
+type MapViewType = (typeof MAP_VIEW_CONFIG)[number]["id"];
+
+// --- PRINCIPAL UPGRADE: Memoized Component (Prevents Unnecessary Re-renders) ---
+const AnalyzeContent = memo(() => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const repoUrl = searchParams.get("url") || searchParams.get("repo");
@@ -108,22 +140,12 @@ function AnalyzeContent() {
   const [showExitModal, setShowExitModal] = useState(false);
   const exitModalRef = useRef<HTMLDivElement>(null);
 
+  // --- PRINCIPAL UPGRADE: AbortController for Fetch Cleanup ---
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Loading Animation Loop
   const [loadingStep, setLoadingStep] = useState(0);
   const loadingControls = useAnimationControls();
-  const loadingPhrases = useMemo(
-    () => [
-      "Cloning repository...",
-      "Decrypting source tree...",
-      "Mapping AST nodes...",
-      "Tracing execution flows...",
-      "Calculating blast radius...",
-      "Evaluating test coverage...",
-      "Querying Groq LLM...",
-      "Compiling health report...",
-    ],
-    [],
-  );
 
   useEffect(() => {
     if (!loading) return;
@@ -140,16 +162,16 @@ function AnalyzeContent() {
           transition: { duration: 0.4, ease: "easeIn" },
         });
         if (isActive)
-          setLoadingStep((prev) => (prev + 1) % loadingPhrases.length);
+          setLoadingStep((prev) => (prev + 1) % LOADING_PHRASES.length);
       }
     };
     animate();
     return () => {
       isActive = false;
     };
-  }, [loading, loadingPhrases.length, loadingControls]);
+  }, [loading, loadingControls]);
 
-  // Session Storage & Hydration
+  // --- PRINCIPAL UPGRADE: Safe Hydration (No SSR Mismatch) ---
   useEffect(() => {
     const savedTab = sessionStorage.getItem("codeautopsy_tab");
     const savedView = sessionStorage.getItem("codeautopsy_view");
@@ -251,7 +273,7 @@ function AnalyzeContent() {
     else router.back();
   }, [feedbackSubmitted, router]);
 
-  // Data Fetching
+  // --- PRINCIPAL UPGRADE: Fetch with AbortController (No Memory Leak) ---
   useEffect(() => {
     if (source === "local") {
       const localData = sessionStorage.getItem("localAnalysisResult");
@@ -269,6 +291,12 @@ function AnalyzeContent() {
     if (!repoUrl) return;
 
     async function analyze() {
+      // Abort previous request if still running
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
       try {
         const supabase = createClient();
         const {
@@ -286,11 +314,11 @@ function AnalyzeContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repoUrl }),
+          signal: abortControllerRef.current.signal,
         });
 
         const json = await res.json();
 
-        // Handle explicit API errors (like Auth or Rate Limits)
         if (json.error === "REQUIRE_GITHUB_AUTH") {
           setShowGitHubAuthModal(true);
           setLoading(false);
@@ -298,12 +326,9 @@ function AnalyzeContent() {
         }
         if (json.error) throw new Error(json.error);
 
-        // --- THE ZOD SHIELD ---
-        // Instead of blindly trusting the LLM, we force it through the validator
         const parsedData = RepoDataSchema.safeParse(json);
 
         if (!parsedData.success) {
-          // If the LLM hallucinated, we catch it here and log the exact structural error
           console.error(
             "LLM Hallucination / Schema Mismatch:",
             parsedData.error.format(),
@@ -313,15 +338,24 @@ function AnalyzeContent() {
           );
         }
 
-        // If it passes, we know with 100% certainty the data is safe to render
         setData(parsedData.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        // Only show error if not aborted
+        if (err instanceof Error && err.name !== "AbortError") {
+          setError(err.message);
+        }
       } finally {
         setLoading(false);
+        abortControllerRef.current = null;
       }
     }
     analyze();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [repoUrl, source, router]);
 
   const isRateLimit = useMemo(
@@ -361,7 +395,7 @@ function AnalyzeContent() {
                 animate={loadingControls}
                 className="mono text-xs text-emerald-400 font-medium"
               >
-                {loadingPhrases[loadingStep]}
+                {LOADING_PHRASES[loadingStep]}
               </motion.span>
             </div>
           </div>
@@ -460,7 +494,7 @@ function AnalyzeContent() {
         <div className="flex items-center gap-4 sm:gap-6 min-w-0">
           <button
             onClick={handleBackNavigation}
-            title="Go back"
+            aria-label="Go back"
             className="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors group flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
@@ -514,16 +548,14 @@ function AnalyzeContent() {
                     <div className="flex items-center gap-1 px-1">
                       <button
                         onClick={() => handleFeedback(true)}
-                        title="Helpful"
-                        aria-label="Helpful"
+                        aria-label="Mark as helpful"
                         className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-green-400 transition-colors"
                       >
                         <ThumbsUp className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleFeedback(false)}
-                        title="Not helpful"
-                        aria-label="Not helpful"
+                        aria-label="Mark as not helpful"
                         className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors"
                       >
                         <ThumbsDown className="w-3.5 h-3.5" />
@@ -551,20 +583,14 @@ function AnalyzeContent() {
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          {/* TAB LIST */}
+          {/* TAB LIST --- PRINCIPAL UPGRADE: ARIA Boolean Fix ---*/}
           <div
             role="tablist"
             aria-label="Analysis Tools"
             className="h-16 flex-shrink-0 border-b border-white/5 flex items-center justify-center px-4 sm:px-6 bg-[#0a0a0a]/50 backdrop-blur-sm z-20 overflow-hidden"
           >
             <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] items-center gap-2 bg-[#141414]/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.15)] ring-1 ring-black/50 transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] w-auto">
-              {[
-                { id: "overview", icon: FileCode, label: "Read Docs" },
-                { id: "visualizer", icon: Layers, label: "Blueprint Map" },
-                { id: "doctor", icon: Activity, label: "Diagnostic Engine" },
-                { id: "pr_impact", icon: GitPullRequest, label: "PR Impact" },
-                { id: "risk_radar", icon: Target, label: "Risk Radar" },
-              ].map((tab) => {
+              {TAB_CONFIG.map((tab) => {
                 const isActive = activeTab === tab.id;
                 return (
                   <button
@@ -572,9 +598,9 @@ function AnalyzeContent() {
                     key={tab.id}
                     role="tab"
                     aria-selected={isActive ? "true" : "false"}
-                    aria-controls={String(`tabpanel-${tab.id}`)}
+                    aria-controls={`tabpanel-${tab.id}`}
                     tabIndex={isActive ? 0 : -1}
-                    onClick={() => setActiveTab(tab.id as TabType)}
+                    onClick={() => setActiveTab(tab.id)}
                     className={`relative flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest font-mono transition-colors flex items-center gap-2 ${isActive ? "text-white" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
                   >
                     {isActive && (
@@ -600,8 +626,23 @@ function AnalyzeContent() {
           {/* TAB PANELS */}
           <div className="flex-1 overflow-hidden relative">
             <AnimatePresence mode="wait">
-              {activeTab === "overview" && <OverviewTab data={data} />}
-              {activeTab === "pr_impact" && <PrImpactTab data={data} />}
+              {activeTab === "overview" && (
+                <ErrorBoundary
+                  key="overview-boundary"
+                  fallbackMessage="Failed to load overview."
+                >
+                  <OverviewTab data={data} />
+                </ErrorBoundary>
+              )}
+
+              {activeTab === "pr_impact" && (
+                <ErrorBoundary
+                  key="pr-boundary"
+                  fallbackMessage="Failed to load PR impact analyzer."
+                >
+                  <PrImpactTab data={data} />
+                </ErrorBoundary>
+              )}
 
               {activeTab === "visualizer" && data && (
                 <motion.div
@@ -630,14 +671,10 @@ function AnalyzeContent() {
                       </span>
                     </div>
                     <div className="flex overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10">
-                      {[
-                        { id: "graph", label: "Dependency Flow" },
-                        { id: "directory", label: "Folder Structure" },
-                        { id: "treemap", label: "Codebase Weight" },
-                      ].map((view) => (
+                      {MAP_VIEW_CONFIG.map((view) => (
                         <button
                           key={view.id}
-                          onClick={() => setMapView(view.id as MapViewType)}
+                          onClick={() => setMapView(view.id)}
                           className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === view.id ? "bg-white/10 text-white font-bold shadow-inner" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
                         >
                           {view.label}
@@ -646,7 +683,6 @@ function AnalyzeContent() {
                     </div>
                   </div>
                   <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
-                    {/* --- ERROR BOUNDARY INSTALLED HERE --- */}
                     <ErrorBoundary fallbackMessage="Failed to render architecture map.">
                       {mapView === "graph" ? (
                         data.dependencyGraph &&
@@ -694,13 +730,15 @@ function AnalyzeContent() {
                     {data.mermaidDiagram ? (
                       <>
                         <div className="w-full flex-1 min-h-0 rounded-2xl border border-white/5 overflow-hidden bg-[#0e0e0e] relative">
-                          <DebugInterface
-                            repoUrl={
-                              source === "local"
-                                ? "Local.zip Codebase"
-                                : `https://github.com/${data.owner}/${data.repo}`
-                            }
-                          />
+                          <ErrorBoundary fallbackMessage="Diagnostic interface crashed.">
+                            <DebugInterface
+                              repoUrl={
+                                source === "local"
+                                  ? "Local.zip Codebase"
+                                  : `https://github.com/${data.owner}/${data.repo}`
+                              }
+                            />
+                          </ErrorBoundary>
                         </div>
                         <motion.button
                           whileTap={{ scale: 0.99 }}
@@ -743,10 +781,12 @@ function AnalyzeContent() {
                   className="absolute inset-0 p-4 sm:p-6 overflow-y-auto custom-scrollbar"
                 >
                   {data.coverageGaps && data.fileContents ? (
-                    <RiskDashboard
-                      coverageGaps={data.coverageGaps}
-                      fileContents={data.fileContents}
-                    />
+                    <ErrorBoundary fallbackMessage="Risk dashboard failed to load.">
+                      <RiskDashboard
+                        coverageGaps={data.coverageGaps}
+                        fileContents={data.fileContents}
+                      />
+                    </ErrorBoundary>
                   ) : (
                     <div className="flex items-center justify-center h-full text-slate-500 font-mono text-sm">
                       No risk data available for this codebase.
@@ -767,6 +807,7 @@ function AnalyzeContent() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 100, opacity: 0 }}
               onClick={() => setIsChatOpen(true)}
+              aria-label="Open chat assistant"
               className="absolute right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-3 bg-[#141414]/90 backdrop-blur-md border border-white/10 border-r-0 px-4 py-4 rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] hover:bg-[#1a1a1a] hover:pr-6 transition-all group"
             >
               <div className="relative">
@@ -791,6 +832,7 @@ function AnalyzeContent() {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: EXPO_OUT }}
               className="h-full flex-shrink-0 border-l border-white/5 bg-[#0a0a0a] flex flex-col z-50 absolute right-0 sm:relative shadow-[-20px_0_40px_rgba(0,0,0,0.5)]"
+              style={{ willChange: "width, opacity" }}
             >
               <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-4 bg-[#0e0e0e]">
                 <div className="flex items-center gap-2">
@@ -802,13 +844,12 @@ function AnalyzeContent() {
                 <button
                   onClick={() => setIsChatOpen(false)}
                   className="p-1.5 rounded-md hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                  title="Close chat"
+                  aria-label="Close chat"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
               <div className="flex-1 min-h-0 bg-transparent">
-                {/* --- ERROR BOUNDARY INSTALLED HERE --- */}
                 <ErrorBoundary fallbackMessage="Copilot encountered a critical error.">
                   <RepoChat
                     repoContext={
@@ -877,7 +918,8 @@ function AnalyzeContent() {
       </AnimatePresence>
     </div>
   );
-}
+});
+AnalyzeContent.displayName = "AnalyzeContent";
 
 export default function AnalyzePage() {
   return (
