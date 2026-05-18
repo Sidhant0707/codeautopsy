@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+// --- PRINCIPAL UPGRADE: `m` instead of `motion` for LazyMotion tree-shaking ---
 import {
-  motion,
+  m,
   AnimatePresence,
   useScroll,
   useTransform,
@@ -26,18 +27,26 @@ export default function Header() {
   const { scrollY } = useScroll();
   const navBlur = useTransform(scrollY, [0, 100], [0, 24]);
 
+  // --- PRINCIPAL UPGRADE: Memory-safe Supabase subscription ---
   useEffect(() => {
+    let isMounted = true;
+
     supabase.auth.getUser().then(({ data }) => {
+      if (!isMounted) return;
       setUser(data.user);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        if (!isMounted) return;
         setUser(session?.user ?? null);
       },
     );
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, [supabase.auth]);
 
   useEffect(() => {
@@ -110,7 +119,6 @@ export default function Header() {
     { id: "pricing", label: "Pricing", href: "/#pricing" },
   ];
 
-  // Helper to get avatar
   const getAvatarUrl = (user: User) => {
     return (
       user.user_metadata?.avatar_url ||
@@ -118,7 +126,6 @@ export default function Header() {
     );
   };
 
-  // Helper to get display name
   const getDisplayName = (user: User) => {
     return (
       user.user_metadata?.full_name?.split(" ")[0] ||
@@ -129,7 +136,7 @@ export default function Header() {
 
   return (
     <>
-      <motion.header
+      <m.header
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -141,7 +148,7 @@ export default function Header() {
         style={{ backdropFilter: isScrolled ? `blur(${navBlur}px)` : "none" }}
       >
         {isScrolled && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8 }}
@@ -154,7 +161,7 @@ export default function Header() {
             href="/"
             className="flex items-center gap-3 cursor-pointer group relative z-50"
           >
-            <motion.div
+            <m.div
               className="absolute inset-0 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
               style={{
                 background:
@@ -193,7 +200,7 @@ export default function Header() {
                 }`}
               >
                 {activeSection === item.id && (
-                  <motion.div
+                  <m.div
                     layoutId="activeNavBubble"
                     className="absolute inset-0 bg-white/[0.12] rounded-full border border-white/[0.05]"
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -223,8 +230,7 @@ export default function Header() {
                 </Link>
 
                 <div className="relative">
-                  {/* Premium Desktop Profile Button */}
-                  <motion.button
+                  <m.button
                     onClick={() => setMenuOpen(!menuOpen)}
                     title={user.email || "Account settings"}
                     className="relative flex items-center gap-3 pl-3 pr-1 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.15] transition-all duration-300 focus:outline-none z-50 shadow-lg group"
@@ -246,7 +252,7 @@ export default function Header() {
                         height={32}
                         className="w-8 h-8 rounded-full object-cover border-2 border-[#141414] group-hover:border-white/20 transition-colors shadow-inner bg-slate-800"
                       />
-                      <motion.div
+                      <m.div
                         className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0a0a0a]"
                         animate={{ scale: [1, 1.2, 1] }}
                         transition={{
@@ -256,7 +262,7 @@ export default function Header() {
                         }}
                       />
                     </div>
-                  </motion.button>
+                  </m.button>
 
                   <AnimatePresence>
                     {menuOpen && (
@@ -265,7 +271,7 @@ export default function Header() {
                           className="fixed inset-0 z-40"
                           onClick={() => setMenuOpen(false)}
                         />
-                        <motion.div
+                        <m.div
                           initial={{ opacity: 0, y: 8, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -277,7 +283,6 @@ export default function Header() {
                         >
                           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent" />
 
-                          {/* Upgraded Desktop Dropdown Header */}
                           <div className="px-4 py-4 bg-gradient-to-b from-white/[0.04] to-transparent border-b border-white/[0.06] flex items-center gap-3">
                             <Image
                               src={getAvatarUrl(user)}
@@ -357,7 +362,7 @@ export default function Header() {
                               <span className="font-medium">Sign out</span>
                             </button>
                           </div>
-                        </motion.div>
+                        </m.div>
                       </>
                     )}
                   </AnimatePresence>
@@ -372,18 +377,18 @@ export default function Header() {
                   Log in
                 </Link>
                 <Link href="/signup">
-                  <motion.button
+                  <m.button
                     whileHover={{ scale: 1.02, y: -1 }}
                     whileTap={{ scale: 0.98 }}
                     className="relative px-6 py-2.5 rounded-xl text-sm font-semibold bg-white text-black hover:bg-slate-200 transition-all duration-300 shadow-[0_4px_16px_rgba(255,255,255,0.1)] hover:shadow-[0_6px_24px_rgba(255,255,255,0.15)]"
                   >
                     Sign up
-                  </motion.button>
+                  </m.button>
                 </Link>
               </div>
             )}
 
-            <motion.button
+            <m.button
               onClick={() => setMobileNavOpen(!mobileNavOpen)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -391,7 +396,7 @@ export default function Header() {
             >
               <AnimatePresence mode="wait">
                 {mobileNavOpen ? (
-                  <motion.div
+                  <m.div
                     key="close"
                     initial={{ rotate: -90, opacity: 0 }}
                     animate={{ rotate: 0, opacity: 1 }}
@@ -399,9 +404,9 @@ export default function Header() {
                     transition={{ duration: 0.2 }}
                   >
                     <X className="w-5 h-5" />
-                  </motion.div>
+                  </m.div>
                 ) : (
-                  <motion.div
+                  <m.div
                     key="menu"
                     initial={{ rotate: 90, opacity: 0 }}
                     animate={{ rotate: 0, opacity: 1 }}
@@ -409,18 +414,18 @@ export default function Header() {
                     transition={{ duration: 0.2 }}
                   >
                     <Menu className="w-5 h-5" />
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
-            </motion.button>
+            </m.button>
           </div>
         </div>
-      </motion.header>
+      </m.header>
 
       <AnimatePresence>
         {mobileNavOpen && (
           <>
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -429,7 +434,7 @@ export default function Header() {
               onClick={() => setMobileNavOpen(false)}
             />
 
-            <motion.div
+            <m.div
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
@@ -458,7 +463,7 @@ export default function Header() {
                     }`}
                   >
                     {activeSection === item.id && (
-                      <motion.div
+                      <m.div
                         layoutId="activeMobileIndicator"
                         className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-slate-300 rounded-r-full"
                       />
@@ -471,7 +476,6 @@ export default function Header() {
 
                 {user ? (
                   <div className="flex flex-col gap-2 pt-6 mt-4 border-t border-white/[0.06]">
-                    {/* Upgraded Mobile Menu Profile Header */}
                     <div className="px-1 py-3 mb-2 flex items-center gap-3">
                       <Image
                         src={getAvatarUrl(user)}
@@ -549,7 +553,7 @@ export default function Header() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </m.div>
           </>
         )}
       </AnimatePresence>

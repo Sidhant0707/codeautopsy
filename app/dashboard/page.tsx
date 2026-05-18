@@ -2,6 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Database,
   Clock,
@@ -35,6 +36,25 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#f1f5f9] p-4 sm:p-8 md:p-12 lg:p-24 font-satoshi relative overflow-hidden">
+      {/* ========================================================================
+    DASHBOARD NAVBAR
+======================================================================== */}
+      <nav className="w-full flex items-center justify-between py-6 mb-8 border-b border-white/[0.05]">
+        <Link href="/" className="flex items-center gap-3 cursor-pointer group">
+          <div className="relative">
+            <Image
+              src="/codeautopsy-logo1.png"
+              alt="CodeAutopsy"
+              width={28}
+              height={28}
+              className="rounded-md drop-shadow-[0_0_12px_rgba(255,255,255,0.05)] transition-transform duration-300 group-hover:scale-105"
+            />
+          </div>
+          <span className="text-lg font-bold tracking-tight text-slate-100 group-hover:text-white transition-colors">
+            CodeAutopsy
+          </span>
+        </Link>
+      </nav>
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent pointer-events-none z-0 blur-3xl" />
 

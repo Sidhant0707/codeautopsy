@@ -1153,9 +1153,9 @@ function AnalyzeContent() {
                     damping: 30,
                     mass: 0.8,
                   }}
-                  className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center overflow-y-auto"
+                  className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center overflow-y-auto custom-scrollbar"
                 >
-                  <div className="max-w-xl w-full glass-card p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]/80 text-center shadow-2xl transition-all my-auto">
+                  <div className="max-w-xl w-full glass-card p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#0e0e0e]/80 text-center shadow-2xl transition-all mt-8 sm:mt-12 mb-8 flex-shrink-0">
                     {!prResult ? (
                       <>
                         <div className="w-16 h-16 mx-auto rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6">

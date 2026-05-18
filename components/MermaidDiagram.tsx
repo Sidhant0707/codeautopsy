@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useId } from "react";
+import { useEffect, useRef, useState, memo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 interface Props {
   chart: string;
 }
 
-// 1. Extract config outside component to prevent recreating the object on every render
 const MERMAID_CONFIG = {
   startOnLoad: false,
   theme: "dark" as const,
-  securityLevel: "strict" as const, // SECURITY: Sanitizes SVG to prevent XSS attacks from malicious repos
+  securityLevel: "strict" as const,
   themeVariables: {
     primaryColor: "#1a1a1a",
     primaryTextColor: "#f1f5f9",
@@ -28,59 +29,125 @@ const MERMAID_CONFIG = {
   },
 };
 
-export default function MermaidDiagram({ chart }: Props) {
-  const ref = useRef<HTMLDivElement>(null);
-  
-  // 2. Use React 18's native ID hook (removes colons to make it a valid DOM ID)
-  const safeId = `mermaid-${useId().replace(/:/g, "")}`;
+// --- PRINCIPAL UPGRADE: Promise Lock for Concurrent Mounts ---
+// This guarantees that if 10 diagrams mount simultaneously, they all wait
+// for the exact same initialization sequence without causing a race condition.
+import type mermaidType from "mermaid";
+let mermaidInitPromise: Promise<typeof mermaidType> | null = null;
+
+const MermaidDiagram = memo(({ chart }: Props) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isRendering, setIsRendering] = useState(true);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 3. Mount flag to prevent race conditions during rapid re-renders
-    let isMounted = true; 
+    let isMounted = true;
+    const containerEl = containerRef.current;
+    setIsRendering(true);
+    setRenderError(null);
 
-    async function render() {
-      if (!ref.current || !chart.trim()) return;
+    const renderId = `mermaid-${Math.random().toString(36).substring(2, 12)}`;
+
+    async function renderChart() {
+      if (!containerEl || !chart.trim()) return;
 
       try {
-        // The bundler (Webpack/Turbopack) will cache this after the first load
-        const mermaid = (await import("mermaid")).default;
+        // 1. Thread-safe initialization lock
+        if (!mermaidInitPromise) {
+          mermaidInitPromise = import("mermaid").then((m) => {
+            m.default.initialize(MERMAID_CONFIG);
+            return m.default;
+          });
+        }
 
-        mermaid.initialize(MERMAID_CONFIG);
+        const mermaid = await mermaidInitPromise;
 
-        // 4. Render the SVG
-        const { svg } = await mermaid.render(safeId, chart);
-        
-        // 5. Only update DOM if the component is still mounted and this is the latest render
-        if (isMounted && ref.current) {
-          ref.current.innerHTML = svg;
+        // 2. Yield to main thread so the browser can paint the loading spinner
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // 3. Render SVG and extract binding functions for interactivity
+        const { svg, bindFunctions } = await mermaid.render(renderId, chart);
+
+        if (isMounted && containerEl) {
+          containerEl.innerHTML = svg;
+
+          // --- PRINCIPAL UPGRADE: Hydrate Interactive Nodes ---
+          // If the AI generated clickable nodes or tooltips, this makes them work.
+          if (bindFunctions) {
+            bindFunctions(containerEl);
+          }
+
+          setIsRendering(false);
         }
       } catch (err) {
-        console.error("Mermaid render error:", err);
-        if (isMounted && ref.current) {
-          // Upgraded error UI to match your CodeAutopsy theme
-          ref.current.innerHTML = `
-            <div class="p-4 border border-red-500/20 bg-red-500/10 rounded-xl flex items-center gap-3">
-              <span class="text-red-400 font-mono text-xs uppercase tracking-widest">Render Error</span>
-              <p class="text-slate-400 text-xs font-mono">The AI generated invalid chart syntax.</p>
-            </div>
-          `;
+        console.error("Mermaid Render Exception:", err);
+        if (isMounted) {
+          setRenderError("The AI generated invalid flowchart syntax.");
+          setIsRendering(false);
         }
       }
     }
 
-    render();
+    renderChart();
 
-    // Cleanup function runs if 'chart' changes before the previous render finishes
     return () => {
       isMounted = false;
+      if (containerEl) {
+        containerEl.innerHTML = "";
+      }
     };
-  }, [chart, safeId]);
+  }, [chart]);
 
   return (
-    <div
-      ref={ref}
-      // Added 'custom-scrollbar' to match your overall app styling
-      className="w-full flex items-center justify-center min-h-[200px] overflow-auto custom-scrollbar"
-    />
+    <div className="relative w-full min-h-[200px] flex items-center justify-center rounded-xl bg-black/20 border border-white/5 overflow-hidden">
+      <AnimatePresence mode="wait">
+        {isRendering && (
+          <motion.div
+            key="loader"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0a]/80 backdrop-blur-sm z-10"
+          >
+            <Loader2 className="w-6 h-6 text-emerald-400 animate-spin mb-3" />
+            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest animate-pulse">
+              Rendering Diagram...
+            </span>
+          </motion.div>
+        )}
+
+        {renderError && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute inset-0 flex items-center justify-center z-10 bg-[#0e0e0e]"
+          >
+            <div className="p-4 border border-red-500/20 bg-red-500/5 rounded-xl flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <div className="flex flex-col">
+                <span className="text-red-400 font-mono text-[10px] font-bold uppercase tracking-widest">
+                  Render Failed
+                </span>
+                <span className="text-slate-400 text-[10px] font-mono mt-0.5">
+                  {renderError}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div
+        ref={containerRef}
+        className={`w-full h-full overflow-auto custom-scrollbar p-6 flex items-center justify-center transition-opacity duration-500 ${
+          isRendering || renderError ? "opacity-0" : "opacity-100"
+        }`}
+      />
+    </div>
   );
-}
+});
+
+MermaidDiagram.displayName = "MermaidDiagram";
+
+export default MermaidDiagram;
