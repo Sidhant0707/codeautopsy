@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prepare": "husky"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -32,7 +33,8 @@
     "react-zoom-pan-pinch": "^4.0.3",
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.1",
-    "strip-comments": "^2.0.1"
+    "strip-comments": "^2.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -47,6 +49,8 @@
     "@types/strip-comments": "^2.0.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "typescript": "^5"
@@ -66,5 +70,13 @@
   "bugs": {
     "url": "https://github.com/Sidhant0707/codeautopsy/issues"
   },
-  "homepage": "https://github.com/Sidhant0707/codeautopsy#readme"
+  "homepage": "https://github.com/Sidhant0707/codeautopsy#readme",
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
+  }
 }

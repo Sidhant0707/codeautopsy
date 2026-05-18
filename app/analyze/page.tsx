@@ -1,6 +1,8 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
+import { RepoDataSchema } from "@/lib/validations/analyze";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import {
   useEffect,
   useState,
@@ -287,13 +289,32 @@ function AnalyzeContent() {
         });
 
         const json = await res.json();
+
+        // Handle explicit API errors (like Auth or Rate Limits)
         if (json.error === "REQUIRE_GITHUB_AUTH") {
           setShowGitHubAuthModal(true);
           setLoading(false);
           return;
         }
         if (json.error) throw new Error(json.error);
-        setData(json);
+
+        // --- THE ZOD SHIELD ---
+        // Instead of blindly trusting the LLM, we force it through the validator
+        const parsedData = RepoDataSchema.safeParse(json);
+
+        if (!parsedData.success) {
+          // If the LLM hallucinated, we catch it here and log the exact structural error
+          console.error(
+            "LLM Hallucination / Schema Mismatch:",
+            parsedData.error.format(),
+          );
+          throw new Error(
+            "The AI returned a malformed architecture report. Please try analyzing again.",
+          );
+        }
+
+        // If it passes, we know with 100% certainty the data is safe to render
+        setData(parsedData.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -625,26 +646,29 @@ function AnalyzeContent() {
                     </div>
                   </div>
                   <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
-                    {mapView === "graph" ? (
-                      data.dependencyGraph &&
-                      Object.keys(data.dependencyGraph).length > 0 ? (
-                        <ArchitectureMap
-                          dependencyGraph={data.dependencyGraph}
-                          entryPoints={data.entryPoints}
-                        />
+                    {/* --- ERROR BOUNDARY INSTALLED HERE --- */}
+                    <ErrorBoundary fallbackMessage="Failed to render architecture map.">
+                      {mapView === "graph" ? (
+                        data.dependencyGraph &&
+                        Object.keys(data.dependencyGraph).length > 0 ? (
+                          <ArchitectureMap
+                            dependencyGraph={data.dependencyGraph}
+                            entryPoints={data.entryPoints}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">
+                            <Layers className="w-10 h-10 text-slate-600 mb-4" />
+                            <p className="text-slate-500 font-mono text-xs">
+                              No blueprint data parsed.
+                            </p>
+                          </div>
+                        )
+                      ) : mapView === "directory" ? (
+                        <DirectoryTreeVisualizer metrics={data.fileMetrics} />
                       ) : (
-                        <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">
-                          <Layers className="w-10 h-10 text-slate-600 mb-4" />
-                          <p className="text-slate-500 font-mono text-xs">
-                            No blueprint data parsed.
-                          </p>
-                        </div>
-                      )
-                    ) : mapView === "directory" ? (
-                      <DirectoryTreeVisualizer metrics={data.fileMetrics} />
-                    ) : (
-                      <TreemapVisualizer metrics={data.fileMetrics} />
-                    )}
+                        <TreemapVisualizer metrics={data.fileMetrics} />
+                      )}
+                    </ErrorBoundary>
                   </div>
                 </motion.div>
               )}
@@ -784,14 +808,17 @@ function AnalyzeContent() {
                 </button>
               </div>
               <div className="flex-1 min-h-0 bg-transparent">
-                <RepoChat
-                  repoContext={
-                    data as unknown as {
-                      repo?: string;
-                      [key: string]: string | undefined;
+                {/* --- ERROR BOUNDARY INSTALLED HERE --- */}
+                <ErrorBoundary fallbackMessage="Copilot encountered a critical error.">
+                  <RepoChat
+                    repoContext={
+                      data as unknown as {
+                        repo?: string;
+                        [key: string]: string | undefined;
+                      }
                     }
-                  }
-                />
+                  />
+                </ErrorBoundary>
               </div>
             </motion.div>
           )}
