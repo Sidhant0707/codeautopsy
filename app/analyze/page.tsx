@@ -1,6 +1,8 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 import { RepoDataSchema } from "@/lib/validations/analyze";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import {
@@ -124,24 +126,119 @@ const AnalyzeContent = memo(() => {
   const repoUrl = searchParams.get("url") || searchParams.get("repo");
   const source = searchParams.get("source");
 
-  // Core State
-  const [data, setData] = useState<RepoData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
-
   // UI State
-  const [activeTab, setActiveTab] = useState<TabType>("overview");
-  const [mapView, setMapView] = useState<MapViewType>("graph");
-  const [isHydrated, setIsHydrated] = useState(false);
+  const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [hideFeedback, setHideFeedback] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const exitModalRef = useRef<HTMLDivElement>(null);
 
-  // --- PRINCIPAL UPGRADE: AbortController for Fetch Cleanup ---
-  const abortControllerRef = useRef<AbortController | null>(null);
+  // 1. The Mount Flag
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 2. Safe Synchronous Initialization (Only runs in browser)
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (typeof window === "undefined") return "overview";
+    const saved = sessionStorage.getItem("codeautopsy_tab");
+    return saved && TAB_CONFIG.some((t) => t.id === saved)
+      ? (saved as TabType)
+      : "overview";
+  });
+
+  const [mapView, setMapView] = useState<MapViewType>(() => {
+    if (typeof window === "undefined") return "graph";
+    const saved = sessionStorage.getItem("codeautopsy_view");
+    return saved && MAP_VIEW_CONFIG.some((v) => v.id === saved)
+      ? (saved as MapViewType)
+      : "graph";
+  });
+
+  // 3. Mark as mounted
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setIsMounted(true);
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  // 4. Sync changes back to storage
+  useEffect(() => {
+    if (isMounted) {
+      sessionStorage.setItem("codeautopsy_tab", activeTab);
+      sessionStorage.setItem("codeautopsy_view", mapView);
+    }
+  }, [activeTab, mapView, isMounted]);
+
+  // --- PRINCIPAL UPGRADE: SWR Global Caching & Fetching ---
+
+  // 1. Local Codebase Handler (Bypasses API)
+  const [localData] = useState<RepoData | null>(() => {
+    if (typeof window === "undefined" || source !== "local") return null;
+    const stored = sessionStorage.getItem("localAnalysisResult");
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [localError] = useState<string | null>(() => {
+    if (typeof window === "undefined" || source !== "local") return null;
+    const stored = sessionStorage.getItem("localAnalysisResult");
+    return !stored
+      ? "Local analysis data expired or lost. Please return to home and upload again."
+      : null;
+  });
+
+  // 2. Remote API Fetching (SWR Cache)
+  const {
+    data: swrData,
+    error: swrError,
+    isLoading: swrLoading,
+  } = useSWR(
+    repoUrl && source !== "local" ? ["/api/analyze", repoUrl] : null,
+    ([url, repo]) => fetcher(url, repo),
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+      onError: (err) => {
+        if (err.message === "REQUIRE_GITHUB_AUTH") setShowGitHubAuthModal(true);
+      },
+    },
+  );
+
+  // 3. Unify Data and Execute Zod Shield
+  const isLocal = source === "local";
+  const loading = isLocal ? !localData && !localError : swrLoading;
+  const rawError = isLocal
+    ? localError
+    : swrError?.message === "REQUIRE_GITHUB_AUTH"
+      ? null
+      : swrError?.message;
+
+  const data = useMemo(() => {
+    if (isLocal) return localData;
+    if (!swrData || swrError) return null;
+
+    // Zod Validation Intercept
+    const parsed = RepoDataSchema.safeParse(swrData);
+    if (!parsed.success) {
+      console.error(
+        "LLM Hallucination / Schema Mismatch:",
+        parsed.error.format(),
+      );
+      return null;
+    }
+    return parsed.data;
+  }, [isLocal, localData, swrData, swrError]);
+
+  const error =
+    rawError ||
+    (swrData && !data && !isLocal
+      ? "The AI returned a malformed architecture report. Please try analyzing again."
+      : null);
+
+  const isRateLimit = useMemo(
+    () =>
+      error?.includes("RATE_LIMIT_REACHED") || error?.includes("Daily limit"),
+    [error],
+  );
 
   // Loading Animation Loop
   const [loadingStep, setLoadingStep] = useState(0);
@@ -170,29 +267,6 @@ const AnalyzeContent = memo(() => {
       isActive = false;
     };
   }, [loading, loadingControls]);
-
-  // --- PRINCIPAL UPGRADE: Safe Hydration (No SSR Mismatch) ---
-  useEffect(() => {
-    const savedTab = sessionStorage.getItem("codeautopsy_tab");
-    const savedView = sessionStorage.getItem("codeautopsy_view");
-    if (
-      savedTab &&
-      ["overview", "visualizer", "doctor", "pr_impact", "risk_radar"].includes(
-        savedTab,
-      )
-    )
-      setActiveTab(savedTab as TabType);
-    if (savedView && ["graph", "treemap", "directory"].includes(savedView))
-      setMapView(savedView as MapViewType);
-    setIsHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (isHydrated) {
-      sessionStorage.setItem("codeautopsy_tab", activeTab);
-      sessionStorage.setItem("codeautopsy_view", mapView);
-    }
-  }, [activeTab, mapView, isHydrated]);
 
   // Escape Key & Modal Traps
   useEffect(() => {
@@ -265,7 +339,7 @@ const AnalyzeContent = memo(() => {
       }
       if (exitAfter) router.back();
     },
-    [data?.repo, repoUrl, router],
+    [data, repoUrl, router],
   );
 
   const handleBackNavigation = useCallback(() => {
@@ -273,100 +347,9 @@ const AnalyzeContent = memo(() => {
     else router.back();
   }, [feedbackSubmitted, router]);
 
-  // --- PRINCIPAL UPGRADE: Fetch with AbortController (No Memory Leak) ---
-  useEffect(() => {
-    if (source === "local") {
-      const localData = sessionStorage.getItem("localAnalysisResult");
-      if (localData) {
-        setData(JSON.parse(localData));
-        setLoading(false);
-      } else {
-        setError(
-          "Local analysis data expired or lost. Please return to home and upload again.",
-        );
-        setLoading(false);
-      }
-      return;
-    }
-    if (!repoUrl) return;
-
-    async function analyze() {
-      // Abort previous request if still running
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
-          router.push(
-            `/login?redirect=${encodeURIComponent(`/analyze?repo=${encodeURIComponent(repoUrl || "")}`)}`,
-          );
-          return;
-        }
-
-        const res = await fetch(`/api/analyze?t=${Date.now()}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repoUrl }),
-          signal: abortControllerRef.current.signal,
-        });
-
-        const json = await res.json();
-
-        if (json.error === "REQUIRE_GITHUB_AUTH") {
-          setShowGitHubAuthModal(true);
-          setLoading(false);
-          return;
-        }
-        if (json.error) throw new Error(json.error);
-
-        const parsedData = RepoDataSchema.safeParse(json);
-
-        if (!parsedData.success) {
-          console.error(
-            "LLM Hallucination / Schema Mismatch:",
-            parsedData.error.format(),
-          );
-          throw new Error(
-            "The AI returned a malformed architecture report. Please try analyzing again.",
-          );
-        }
-
-        setData(parsedData.data);
-      } catch (err) {
-        // Only show error if not aborted
-        if (err instanceof Error && err.name !== "AbortError") {
-          setError(err.message);
-        }
-      } finally {
-        setLoading(false);
-        abortControllerRef.current = null;
-      }
-    }
-    analyze();
-
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [repoUrl, source, router]);
-
-  const isRateLimit = useMemo(
-    () =>
-      error?.includes("RATE_LIMIT_REACHED") || error?.includes("Daily limit"),
-    [error],
-  );
-
   // --- RENDERING ROUTER ---
 
-  if (loading)
+  if (!isMounted || loading)
     return (
       <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center relative overflow-hidden text-slate-200 font-satoshi">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-white/[0.01] rounded-full blur-[80px] animate-pulse" />
@@ -583,7 +566,7 @@ const AnalyzeContent = memo(() => {
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-          {/* TAB LIST --- PRINCIPAL UPGRADE: ARIA Boolean Fix ---*/}
+          {/* TAB LIST */}
           <div
             role="tablist"
             aria-label="Analysis Tools"
