@@ -3,16 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-// --- PRINCIPAL UPGRADE: `m` instead of `motion` for LazyMotion tree-shaking ---
-import {
-  m,
-  AnimatePresence,
-  useScroll,
-  useTransform,
-} from "framer-motion";
+import { m, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { LayoutGrid, LogOut, Menu, X, BadgeCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase-browser";
 import { User } from "@supabase/supabase-js";
+
+// --- PRINCIPAL UPGRADE: Premium Snap Physics ---
+const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export default function Header() {
   const [user, setUser] = useState<User | null>(null);
@@ -275,10 +272,8 @@ export default function Header() {
                           initial={{ opacity: 0, y: 8, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                          transition={{
-                            duration: 0.2,
-                            ease: [0.22, 1, 0.36, 1],
-                          }}
+                          // APPLIED SNAP HERE
+                          transition={{ duration: 0.3, ease: EXPO_OUT }}
                           className="absolute right-0 mt-3 w-64 rounded-2xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.6)] z-50 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08]"
                         >
                           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent" />
@@ -401,7 +396,8 @@ export default function Header() {
                     initial={{ rotate: -90, opacity: 0 }}
                     animate={{ rotate: 0, opacity: 1 }}
                     exit={{ rotate: 90, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    // APPLIED SNAP HERE
+                    transition={{ duration: 0.3, ease: EXPO_OUT }}
                   >
                     <X className="w-5 h-5" />
                   </m.div>
@@ -411,7 +407,8 @@ export default function Header() {
                     initial={{ rotate: 90, opacity: 0 }}
                     animate={{ rotate: 0, opacity: 1 }}
                     exit={{ rotate: -90, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    // APPLIED SNAP HERE
+                    transition={{ duration: 0.3, ease: EXPO_OUT }}
                   >
                     <Menu className="w-5 h-5" />
                   </m.div>
@@ -438,7 +435,8 @@ export default function Header() {
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              // APPLIED SNAP HERE
+              transition={{ duration: 0.5, ease: EXPO_OUT }}
               className="fixed top-[4.5rem] right-0 bottom-0 w-[280px] bg-[#0a0a0a]/95 backdrop-blur-2xl border-l border-white/[0.08] shadow-[-24px_0_48px_rgba(0,0,0,0.6)] z-40 md:hidden flex flex-col overflow-y-auto"
             >
               <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/20 to-transparent" />

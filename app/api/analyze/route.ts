@@ -10,7 +10,7 @@ import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/depend
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
-import { calculateHealthGrade } from "@/lib/analyzer/health"; 
+import { calculateHealthGrade } from "@/lib/analyzer/health";
 
 const ANALYSIS_VERSION = 10;
 
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
     }
   );
 
-  // Auth and rate limit check
+  // Auth and usage limit check
   let session = null;
   let authUser = null;
 
@@ -225,13 +225,34 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (error) {
-    console.error("Auth/Rate Limit Error:", error);
+    console.error("Auth/Usage Limit Error:", error);
   }
 
   const userId = authUser?.id ?? undefined;
-  const provider = authUser?.app_metadata?.provider;
+
+  // ====================================================================
+  // GLOBAL DOS PROTECTION & RATE LIMITING
+  // ====================================================================
+  
+  const identifier = userId ?? ip;
+  const limiter = userId ? ratelimitAuth : ratelimitFree;
+  const { success, limit, reset, remaining } = await limiter.limit(identifier);
+
+  if (!success) {
+    return NextResponse.json(
+      { 
+        error: "RATE_LIMIT_REACHED", 
+        message: "24-hour sliding window limit reached. Please try again later or upgrade for higher limits.",
+        limit, 
+        remaining, 
+        reset 
+      },
+      { status: 429 }
+    );
+  }
 
   // GitHub token resolution
+  const provider = authUser?.app_metadata?.provider;
   let githubToken: string | undefined;
 
   if (provider === 'github' && session?.provider_token) {
@@ -274,6 +295,23 @@ export async function POST(req: NextRequest) {
         // ====================================================================
 
         if (isLocal && localFiles) {
+          // DEFENSIVE ENGINEERING: Payload size and file count caps
+          if (localFiles.length > 300) {
+            clearInterval(keepAlive);
+            controller.enqueue(encoder.encode(JSON.stringify({ error: "Codebase too large. Max 300 files." })));
+            controller.close();
+            return;
+          }
+
+          const totalSize = localFiles.reduce((acc: number, file: { content: string }) => acc + (file.content?.length || 0), 0);
+          
+          if (totalSize > 2000000) {
+            clearInterval(keepAlive);
+            controller.enqueue(encoder.encode(JSON.stringify({ error: "Codebase exceeds 2MB uncompressed text limit." })));
+            controller.close();
+            return;
+          }
+
           allFileContents = localFiles;
           filteredPaths = localFiles.map((f: { path: string }) => f.path);
           fileMetrics = localFiles.map((f: { path: string; content: string }) => ({
@@ -316,24 +354,6 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(JSON.stringify({ 
               ...cached.result_json, 
               cached: true 
-            })));
-            controller.close();
-            return;
-          }
-
-          // Rate limiting
-          const identifier = userId ?? ip;
-          const limiter = userId ? ratelimitAuth : ratelimitFree;
-          const { success, limit, reset, remaining } = await limiter.limit(identifier);
-
-          if (!success) {
-            clearInterval(keepAlive);
-            controller.enqueue(encoder.encode(JSON.stringify({ 
-              error: "RATE_LIMIT_REACHED", 
-              message: "24-hour sliding window limit reached. Please try again later or upgrade for higher limits.",
-              limit, 
-              remaining, 
-              reset 
             })));
             controller.close();
             return;
