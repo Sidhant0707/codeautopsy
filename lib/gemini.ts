@@ -1,3 +1,25 @@
+import OpenAI from "openai";
+import { Tracer, wrapOpenAI } from "0xtrace";
+
+// ── Tracer setup ──────────────────────────────────────────────────────────────
+
+export const tracer = new Tracer({
+  ingestUrl: process.env.INGEST_URL ?? "http://localhost:3000/api/ingest",
+  apiKey:    process.env.INGEST_API_KEY!,
+});
+
+// ── Groq client via OpenAI SDK ────────────────────────────────────────────────
+
+const groq = wrapOpenAI(
+  new OpenAI({
+    apiKey:  process.env.GROQ_API_KEY!,
+    baseURL: "https://api.groq.com/openai/v1",
+  }),
+  tracer
+);
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface AnalysisResult {
   architecture_pattern: string;
   what_it_does: string;
@@ -7,7 +29,6 @@ export interface AnalysisResult {
   onboarding_guide: string[];
   evidence_paths: string[];
   blast_radius: { file: string; dependents: number; warning: string; safe_refactor_steps: string[] }[];
-  
   health_status: {
     grade: string;
     score: number;
@@ -16,6 +37,8 @@ export interface AnalysisResult {
   };
 }
 
+// ── Main function ─────────────────────────────────────────────────────────────
+
 export async function analyzeWithGemini(
   repoName: string,
   description: string,
@@ -23,34 +46,27 @@ export async function analyzeWithGemini(
   topFiles: { path: string; role: string }[],
   fileContents: { path: string; content: string }[],
   blastRadiusTargets: { file: string; dependentsCount: number }[],
-  
-  healthMetrics: { score: number; grade: string; color: string; status: string } 
+  healthMetrics: { score: number; grade: string; color: string; status: string }
 ): Promise<AnalysisResult> {
-  if (process.env.USE_GROQ_FOR_ANALYSIS !== 'true') {
-    throw new Error("Gemini is currently disabled. Please use Groq. Check Vercel Env Variables.");
+  if (process.env.USE_GROQ_FOR_ANALYSIS !== "true") {
+    throw new Error("Groq analysis is disabled. Set USE_GROQ_FOR_ANALYSIS=true.");
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
+  if (!process.env.GROQ_API_KEY) {
     throw new Error("Missing GROQ_API_KEY environment variable");
   }
-
-  const url = "https://api.groq.com/openai/v1/chat/completions";
 
   const fileContentText = fileContents
     .map((f) => {
       const optimized = f.content
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/.*/g, '')
-        .replace(/\s+/g, ' ')
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*/g, "")
+        .replace(/\s+/g, " ")
         .trim();
-      
-      const trimmed = optimized.slice(0, 2000);
-      return `=== ${f.path} ===\n${trimmed}`;
+      return `=== ${f.path} ===\n${optimized.slice(0, 2000)}`;
     })
     .join("\n\n");
 
-  
   const systemPrompt = `You are a senior software engineer analyzing a GitHub repository.
 
 Repository: ${repoName}
@@ -93,31 +109,17 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
   }
 }`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { 
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: "Analyze this codebase and return ONLY the required JSON." }
-      ],
-      temperature: 0.2,
-      response_format: { type: "json_object" }
-    }),
+  const response = await groq.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user",   content: "Analyze this codebase and return ONLY the required JSON." },
+    ],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
   });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${errorText}`);
-  }
-
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content;
-  
+  const text = response.choices?.[0]?.message?.content;
   if (!text) throw new Error("Empty response from Groq");
 
   return JSON.parse(text) as AnalysisResult;
