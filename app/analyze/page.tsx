@@ -3,7 +3,6 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
-import { RepoDataSchema } from "@/lib/validations/analyze";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import {
   useEffect,
@@ -41,7 +40,7 @@ import ShareButton from "@/components/ShareButton";
 import { createClient } from "@/lib/supabase-browser";
 import { RepoData } from "@/lib/types/analyze";
 
-// --- PRINCIPAL UPGRADE: Skeleton Extracted (No Re-allocation) ---
+// --- Skeleton Extracted (No Re-allocation) ---
 const SkeletonLoader = memo(() => (
   <div className="w-full h-full space-y-4 p-6 animate-pulse">
     <div className="h-8 bg-white/5 rounded-lg w-1/3" />
@@ -54,7 +53,7 @@ const SkeletonLoader = memo(() => (
 ));
 SkeletonLoader.displayName = "SkeletonLoader";
 
-// --- PRINCIPAL UPGRADE: Lazy Load ALL Tab Components ---
+// --- Lazy Load ALL Tab Components ---
 const OverviewTab = dynamic(() => import("@/components/analyze/OverviewTab"), {
   loading: () => <SkeletonLoader />,
   ssr: false,
@@ -90,7 +89,7 @@ const RepoChat = dynamic(() => import("@/components/RepoChat"), {
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-// --- PRINCIPAL UPGRADE: Extract Tab Config (No Re-allocation) ---
+// --- Tab & View Config (No Re-allocation) ---
 const TAB_CONFIG = [
   { id: "overview" as const, icon: FileCode, label: "Read Docs" },
   { id: "visualizer" as const, icon: Layers, label: "Blueprint Map" },
@@ -116,10 +115,28 @@ const LOADING_PHRASES = [
   "Compiling health report...",
 ] as const;
 
+// Default skeleton analysis shown while AI stream is starting
+const DEFAULT_ANALYSIS = {
+  architecture_pattern: "Analyzing...",
+  what_it_does: "Waking up Groq LLM...",
+  execution_flow: [],
+  tech_stack: [],
+  key_modules: [],
+  onboarding_guide: [],
+  evidence_paths: [],
+  blast_radius: [],
+  health_status: {
+    grade: "-",
+    score: 0,
+    status: "Pending",
+    refactor_plan: [],
+  },
+} as const;
+
 type TabType = (typeof TAB_CONFIG)[number]["id"];
 type MapViewType = (typeof MAP_VIEW_CONFIG)[number]["id"];
 
-// --- PRINCIPAL UPGRADE: Memoized Component (Prevents Unnecessary Re-renders) ---
+// --- Memoized Component (Prevents Unnecessary Re-renders) ---
 const AnalyzeContent = memo(() => {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -134,10 +151,16 @@ const AnalyzeContent = memo(() => {
   const [showExitModal, setShowExitModal] = useState(false);
   const exitModalRef = useRef<HTMLDivElement>(null);
 
-  // 1. The Mount Flag
+  // AI Streaming State
+  const [aiAnalysis, setAiAnalysis] = useState<Record<string, unknown> | null>(
+    null,
+  );
+  const [isAiStreaming, setIsAiStreaming] = useState(false);
+
+  // Mount Flag
   const [isMounted, setIsMounted] = useState(false);
 
-  // 2. Safe Synchronous Initialization (Only runs in browser)
+  // Safe Synchronous Initialization (Only runs in browser)
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     if (typeof window === "undefined") return "overview";
     const saved = sessionStorage.getItem("codeautopsy_tab");
@@ -154,15 +177,13 @@ const AnalyzeContent = memo(() => {
       : "graph";
   });
 
-  // 3. Mark as mounted
+  // Mark as mounted
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setIsMounted(true);
-    }, 0);
+    const timeoutId = setTimeout(() => setIsMounted(true), 0);
     return () => clearTimeout(timeoutId);
   }, []);
 
-  // 4. Sync changes back to storage
+  // Sync tab/view changes to sessionStorage
   useEffect(() => {
     if (isMounted) {
       sessionStorage.setItem("codeautopsy_tab", activeTab);
@@ -170,14 +191,13 @@ const AnalyzeContent = memo(() => {
     }
   }, [activeTab, mapView, isMounted]);
 
-  // --- PRINCIPAL UPGRADE: SWR Global Caching & Fetching ---
-
-  // 1. Local Codebase Handler (Bypasses API)
+  // --- Local Codebase Handler (Bypasses API) ---
   const [localData] = useState<RepoData | null>(() => {
     if (typeof window === "undefined" || source !== "local") return null;
     const stored = sessionStorage.getItem("localAnalysisResult");
     return stored ? JSON.parse(stored) : null;
   });
+
   const [localError] = useState<string | null>(() => {
     if (typeof window === "undefined" || source !== "local") return null;
     const stored = sessionStorage.getItem("localAnalysisResult");
@@ -186,7 +206,7 @@ const AnalyzeContent = memo(() => {
       : null;
   });
 
-  // 2. Remote API Fetching (SWR Cache)
+  // --- Remote API Fetching (SWR Cache) ---
   const {
     data: swrData,
     error: swrError,
@@ -203,7 +223,74 @@ const AnalyzeContent = memo(() => {
     },
   );
 
-  // 3. Unify Data and Execute Zod Shield
+  // --- REAL-TIME AI STREAMING ENGINE ---
+  useEffect(() => {
+    if (swrData && swrData.analysis === null && !isAiStreaming && !aiAnalysis) {
+      setIsAiStreaming(true);
+
+      const fetchAiStream = async () => {
+        try {
+          const res = await fetch("/api/ai", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repoName: `${swrData.owner}/${swrData.repo}`,
+              description: swrData.description,
+              entryPoints: swrData.entryPoints,
+              topFiles: swrData.topFilesForGroq,
+              fileContents: swrData.fileContents,
+              blastRadiusTargets: swrData.blastRadiusTargets,
+              healthMetrics: swrData.healthMetrics,
+            }),
+          });
+
+          if (!res.body) return;
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let jsonText = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            jsonText += decoder.decode(value, { stream: true });
+
+            // 1. Try to parse the complete JSON first
+            try {
+              setAiAnalysis(JSON.parse(jsonText));
+            } catch {
+              // 2. On-the-fly Partial JSON Repair for live UI rendering
+              try {
+                let fixed = jsonText.replace(/("[^"]*)$/, '"'); // Close any open string
+                const openBraces = (fixed.match(/\{/g) || []).length;
+                const closeBraces = (fixed.match(/\}/g) || []).length;
+                const openBrackets = (fixed.match(/\[/g) || []).length;
+                const closeBrackets = (fixed.match(/\]/g) || []).length;
+
+                fixed +=
+                  "]".repeat(Math.max(0, openBrackets - closeBrackets)) +
+                  "}".repeat(Math.max(0, openBraces - closeBraces));
+
+                const partial = JSON.parse(fixed);
+                if (partial) setAiAnalysis(partial);
+              } catch {
+                // Silently wait for the next chunk if still unparseable
+              }
+            }
+          }
+        } catch (err) {
+          console.error("AI Stream Failed:", err);
+        } finally {
+          setIsAiStreaming(false);
+        }
+      };
+
+      fetchAiStream();
+    }
+  }, [swrData, isAiStreaming, aiAnalysis]);
+
+  // --- Unify Data Sources with Zod Bypass + AI Stream Injection ---
   const isLocal = source === "local";
   const loading = isLocal ? !localData && !localError : swrLoading;
   const rawError = isLocal
@@ -216,27 +303,22 @@ const AnalyzeContent = memo(() => {
     if (isLocal) return localData;
     if (!swrData || swrError) return null;
 
-    // Zod Validation Intercept
-    const parsed = RepoDataSchema.safeParse(swrData);
-    if (!parsed.success) {
-      console.error(
-        "LLM Hallucination / Schema Mismatch:",
-        parsed.error.format(),
-      );
-      return null;
-    }
-    return parsed.data;
-  }, [isLocal, localData, swrData, swrError]);
+    // Bypass strict Zod validation: the incoming AI stream is intentionally incomplete.
+    // Inject streaming aiAnalysis (or a safe placeholder) directly into the SWR payload.
+    return {
+      ...swrData,
+      analysis:
+        aiAnalysis ??
+        (swrData.analysis === null ? DEFAULT_ANALYSIS : swrData.analysis),
+    };
+  }, [isLocal, localData, swrData, swrError, aiAnalysis]);
 
-  const error =
-    rawError ||
-    (swrData && !data && !isLocal
-      ? "The AI returned a malformed architecture report. Please try analyzing again."
-      : null);
+  const error = rawError ?? null;
 
   const isRateLimit = useMemo(
     () =>
-      error?.includes("RATE_LIMIT_REACHED") || error?.includes("Daily limit"),
+      !!error &&
+      (error.includes("RATE_LIMIT_REACHED") || error.includes("Daily limit")),
     [error],
   );
 
@@ -247,6 +329,7 @@ const AnalyzeContent = memo(() => {
   useEffect(() => {
     if (!loading) return;
     let isActive = true;
+
     const animate = async () => {
       while (isActive) {
         await loadingControls.start({
@@ -262,20 +345,20 @@ const AnalyzeContent = memo(() => {
           setLoadingStep((prev) => (prev + 1) % LOADING_PHRASES.length);
       }
     };
+
     animate();
     return () => {
       isActive = false;
     };
   }, [loading, loadingControls]);
 
-  // Escape Key & Modal Traps
+  // Escape Key & Modal Focus Traps
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (showExitModal) setShowExitModal(false);
-        if (showGitHubAuthModal) router.push("/");
-        if (isChatOpen) setIsChatOpen(false);
-      }
+      if (e.key !== "Escape") return;
+      if (showExitModal) setShowExitModal(false);
+      else if (showGitHubAuthModal) router.push("/");
+      else if (isChatOpen) setIsChatOpen(false);
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
@@ -285,6 +368,7 @@ const AnalyzeContent = memo(() => {
     if (!showExitModal) return;
     const modal = exitModalRef.current;
     if (!modal) return;
+
     const focusable = modal.querySelectorAll<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
@@ -303,6 +387,7 @@ const AnalyzeContent = memo(() => {
         first?.focus();
       }
     };
+
     first?.focus();
     document.addEventListener("keydown", trap);
     return () => document.removeEventListener("keydown", trap);
@@ -321,10 +406,10 @@ const AnalyzeContent = memo(() => {
   }, [repoUrl]);
 
   const handleFeedback = useCallback(
-    async (isHelpful: boolean, exitAfter: boolean = false) => {
+    async (isHelpful: boolean, exitAfter = false) => {
       setFeedbackSubmitted(true);
       if (exitAfter) setShowExitModal(false);
-      if (!exitAfter) setTimeout(() => setHideFeedback(true), 2000);
+      else setTimeout(() => setHideFeedback(true), 2000);
 
       try {
         const supabase = createClient();
@@ -337,6 +422,7 @@ const AnalyzeContent = memo(() => {
       } catch (err) {
         console.error(err);
       }
+
       if (exitAfter) router.back();
     },
     [data, repoUrl, router],
@@ -503,6 +589,15 @@ const AnalyzeContent = memo(() => {
                 {data.language}
               </span>
             </div>
+            {/* Streaming indicator badge */}
+            {isAiStreaming && (
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="mono text-[9px] text-emerald-400 font-bold uppercase tracking-widest">
+                  AI Live
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

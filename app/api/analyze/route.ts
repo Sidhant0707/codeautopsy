@@ -87,8 +87,6 @@ export async function POST(req: NextRequest) {
   let authUser = null;
   let isAuthor = false;
 
-  const AUTHOR_EMAIL = "sidhantkumar0707@gmail.com";
-
   try {
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     session = currentSession;
@@ -99,7 +97,7 @@ export async function POST(req: NextRequest) {
       if (!userError && user) {
         authUser = user;
         
-        isAuthor = user.email === AUTHOR_EMAIL || user.email === process.env.AUTHOR_EMAIL;
+        isAuthor = user.email === process.env.AUTHOR_EMAIL;
         
         if (!isAuthor) {
           const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
