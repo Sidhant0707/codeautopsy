@@ -1,7 +1,7 @@
 import { streamAnalyzeWithGemini } from "@/lib/gemini";
 import { NextRequest } from "next/server";
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
