@@ -5,7 +5,7 @@ import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent, GitHubAuthError } from "@/lib/github";
 import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
-import { analyzeWithGemini, tracer } from "@/lib/gemini";
+import { analyzeWithGemini } from "@/lib/gemini";
 import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
@@ -512,7 +512,6 @@ export async function POST(req: NextRequest) {
         // Send result and close stream
         clearInterval(keepAlive);
 controller.enqueue(encoder.encode(JSON.stringify(result)));
-await tracer.flush();
 controller.close();
 
       } catch (err) {
