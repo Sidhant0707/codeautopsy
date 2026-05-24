@@ -1,22 +1,14 @@
 import OpenAI from "openai";
 import { Tracer, wrapOpenAI } from "0xtrace";
 
-// ── Tracer setup ──────────────────────────────────────────────────────────────
+// ── Base Groq client (unwrapped) ──────────────────────────────────────────────
+// Wrapped per-call inside analyzeWithGemini so each repo analysis
+// gets its own session in the 0xtrace dashboard.
 
-export const tracer = new Tracer({
-  ingestUrl: process.env.INGEST_URL ?? "http://localhost:3000/api/ingest",
-  apiKey:    process.env.INGEST_API_KEY!,
+const baseGroq = new OpenAI({
+  apiKey:  process.env.GROQ_API_KEY!,
+  baseURL: "https://api.groq.com/openai/v1",
 });
-
-// ── Groq client via OpenAI SDK ────────────────────────────────────────────────
-
-const groq = wrapOpenAI(
-  new OpenAI({
-    apiKey:  process.env.GROQ_API_KEY!,
-    baseURL: "https://api.groq.com/openai/v1",
-  }),
-  tracer
-);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,7 +20,12 @@ export interface AnalysisResult {
   key_modules: { file: string; role: string; why_it_exists: string }[];
   onboarding_guide: string[];
   evidence_paths: string[];
-  blast_radius: { file: string; dependents: number; warning: string; safe_refactor_steps: string[] }[];
+  blast_radius: {
+    file: string;
+    dependents: number;
+    warning: string;
+    safe_refactor_steps: string[];
+  }[];
   health_status: {
     grade: string;
     score: number;
@@ -40,13 +37,13 @@ export interface AnalysisResult {
 // ── Main function ─────────────────────────────────────────────────────────────
 
 export async function analyzeWithGemini(
-  repoName: string,
-  description: string,
-  entryPoints: string[],
-  topFiles: { path: string; role: string }[],
-  fileContents: { path: string; content: string }[],
-  blastRadiusTargets: { file: string; dependentsCount: number }[],
-  healthMetrics: { score: number; grade: string; color: string; status: string }
+  repoName:            string,
+  description:         string,
+  entryPoints:         string[],
+  topFiles:            { path: string; role: string }[],
+  fileContents:        { path: string; content: string }[],
+  blastRadiusTargets:  { file: string; dependentsCount: number }[],
+  healthMetrics:       { score: number; grade: string; color: string; status: string }
 ): Promise<AnalysisResult> {
   if (process.env.USE_GROQ_FOR_ANALYSIS !== "true") {
     throw new Error("Groq analysis is disabled. Set USE_GROQ_FOR_ANALYSIS=true.");
@@ -55,6 +52,20 @@ export async function analyzeWithGemini(
   if (!process.env.GROQ_API_KEY) {
     throw new Error("Missing GROQ_API_KEY environment variable");
   }
+
+  // ── Per-analysis tracer ────────────────────────────────────────────────────
+  // Fresh session per repo so each analysis is independently traceable
+  // in the 0xtrace dashboard. metadata.repo labels it by repository name.
+  const tracer = new Tracer({
+    ingestUrl: process.env.INGEST_URL ?? "http://localhost:3000/api/ingest",
+    apiKey:    process.env.INGEST_API_KEY!,
+    sessionId: crypto.randomUUID(),
+    metadata:  { repo: repoName },
+  });
+
+  const groq = wrapOpenAI(baseGroq, tracer);
+
+  // ── Build prompt ───────────────────────────────────────────────────────────
 
   const fileContentText = fileContents
     .map((f) => {
@@ -109,18 +120,25 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
   }
 }`;
 
+  // ── Execute ────────────────────────────────────────────────────────────────
+
   const response = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model:           "llama-3.3-70b-versatile",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user",   content: "Analyze this codebase and return ONLY the required JSON." },
     ],
-    temperature: 0.2,
+    temperature:     0.2,
     response_format: { type: "json_object" },
   });
 
   const text = response.choices?.[0]?.message?.content;
   if (!text) throw new Error("Empty response from Groq");
+
+  // ── Flush traces before returning ──────────────────────────────────────────
+  // Ensures telemetry is delivered even in serverless environments
+  // where the process may be frozen immediately after the function returns.
+  await tracer.flush();
 
   return JSON.parse(text) as AnalysisResult;
 }
