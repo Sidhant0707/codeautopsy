@@ -1,297 +1,320 @@
-export const runtime = 'nodejs';
+/**
+ * app/api/analyze/route.ts
+ *
+ * Network layer only: Auth, Rate-limiting, DB cache, Streaming.
+ * All heavy lifting is delegated to `runAstPipeline`.
+ */
+
+export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { parseRepoUrl, fetchRepoMeta, fetchRepoTree, fetchFileContent, GitHubAuthError } from "@/lib/github";
-import { classifyAndScoreFiles, getTopFiles } from "@/lib/repo-parser";
-import { buildDependencyGraph, computeFanIn, graphToMermaid } from "@/lib/dependency-graph";
 import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
-import { calculateHealthGrade } from "@/lib/analyzer/health";
+import {
+  runAstPipeline,
+  PipelineError,
+  type PipelineResult,
+} from "@/lib/pipeline/ast-pipeline";
+import { GitHubAuthError } from "@/lib/github";
 
 const ANALYSIS_VERSION = 10;
 
-// [Keep all your helper functions here: IGNORE_PATTERNS, sanitizeDependencyGraph, generateTestCoverageMap, computeCoverageGaps]
-const IGNORE_PATTERNS = ["node_modules", "dist", "build", ".next", ".git", "coverage", "__pycache__", ".yarn", "vendor", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "repomix-output.xml"] as const;
-const IGNORE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".lock", ".min.js", ".map", ".woff", ".woff2"] as const;
-const CONFIG_FILE_PATTERN = /\.(json|md|ya?ml|config\.(js|mjs|ts|cjs))$/i;
-const TEST_FILE_PATTERN = /\.(test|spec)\.[jt]sx?$/i;
-const TEST_DIR_PATTERN = /__(tests|mocks)__\//i;
+// ── SafeStream ────────────────────────────────────────────────────────────────
+/**
+ * Guards the ReadableStreamDefaultController against two classes of bugs
+ * that crash Vercel serverless functions in production:
+ *
+ * 1. `enqueue()` after `close()` — throws "Controller is already closed".
+ * 2. `close()` called twice — same error.
+ *
+ * The `keepAlive` interval is always cleared through this class, making it
+ * impossible to forget a clearInterval in any code path.
+ */
+class SafeStream {
+  private closed = false;
 
-function isIgnoredFile(path: string): boolean { return IGNORE_PATTERNS.some(pattern => path.includes(pattern)) || IGNORE_EXTENSIONS.some(ext => path.endsWith(ext)); }
-function isConfigFile(path: string): boolean { return CONFIG_FILE_PATTERN.test(path); }
-function isTestFile(path: string): boolean { return TEST_FILE_PATTERN.test(path) || TEST_DIR_PATTERN.test(path); }
-function getSourcePathFromTest(testPath: string): string { return testPath.replace(/\.(test|spec)(\.[jt]sx?)$/i, '$2').replace(TEST_DIR_PATTERN, ''); }
-function boostEntryPointScores(files: Array<{ path: string; role: string; score: number }>) { files.forEach(file => { if (file.path.endsWith("index.html") || file.path.endsWith(".html")) { file.role = "entry"; file.score += 500; } }); }
+  constructor(
+    private readonly ctrl: ReadableStreamDefaultController,
+    private readonly enc: TextEncoder,
+    private readonly keepAlive: ReturnType<typeof setInterval>,
+  ) {}
 
-function sanitizeDependencyGraph(graph: Record<string, string[]>): Record<string, string[]> {
-  const sanitized: Record<string, string[]> = {};
-  for (const [source, targets] of Object.entries(graph)) {
-    if (isConfigFile(source)) continue;
-    const validTargets = targets.filter(t => !isConfigFile(t));
-    if (validTargets.length > 0 || targets.length === 0) { sanitized[source] = validTargets; }
-  }
-  const allReferencedTargets = new Set<string>();
-  for (const targets of Object.values(sanitized)) { targets.forEach(t => allReferencedTargets.add(t)); }
-  for (const target of allReferencedTargets) { if (!sanitized[target]) { sanitized[target] = []; } }
-  return sanitized;
-}
-
-type TestCoverageMap = Record<string, { isTested: boolean; testFiles: string[] }>;
-function generateTestCoverageMap(allPaths: string[]): TestCoverageMap {
-  const coverageMap: TestCoverageMap = {};
-  const testFiles: string[] = [];
-  for (const path of allPaths) {
-    if (isTestFile(path)) { testFiles.push(path); } 
-    else { coverageMap[path] = { isTested: false, testFiles: [] }; }
-  }
-  for (const testPath of testFiles) {
-    const presumedSource = getSourcePathFromTest(testPath);
-    if (coverageMap[presumedSource]) { coverageMap[presumedSource].isTested = true; coverageMap[presumedSource].testFiles.push(testPath); }
-  }
-  return coverageMap;
-}
-
-interface CoverageGap { file: string; fanIn: number; isTested: boolean; testFiles: string[]; riskScore: number; }
-function computeCoverageGaps(fanIn: Record<string, number>, testCoverageMap: TestCoverageMap, topN: number = 10): CoverageGap[] {
-  return Object.entries(fanIn).map(([filePath, fanInScore]) => {
-    const coverageData = testCoverageMap[filePath] || { isTested: false, testFiles: [] };
-    const riskScore = coverageData.isTested ? 0 : fanInScore;
-    return { file: filePath, fanIn: fanInScore, isTested: coverageData.isTested, testFiles: coverageData.testFiles, riskScore };
-  }).filter(gap => gap.riskScore > 0).sort((a, b) => b.riskScore - a.riskScore).slice(0, topN);
-}
-
-// ============================================================================
-// MAIN API HANDLER
-// ============================================================================
-
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { repoUrl, isLocal, localFiles } = body;
-
-  const cookieStore = await cookies();
-  const headerList = await headers();
-  const ip = headerList.get("x-forwarded-for")?.split(",")[0] || headerList.get("x-real-ip") || "127.0.0.1";
-
-  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    cookies: {
-      get(name: string) { return cookieStore.get(name)?.value; },
-      set(name: string, value: string, options?: Parameters<typeof cookieStore.set>[2]) { cookieStore.set(name, value, options); },
-      remove(name: string) { cookieStore.delete(name); }
+  /**
+   * Serialises `payload` as JSON and enqueues it.
+   * If the stream is already closed (or the client disconnected), the error is
+   * absorbed and `close()` is called to clean up the interval immediately.
+   */
+  send(payload: object): void {
+    if (this.closed) return;
+    try {
+      this.ctrl.enqueue(this.enc.encode(JSON.stringify(payload)));
+    } catch {
+      // Client disconnected or stream was cancelled — clean up now rather
+      // than waiting for the next keep-alive tick.
+      this.close();
     }
-  });
+  }
 
-  let session = null;
+  /**
+   * Clears the keep-alive interval and closes the stream.
+   * Safe to call multiple times.
+   */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    clearInterval(this.keepAlive);
+    try {
+      this.ctrl.close();
+    } catch {
+      // Already closed or errored — nothing to do.
+    }
+  }
+
+  /** Convenience: send an error envelope and close the stream. */
+  sendError(error: string, extra?: Record<string, unknown>): void {
+    this.send({ error, ...extra });
+    this.close();
+  }
+}
+
+// ── Route Handler ─────────────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  // ── 1. Body parsing ────────────────────────────────────────────────────────
+  // `req.json()` throws on malformed JSON or an empty body. Handle it before
+  // opening the stream so we can return a clean 400 response.
+  let body: { repoUrl?: unknown; isLocal?: unknown; localFiles?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid or missing JSON body." }, { status: 400 });
+  }
+
+  const isLocal    = body.isLocal === true;
+  const repoUrl    = typeof body.repoUrl === "string" ? body.repoUrl.trim() : undefined;
+  const localFiles = Array.isArray(body.localFiles) ? body.localFiles : undefined;
+
+  // ── 2. Input validation ────────────────────────────────────────────────────
+  // Validate before touching Supabase / Upstash to avoid wasting quota on
+  // obviously bad requests.
+  if (!isLocal && !repoUrl) {
+    return NextResponse.json(
+      { error: "repoUrl is required for non-local analysis." },
+      { status: 400 },
+    );
+  }
+
+  if (isLocal && !localFiles) {
+    return NextResponse.json(
+      { error: "localFiles is required for local analysis." },
+      { status: 400 },
+    );
+  }
+
+  // ── 3. Auth ────────────────────────────────────────────────────────────────
+  const cookieStore = await cookies();
+  const headerList  = await headers();
+  const ip =
+    headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    headerList.get("x-real-ip") ||
+    "127.0.0.1";
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: { path?: string; domain?: string; maxAge?: number; expires?: Date; httpOnly?: boolean; secure?: boolean; sameSite?: boolean | "lax" | "strict" | "none" }) {
+          try {
+            cookieStore.set(name, value, options);
+          } catch {
+            // Handle edge cases where cookies cannot be set
+          }
+        },
+        remove(name: string, options: { path?: string; domain?: string; maxAge?: number; expires?: Date; httpOnly?: boolean; secure?: boolean; sameSite?: boolean | "lax" | "strict" | "none" }) {
+          try {
+            cookieStore.set(name, "", { ...options, maxAge: 0 });
+          } catch {
+            // Handle edge cases where cookies cannot be removed
+          }
+        },
+      },
+    }
+  );
+
+  let session  = null;
   let authUser = null;
   let isAuthor = false;
 
   try {
-    const { data: { session: currentSession } } = await supabase.auth.getSession();
-    session = currentSession;
-    
+    const { data: { session: s } } = await supabase.auth.getSession();
+    session = s;
+
     if (session) {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
       if (!userError && user) {
         authUser = user;
-        
         isAuthor = user.email === process.env.AUTHOR_EMAIL;
-        
+
         if (!isAuthor) {
           const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
           if (!isUnderLimit) {
-            return NextResponse.json({ error: "RATE_LIMIT_REACHED", message: "Daily limit reached." }, { status: 429 });
+            return NextResponse.json(
+              { error: "RATE_LIMIT_REACHED", message: "Daily limit reached." },
+              { status: 429 },
+            );
           }
         }
       }
     }
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    // Auth failure is non-fatal — demote to anonymous. The subsequent
+    // rate-limit check will use the IP instead.
+    console.error("[analyze] Auth setup error:", err);
   }
 
-  const userId = authUser?.id ?? undefined;
+  const userId = authUser?.id;
 
+  // ── 4. Rate limiting ───────────────────────────────────────────────────────
   if (!isAuthor) {
     const identifier = userId ?? ip;
-    const limiter = userId ? ratelimitAuth : ratelimitFree;
+    const limiter    = userId ? ratelimitAuth : ratelimitFree;
     const { success, limit, reset, remaining } = await limiter.limit(identifier);
 
     if (!success) {
-      return NextResponse.json({ error: "RATE_LIMIT_REACHED", message: "Limit reached.", limit, remaining, reset }, { status: 429 });
+      return NextResponse.json(
+        { error: "RATE_LIMIT_REACHED", message: "Limit reached.", limit, remaining, reset },
+        { status: 429 },
+      );
     }
   }
 
+  // ── 5. GitHub token resolution ─────────────────────────────────────────────
   const provider = authUser?.app_metadata?.provider;
-  const githubToken: string | undefined = provider === 'github' && session?.provider_token ? session.provider_token : process.env.GITHUB_FALLBACK_TOKEN;
+  const githubToken: string | undefined =
+    provider === "github" && session?.provider_token
+      ? session.provider_token
+      : process.env.GITHUB_FALLBACK_TOKEN;
 
   if (!githubToken) {
-    return NextResponse.json({ error: "Missing GitHub fallback token." }, { status: 500 });
+    return NextResponse.json({ error: "Missing GitHub token." }, { status: 500 });
   }
 
+  // ── 6. Streaming response ──────────────────────────────────────────────────
   const encoder = new TextEncoder();
+
   const stream = new ReadableStream({
-    async start(controller) {
+    async start(ctrl) {
+      // The keep-alive ping enqueues raw whitespace directly on `ctrl`.
+      // This is intentional: SafeStream JSON-encodes its payloads, which
+      // would produce `{}` and could confuse single-value JSON parsers.
+      // If enqueue fails (stream closed/cancelled), the interval clears itself.
       const keepAlive = setInterval(() => {
-        try { controller.enqueue(encoder.encode(" ")); } catch { clearInterval(keepAlive); }
-      }, 2000);
+        try {
+          ctrl.enqueue(encoder.encode(" "));
+        } catch {
+          clearInterval(keepAlive);
+        }
+      }, 2_000);
+
+      // All further writes/closes go through SafeStream to prevent
+      // enqueue-after-close exceptions from crashing the function.
+      const safe = new SafeStream(ctrl, encoder, keepAlive);
 
       try {
-        let allFileContents: { path: string; content: string }[] = [];
-        let owner = "Local", repo = "Project", commitSha = "local-upload", description = "Locally uploaded codebase", stars = 0, language = "Mixed";
-        let filteredPaths: string[] = [];
-        let fileMetrics: { path: string; size: number }[] = [];
+        const result: PipelineResult = await runAstPipeline({
+          repoUrl:    repoUrl ?? "",
+          githubToken,
+          isLocal,
+          localFiles,
+          // Don't register a cache checker for local uploads — there's nothing
+          // to cache against (no stable commitSha).
+          checkCache: isLocal
+            ? undefined
+            : async (commitSha) => {
+                const { data: cached, error: cacheError } = await supabase
+                  .from("analyses")
+                  .select("result_json")
+                  .eq("repo_url", repoUrl)
+                  .eq("commit_sha", commitSha)
+                  .eq("analysis_version", ANALYSIS_VERSION)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
 
-        if (isLocal && localFiles) {
-          if (localFiles.length > 300) {
-            clearInterval(keepAlive); 
-            controller.enqueue(encoder.encode(JSON.stringify({ error: "Codebase too large. Max 300 files." }))); 
-            controller.close(); 
-            return;
-          }
-          const totalSize = localFiles.reduce((acc: number, file: { content: string }) => acc + (file.content?.length || 0), 0);
-          if (totalSize > 2000000) {
-            clearInterval(keepAlive); 
-            controller.enqueue(encoder.encode(JSON.stringify({ error: "Codebase exceeds 2MB limit." }))); 
-            controller.close(); 
-            return;
-          }
-          allFileContents = localFiles;
-          filteredPaths = localFiles.map((f: { path: string }) => f.path);
-          fileMetrics = localFiles.map((f: { path: string; content: string }) => ({ path: f.path, size: f.content.length }));
-        } else {
-          const parsed = parseRepoUrl(repoUrl);
-          if (!parsed) { 
-            clearInterval(keepAlive); 
-            controller.enqueue(encoder.encode(JSON.stringify({ error: "Invalid GitHub URL" }))); 
-            controller.close(); 
-            return; 
-          }
-          owner = parsed.owner; 
-          repo = parsed.repo;
+                if (cacheError) {
+                  // Supabase returns soft errors — log and treat as miss
+                  console.warn("[analyze] Cache query error:", cacheError.message);
+                  return null;
+                }
 
-          const meta = await fetchRepoMeta(owner, repo, githubToken);
-          commitSha = String(meta.default_branch); 
-          description = String(meta.description ?? ""); 
-          stars = Number(meta.stargazers_count ?? 0); 
-          language = String(meta.language ?? "");
+                return cached?.result_json ?? null;
+              },
+        });
 
-          const { data: cached } = await supabase.from("analyses").select("result_json").eq("repo_url", repoUrl).eq("commit_sha", commitSha).eq("analysis_version", ANALYSIS_VERSION).order("created_at", { ascending: false }).limit(1).maybeSingle();
-          if (cached?.result_json) {
-            clearInterval(keepAlive); 
-            controller.enqueue(encoder.encode(JSON.stringify({ ...cached.result_json, cached: true }))); 
-            controller.close(); 
-            return;
-          }
-
-          const treeData = await fetchRepoTree(owner, repo, commitSha, githubToken);
-          const validFiles = (treeData.tree as { type: string; path: string; size?: number }[]).filter(file => file.type === "blob" && !isIgnoredFile(file.path));
-          filteredPaths = validFiles.map(file => file.path);
-          fileMetrics = validFiles.map(file => ({ path: file.path, size: file.size || 0 }));
-          
-          const scoredFiles = classifyAndScoreFiles(filteredPaths);
-          boostEntryPointScores(scoredFiles);
-          const topFiles = getTopFiles(scoredFiles, 20);
-
-          const tsconfigEntry = scoredFiles.find(f => f.path === "tsconfig.json" || f.path === "src/tsconfig.json");
-          if (tsconfigEntry && !topFiles.find(f => f.path === tsconfigEntry.path)) { 
-            topFiles.unshift(tsconfigEntry); 
-          }
-
-          const fetchPromises = topFiles.slice(0, 30).map(async file => {
-            try {
-              const content = await fetchFileContent(owner, repo, file.path, githubToken);
-              return { path: file.path, content: content.split("\n").slice(0, 500).join("\n") };
-            } catch { 
-              return null; 
+        // Persist fresh analyses only — cached results are already in the DB.
+        if (!isLocal && !result.cached) {
+          // DB insert is non-fatal. A failure here must NOT prevent the
+          // freshly-computed result from reaching the client.
+          try {
+            const { error: insertError } = await supabase.from("analyses").insert({
+              repo_url:         repoUrl,
+              repo_name:        `${result.owner}/${result.repo}`.toLowerCase(),
+              commit_sha:       result.branch,
+              analysis_version: ANALYSIS_VERSION,
+              result_json:      result,
+              user_id:          userId,
+            });
+            if (insertError) {
+              console.error("[analyze] DB insert error:", insertError.message);
             }
-          });
+          } catch (err) {
+            console.error("[analyze] DB insert threw:", err);
+          }
 
-          const results = await Promise.all(fetchPromises);
-          allFileContents = results.filter((r): r is { path: string; content: string } => r !== null);
+          // RAG indexing is also non-fatal — a failure should never block
+          // the response. `fileContents` is always an array from the pipeline,
+          // but guard anyway for safety.
+          try {
+            await processAndStoreCodebase(
+              supabase,
+              repoUrl!,
+              result.fileContents ?? [],
+            );
+          } catch (err) {
+            console.error("[analyze] RAG storage failed:", err);
+          }
         }
 
-        if (allFileContents.length === 0) {
-          clearInterval(keepAlive); 
-          controller.enqueue(encoder.encode(JSON.stringify({ error: "No readable code files found." }))); 
-          controller.close(); 
-          return;
-        }
-
-        const scoredAllFiles = classifyAndScoreFiles(filteredPaths);
-        boostEntryPointScores(scoredAllFiles);
-        const topFilesForGroq = getTopFiles(scoredAllFiles, 20);
-        const entryPoints = scoredAllFiles.filter(f => f.role === "entry").slice(0, 5).map(f => f.path);
-
-        const rawDependencyGraph = buildDependencyGraph(allFileContents, filteredPaths);
-        const dependencyGraph = sanitizeDependencyGraph(rawDependencyGraph);
-        const fanIn = computeFanIn(dependencyGraph);
-        const mermaidDiagram = graphToMermaid(dependencyGraph, entryPoints);
-
-        const { getBlastRadiusTargets } = await import("@/lib/dependency-graph");
-        const blastRadiusTargets = getBlastRadiusTargets(fanIn, 3);
-        
-        const fanInValues = Object.values(fanIn) as number[];
-        const maxFanInValue = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
-        const largeFilesCount = fileMetrics.filter(f => f.size > 15000).length;
-        const healthMetrics = calculateHealthGrade({ totalFiles: filteredPaths.length, circularDependencies: 0, maxFanIn: maxFanInValue, largeFilesCount });
-
-        const testCoverageMap = generateTestCoverageMap(filteredPaths);
-        const coverageGaps = computeCoverageGaps(fanIn, testCoverageMap, 10);
-
-        const result = {
-          owner, 
-          repo, 
-          branch: commitSha, 
-          description, 
-          stars, 
-          language,
-          totalFiles: filteredPaths.length, 
-          entryPoints, 
-          dependencyGraph, 
-          fanIn, 
-          mermaidDiagram, 
-          fileContents: allFileContents.slice(0, 15), 
-          fileMetrics, 
-          healthMetrics, 
-          testCoverageMap, 
-          coverageGaps,
-          topFilesForGroq: topFilesForGroq.map(f => ({ path: f.path, role: f.role })),
-          blastRadiusTargets,
-          analysis: null 
-        };
-
-        if (!isLocal) {
-          await supabase.from("analyses").insert({
-            repo_url: repoUrl, 
-            repo_name: `${owner}/${repo}`.toLowerCase(), 
-            commit_sha: commitSha,
-            analysis_version: ANALYSIS_VERSION, 
-            result_json: result, 
-            user_id: userId
-          });
-          await processAndStoreCodebase(supabase, repoUrl, allFileContents);
-        }
-
-        clearInterval(keepAlive);
-        controller.enqueue(encoder.encode(JSON.stringify(result)));
-        controller.close();
+        safe.send(result);
+        safe.close();
 
       } catch (err) {
-        clearInterval(keepAlive);
         const message = err instanceof Error ? err.message : "Unknown error";
-        if (err instanceof GitHubAuthError || message === 'REQUIRE_GITHUB_AUTH') {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: 'REQUIRE_GITHUB_AUTH', message: 'GitHub auth required.'})));
+
+        if (err instanceof GitHubAuthError || message === "REQUIRE_GITHUB_AUTH") {
+          safe.sendError("REQUIRE_GITHUB_AUTH", { message: "GitHub auth required." });
+        } else if (err instanceof PipelineError) {
+          // Typed pipeline errors include a machine-readable code so the
+          // client can render specific UI (e.g., "Too many files" banner).
+          safe.sendError(message, { code: err.code });
         } else {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: message })));
+          safe.sendError(message);
         }
-        controller.close();
       }
-    }
+    },
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "Connection": "keep-alive" },
+    headers: {
+      "Content-Type":  "application/json",
+      "Cache-Control": "no-cache",
+      "Connection":    "keep-alive",
+    },
   });
 }

@@ -49,3 +49,5 @@ repomix-output.xml
 # Custom Utility Scripts
 remove-comments.ts
 proxy.ts
+.vercel
+cli/node_modules/
