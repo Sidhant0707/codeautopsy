@@ -399,7 +399,7 @@ const AnalyzeContent = memo(() => {
     await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        scopes: "repo",
+        scopes: "user:email",
         redirectTo: `${window.location.origin}/analyze?repo=${encodeURIComponent(repoUrl || "")}`,
       },
     });

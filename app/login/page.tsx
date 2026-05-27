@@ -45,7 +45,7 @@ export default function LoginPage() {
       provider,
       options: {
         
-        scopes: provider === "github" ? "repo" : undefined,
+        scopes: provider === "github" ? "user:email" : undefined,
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
