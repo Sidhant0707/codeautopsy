@@ -20,6 +20,7 @@ const ROLE_BADGES = {
   core:   chalk.bgMagenta.white("  CORE  "),
 };
 
+/*
 function getApiKey() {
   const key = process.env.CODEAUTOPSY_API_KEY;
   if (!key) {
@@ -34,6 +35,7 @@ function getApiKey() {
   }
   return key;
 }
+*/
 
 function printHeader() {
   console.log(
@@ -103,7 +105,7 @@ function handleApiError(status, body) {
 }
 
 async function analyzeRepo(repoUrl) {
-  const apiKey = getApiKey();
+  // const apiKey = getApiKey();
 
   printHeader();
 
@@ -118,7 +120,7 @@ async function analyzeRepo(repoUrl) {
     response = await fetch(`${API_BASE}/api/v1/analyze`, {
       method: "POST",
       headers: {
-        "Authorization":  `Bearer ${apiKey}`,
+        // "Authorization":  `Bearer ${apiKey}`,
         "Content-Type":   "application/json",
       },
       body: JSON.stringify({ repoUrl }),
