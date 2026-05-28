@@ -1,5 +1,8 @@
 "use client";
 
+import { CodeNode } from "@/components/interview/CodeNode";
+import { FlowEdge } from "@/components/interview/FlowEdge";
+
 import React, {
   useMemo,
   useState,
@@ -93,7 +96,11 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
   );
 };
 
-const nodeTypes = { glass: GlassNode };
+// --- ADDITION 2: Register CodeNode alongside GlassNode ---
+const nodeTypes = { glass: GlassNode, code: CodeNode };
+
+// --- ADDITION 2: Register FlowEdge ---
+const edgeTypes = { flow: FlowEdge };
 
 // ============================================================================
 // D3-FORCE LAYOUT
@@ -165,7 +172,6 @@ function getForceLayoutedElements(
     target: edge.target,
   }));
 
-  // --- PRINCIPAL UPGRADE: STOP THE TIMER INSTANTLY ---
   const simulation = forceSimulation<ForceNode>(forceNodes)
     .stop()
     .force(
@@ -249,7 +255,6 @@ export default function ArchitectureMap({
 }) {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  // --- PRINCIPAL UPGRADE: State protection ---
   const previousGraphRef = useRef<string>("");
 
   const adjacencyList = useMemo(() => {
@@ -297,6 +302,8 @@ export default function ArchitectureMap({
             id: `e-${filePath}-${depPath}`,
             source: filePath,
             target: depPath,
+            // --- ADDITION 3 (edge init): use FlowEdge for all edges ---
+            type: "flow",
             animated: true,
             style: { stroke: "#475569", strokeWidth: 2, opacity: 1 },
             markerEnd: {
@@ -310,7 +317,6 @@ export default function ArchitectureMap({
 
     const layoutResult = getForceLayoutedElements(nodes, edges, entryPoints);
 
-    // Create a deterministic hash for dependency graph comparison
     const graphHash = JSON.stringify({
       graphKeys: Object.keys(dependencyGraph).sort(),
       edgesCount: edges.length,
@@ -327,7 +333,6 @@ export default function ArchitectureMap({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // --- PRINCIPAL UPGRADE: Deep compare guard ---
   useEffect(() => {
     if (previousGraphRef.current !== graphHash) {
       setNodes(initialNodes);
@@ -436,6 +441,7 @@ export default function ArchitectureMap({
         </div>
       </div>
 
+      {/* --- ADDITION 3: Pass edgeTypes to ReactFlow --- */}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -444,8 +450,8 @@ export default function ArchitectureMap({
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
-        // --- PRINCIPAL UPGRADE: Center Alignment ---
         nodeOrigin={[0.5, 0.5]}
         fitViewOptions={{
           padding: 0.2,

@@ -140,14 +140,14 @@ const TreeNode = memo(({ data }: { data: TreeNodeData }) => {
 });
 TreeNode.displayName = "TreeNode";
 
+const nodeTypes = { treeNode: TreeNode };
+
 export default function DirectoryTreeVisualizer({
   metrics,
 }: {
   metrics: { path: string; size: number }[];
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-
-  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
 
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!metrics || metrics.length === 0)

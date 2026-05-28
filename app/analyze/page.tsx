@@ -86,6 +86,10 @@ const RepoChat = dynamic(() => import("@/components/RepoChat"), {
   loading: () => <SkeletonLoader />,
   ssr: false,
 });
+const InterviewChatPanel = dynamic(
+  () => import("@/components/interview/InterviewChatPanel"),
+  { loading: () => <SkeletonLoader />, ssr: false },
+);
 
 const EXPO_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -765,10 +769,28 @@ const AnalyzeContent = memo(() => {
                       {mapView === "graph" ? (
                         data.dependencyGraph &&
                         Object.keys(data.dependencyGraph).length > 0 ? (
-                          <ArchitectureMap
-                            dependencyGraph={data.dependencyGraph}
-                            entryPoints={data.entryPoints}
-                          />
+                          <>
+                            <ArchitectureMap
+                              dependencyGraph={data.dependencyGraph}
+                              entryPoints={data.entryPoints}
+                            />
+                            <InterviewChatPanel
+                              dependencyGraph={data.dependencyGraph}
+                              entryPoints={data.entryPoints}
+                              fileContents={
+                                data.fileContents
+                                  ? Object.fromEntries(
+                                      (
+                                        data.fileContents as {
+                                          path: string;
+                                          content: string;
+                                        }[]
+                                      ).map((f) => [f.path, f.content]),
+                                    )
+                                  : undefined
+                              }
+                            />
+                          </>
                         ) : (
                           <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">
                             <Layers className="w-10 h-10 text-slate-600 mb-4" />

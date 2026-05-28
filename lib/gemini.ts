@@ -6,7 +6,7 @@ import { Tracer, wrapOpenAI } from "0xtrace";
 // gets its own session in the 0xtrace dashboard.
 const baseGroq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY!,
-  baseURL: "https://api.groq.com/openai/v1",
+baseURL: "https://api.groq.com/openai/v1",
 });
 
 // ── Main Streaming Function ───────────────────────────────────────────────────
@@ -20,9 +20,10 @@ export async function streamAnalyzeWithGemini(
   blastRadiusTargets: { file: string; dependentsCount: number }[],
   healthMetrics: { score: number; grade: string; color: string; status: string }
 ) {
-  if (process.env.USE_GROQ_FOR_ANALYSIS !== "true") {
-    throw new Error("Groq analysis is disabled. Set USE_GROQ_FOR_ANALYSIS=true.");
-  }
+  if (!process.env.SAMBANOVA_API_KEY) {
+  throw new Error("Missing SAMBANOVA_API_KEY");
+}
+
 
   // 1. Per-analysis tracer (100% PRESERVED FOR TELEMETRY)
   const tracer = new Tracer({
@@ -85,7 +86,6 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
       { role: "user", content: "Analyze this codebase and stream ONLY the required JSON." }
     ],
     temperature: 0.2,
-    response_format: { type: "json_object" },
     stream: true, // <--- THE MAGIC KEY FOR 0XTRACE
   });
 
