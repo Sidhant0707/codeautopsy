@@ -176,70 +176,12 @@ const AnalyzeContent = memo(() => {
                 </ErrorBoundary>
               )}
 
-              {activeTab === "visualizer" && data && (
-                <motion.div
-                  key="visualizer"
-                  role="tabpanel"
-                  id="tabpanel-visualizer"
-                  aria-labelledby="tab-visualizer"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 380,
-                    damping: 30,
-                    mass: 0.8,
-                  }}
-                  className="absolute inset-0 p-4 flex flex-col gap-3"
-                >
-                  <div className="relative w-full flex flex-col sm:flex-row items-center justify-center gap-4 px-1 py-2 flex-shrink-0">
-                    <div className="flex flex-col gap-1 w-full sm:w-auto sm:absolute sm:left-2 text-left">
-                      <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase">
-                        Blueprint Map
-                      </h3>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        VISUAL LAYOUT
-                      </span>
-                    </div>
-                    <div className="flex overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10">
-                      {MAP_VIEW_CONFIG.map((view) => (
-                        <button
-                          key={view.id}
-                          onClick={() => setMapView(view.id)}
-                          className={`flex-shrink-0 whitespace-nowrap px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-lg transition-all ${mapView === view.id ? "bg-white/10 text-white font-bold shadow-inner" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
-                        >
-                          {view.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex-1 w-full rounded-2xl border border-white/10 overflow-hidden bg-black shadow-2xl relative">
-                    <ErrorBoundary fallbackMessage="Failed to render architecture map.">
-                      {mapView === "graph" ? (
-                        data.dependencyGraph &&
-                        Object.keys(data.dependencyGraph).length > 0 ? (
-                          <ArchitectureMap
-                            dependencyGraph={data.dependencyGraph}
-                            entryPoints={data.entryPoints}
-                            fileMetrics={data.fileMetrics}
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">
-                            <Layers className="w-10 h-10 text-slate-600 mb-4" />
-                            <p className="text-slate-500 font-mono text-xs">
-                              No blueprint data parsed.
-                            </p>
-                          </div>
-                        )
-                      ) : mapView === "directory" ? (
-                        <DirectoryTreeVisualizer metrics={data.fileMetrics} />
-                      ) : (
-                        <TreemapVisualizer metrics={data.fileMetrics} />
-                      )}
-                    </ErrorBoundary>
-                  </div>
-                </motion.div>
+              {activeTab === "visualizer" && (
+                <VisualizerPanel
+                  data={data}
+                  mapView={mapView}
+                  onMapViewChange={setMapView}
+                />
               )}
 
               {activeTab === "doctor" && (
@@ -255,72 +197,12 @@ const AnalyzeContent = memo(() => {
           </div>
         </div>
 
-        {/* CHAT / COPILOT PANEL */}
-        <AnimatePresence>
-          {!isChatOpen && (
-            <motion.button
-              type="button"
-              initial={{ x: 100, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 100, opacity: 0 }}
-              onClick={() => setIsChatOpen(true)}
-              aria-label="Open chat assistant"
-              className="absolute right-0 bottom-8 z-40 flex items-center gap-3 bg-[#141414]/90 backdrop-blur-md border border-white/10 border-r-0 px-4 py-4 rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] hover:bg-[#1a1a1a] hover:pr-6 transition-all group"
-            >
-              <div className="relative">
-                <MessageSquare className="w-5 h-5 text-slate-300 group-hover:text-white transition-colors" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              </div>
-              <div className="flex-col text-left hidden sm:flex">
-                <span className="font-bold text-xs text-white">Need Help?</span>
-                <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
-                  Ask Copilot
-                </span>
-              </div>
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {isChatOpen && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "min(100vw, 420px)", opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: EXPO_OUT }}
-              className="h-full flex-shrink-0 border-l border-white/5 bg-[#0a0a0a] flex flex-col z-50 absolute right-0 sm:relative shadow-[-20px_0_40px_rgba(0,0,0,0.5)]"
-              style={{ willChange: "width, opacity" }}
-            >
-              <div className="h-12 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-4 bg-[#0e0e0e]">
-                <div className="flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5 text-slate-400" />
-                  <h3 className="text-[11px] font-bold text-slate-300 uppercase tracking-widest font-mono">
-                    Autopsy Copilot
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setIsChatOpen(false)}
-                  className="p-1.5 rounded-md hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                  aria-label="Close chat"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 bg-transparent">
-                <ErrorBoundary fallbackMessage="Copilot encountered a critical error.">
-                  <RepoChat
-                    repoContext={
-                      data as unknown as {
-                        repo?: string;
-                        [key: string]: string | undefined;
-                      }
-                    }
-                  />
-                </ErrorBoundary>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <ChatPanel
+          data={data}
+          isOpen={isChatOpen}
+          onOpen={() => setIsChatOpen(true)}
+          onClose={() => setIsChatOpen(false)}
+        />
       </div>
 
       <ExitModal
