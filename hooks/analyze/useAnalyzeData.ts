@@ -20,6 +20,7 @@ interface UseAnalyzeDataReturn {
   error: string | null;
   isRateLimit: boolean;
   isAiStreaming: boolean;
+  aiGateState: "free" | "login-required" | "limit-reached" | null;
 }
 
 /**
@@ -82,7 +83,7 @@ export function useAnalyzeData({
   // Pass swrData to the stream hook. It self-guards and will only open a
   // stream when `swrData.analysis === null`.
 
-  const { aiAnalysis, isAiStreaming } = useAiStream(
+  const { aiAnalysis, isAiStreaming, aiGateState } = useAiStream( 
     isLocal ? null : swrData,
   );
 
@@ -133,5 +134,10 @@ export function useAnalyzeData({
     error,
     isRateLimit,
     isAiStreaming,
+    aiGateState: isLocal ? null : aiGateState === "auth_required"
+      ? "login-required"
+      : aiGateState === "limit_reached"
+        ? "limit-reached"
+        : "free",
   };
 }

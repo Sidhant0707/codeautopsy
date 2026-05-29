@@ -55,4 +55,8 @@ export interface PRAnalysisResult {
   breakingDependencies: string[];
   riskLevel: "low" | "medium" | "high";
   suggestedReviewers?: { username: string; reason: string }[];
+  // ── Added: raw list of files changed in the PR, used by ArchitectureMap
+  // for the client-side multi-source reverse BFS (pr-blast mode).
+  // Populated by /api/analyze-pr from the GitHub /pulls/{pr}/files endpoint.
+  changedFiles?: string[];
 }

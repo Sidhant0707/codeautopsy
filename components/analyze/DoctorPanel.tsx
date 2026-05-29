@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { RepoData } from "@/lib/types/analyze";
 import SkeletonLoader from "@/components/analyze/SkeletonLoader";
+import AiGate from "@/components/analyze/AiGate";
 
 const DebugInterface = dynamic(
   () => import("@/components/debug/DebugInterface"),
@@ -16,16 +17,23 @@ interface DoctorPanelProps {
   data: RepoData;
   source: string | null;
   onOpenChat: () => void;
+  aiGateState: "free" | "login-required" | "limit-reached" | null;
 }
 
 export default function DoctorPanel({
   data,
   source,
   onOpenChat,
+  aiGateState,
 }: DoctorPanelProps) {
   const repoUrl =
     source === "local"
       ? "Local.zip Codebase"
+      : `https://github.com/${data.owner}/${data.repo}`;
+
+  const githubRepoUrl =
+    source === "local"
+      ? undefined
       : `https://github.com/${data.owner}/${data.repo}`;
 
   return (
@@ -43,11 +51,27 @@ export default function DoctorPanel({
       <div className="flex flex-col gap-4 h-full">
         {data.mermaidDiagram ? (
           <>
+            {/* Wrap the AI panel in a relative container so AiGate
+                can position itself absolutely over it */}
             <div className="w-full flex-1 min-h-0 rounded-2xl border border-white/5 overflow-hidden bg-[#0e0e0e] relative">
               <ErrorBoundary fallbackMessage="Diagnostic interface crashed.">
                 <DebugInterface repoUrl={repoUrl} />
               </ErrorBoundary>
+
+              {/* Gate overlay — renders on top when active */}
+              {(aiGateState === "login-required" ||
+                aiGateState === "limit-reached") && (
+                <AiGate
+                  state={
+                    aiGateState === "login-required"
+                      ? "auth_required"
+                      : "limit_reached"
+                  }
+                  repoUrl={githubRepoUrl}
+                />
+              )}
             </div>
+
             <motion.button
               whileTap={{ scale: 0.99 }}
               onClick={onOpenChat}
