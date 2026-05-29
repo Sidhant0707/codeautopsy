@@ -1030,6 +1030,7 @@ export default function ArchitectureMap({
     });
 
     return { initialNodes: layoutNodes, initialEdges: layoutEdges, graphHash };
+     
   }, [dependencyGraph, entryPoints]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
