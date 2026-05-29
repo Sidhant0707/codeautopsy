@@ -9,6 +9,7 @@ import {
   memo,
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import ArchInsightsPanel from "@/components/analyze/ArchInsightsPanel";
 import { AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
@@ -215,6 +216,14 @@ const AnalyzeContent = memo(() => {
               )}
 
               {activeTab === "risk_radar" && <RiskRadarPanel data={data} />}
+              {activeTab === "arch_insights" && (
+                <ErrorBoundary
+                  key="arch-insights-boundary"
+                  fallbackMessage="Failed to load architecture insights."
+                >
+                  <ArchInsightsPanel data={data} />
+                </ErrorBoundary>
+              )}
             </AnimatePresence>
           </div>
         </div>

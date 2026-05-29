@@ -4,6 +4,7 @@ import {
   Activity,
   GitPullRequest,
   Target,
+  Cpu,
 } from "lucide-react";
 
 // ─── Framer Motion ────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ export const TAB_CONFIG = [
   { id: "doctor" as const, icon: Activity, label: "Diagnostic Engine" },
   { id: "pr_impact" as const, icon: GitPullRequest, label: "PR Impact" },
   { id: "risk_radar" as const, icon: Target, label: "Risk Radar" },
+  { id: "arch_insights" as const, icon: Cpu, label: "Arch Insights" },
 ] as const;
 
 export type TabType = (typeof TAB_CONFIG)[number]["id"];

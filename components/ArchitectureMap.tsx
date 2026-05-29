@@ -1,4 +1,8 @@
+// components/ArchitectureMap.tsx
+
 "use client";
+
+import InfoTooltip from "@/components/InfoTooltip";
 
 import React, {
   useMemo,
@@ -38,11 +42,8 @@ import {
   Flame,
   ChevronRight,
   GitPullRequest,
+  Zap,
 } from "lucide-react";
-
-// ============================================================================
-// ALGORITHMS
-// ============================================================================
 
 function detectCircularDependencies(graph: Record<string, string[]>): {
   cycleNodes: Set<string>;
@@ -108,27 +109,12 @@ function detectOrphans(graph: Record<string, string[]>): string[] {
   );
 }
 
-/**
- * Multi-source Reverse BFS for PR Blast Radius.
- *
- * Takes an array of PR-changed files as starting nodes and walks the
- * REVERSE dependency graph (adjacencyList = who imports X) to find every
- * file that could break if one of the changed files changes.
- *
- * Returns:
- *   modifiedNodes  — the files directly changed in the PR (yellow)
- *   blastNodes     — files that import (transitively) a modified file (red)
- *
- * A file in modifiedNodes that is ALSO reachable via the reverse graph stays
- * in modifiedNodes (yellow takes priority over red in the renderer).
- */
 function computePrBlastRadius(
   changedFiles: string[],
-  adjacencyList: Record<string, string[]>, // reverse graph: file → who imports it
+  adjacencyList: Record<string, string[]>,
 ): { modifiedNodes: Set<string>; blastNodes: Set<string> } {
   const modifiedNodes = new Set<string>(changedFiles);
   const blastNodes = new Set<string>();
-
   const queue = [...changedFiles];
   const visited = new Set<string>(changedFiles);
 
@@ -138,10 +124,7 @@ function computePrBlastRadius(
     for (const importer of importers) {
       if (!visited.has(importer)) {
         visited.add(importer);
-        // Only add to blastNodes if not one of the directly modified files
-        if (!modifiedNodes.has(importer)) {
-          blastNodes.add(importer);
-        }
+        if (!modifiedNodes.has(importer)) blastNodes.add(importer);
         queue.push(importer);
       }
     }
@@ -150,14 +133,22 @@ function computePrBlastRadius(
   return { modifiedNodes, blastNodes };
 }
 
-// ============================================================================
-// ACTIVE MODE TYPE
-// ============================================================================
-type ActiveMode = "blast" | "circular" | "orphan" | "pr-blast" | null;
+type PageRankTier = 0 | 1 | 2 | 3;
 
-// ============================================================================
-// GLASS NODE
-// ============================================================================
+function getPageRankTier(score: number): PageRankTier {
+  if (score >= 70) return 3;
+  if (score >= 40) return 2;
+  if (score >= 15) return 1;
+  return 0;
+}
+
+type ActiveMode =
+  | "blast"
+  | "circular"
+  | "orphan"
+  | "pr-blast"
+  | "pagerank"
+  | null;
 
 interface GlassNodeData {
   isBlastRadius: boolean;
@@ -169,10 +160,46 @@ interface GlassNodeData {
   heatmap?: "green" | "yellow" | "red";
   isOrphan?: boolean;
   isOrphanHighlighted?: boolean;
-  // PR blast fields
-  isPrModified?: boolean; // changed in the PR → yellow
-  isPrBlast?: boolean; // breaks because of the PR → red
+  isPrModified?: boolean;
+  isPrBlast?: boolean;
+  pageRankScore?: number;
+  pageRankTier?: PageRankTier;
+  pageRankActive?: boolean;
 }
+
+const PR_TIER_STYLES: Record<
+  PageRankTier,
+  { border: string; bg: string; shadow: string; text: string; badge: string }
+> = {
+  3: {
+    border: "border-cyan-400/70",
+    bg: "bg-cyan-500/10",
+    shadow: "shadow-[0_0_22px_rgba(34,211,238,0.28)]",
+    text: "text-cyan-200",
+    badge: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+  },
+  2: {
+    border: "border-blue-400/60",
+    bg: "bg-blue-500/8",
+    shadow: "shadow-[0_0_16px_rgba(59,130,246,0.2)]",
+    text: "text-blue-200",
+    badge: "bg-blue-500/15 text-blue-300 border-blue-500/25",
+  },
+  1: {
+    border: "border-indigo-400/40",
+    bg: "bg-indigo-500/5",
+    shadow: "shadow-[0_0_10px_rgba(99,102,241,0.12)]",
+    text: "text-indigo-200",
+    badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  },
+  0: {
+    border: "border-white/5",
+    bg: "bg-[#141414]/40",
+    shadow: "",
+    text: "text-slate-600",
+    badge: "",
+  },
+};
 
 const HEATMAP_STYLES: Record<
   "green" | "yellow" | "red",
@@ -207,14 +234,71 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
     isOrphanHighlighted,
     isPrModified,
     isPrBlast,
+    pageRankTier,
+    pageRankActive,
+    pageRankScore,
   } = data;
+
+  if (
+    pageRankActive &&
+    pageRankTier !== undefined &&
+    !isBlastRadius &&
+    !isPrModified &&
+    !isPrBlast &&
+    !isCircular &&
+    !isOrphanHighlighted
+  ) {
+    const s = PR_TIER_STYLES[pageRankTier];
+    const dimmed = isDimmed || pageRankTier === 0;
+
+    return (
+      <div
+        className={`px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer ${s.bg} border ${s.border} ${s.shadow} ${dimmed ? "opacity-25" : "opacity-100"}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className={`w-2 h-2 border-none ${pageRankTier >= 2 ? "!bg-cyan-400" : "!bg-slate-500"}`}
+        />
+        <div className="flex flex-col items-center justify-center">
+          {pageRankTier === 3 && (
+            <div className="text-[8px] uppercase tracking-widest text-cyan-400 font-bold mb-1 flex items-center gap-1">
+              <Zap className="w-2.5 h-2.5" /> Nerve Center
+            </div>
+          )}
+          {pageRankTier === 2 && (
+            <div className="text-[8px] uppercase tracking-widest text-blue-400 font-bold mb-1">
+              High Influence
+            </div>
+          )}
+          <div
+            className={`text-sm font-mono truncate max-w-[200px] ${s.text}`}
+            title={data.fullPath}
+          >
+            {data.label}
+          </div>
+          {pageRankTier >= 1 && pageRankScore !== undefined && (
+            <div
+              className={`mt-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${s.badge}`}
+            >
+              PR {pageRankScore}
+            </div>
+          )}
+        </div>
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className={`w-2 h-2 border-none ${pageRankTier >= 2 ? "!bg-cyan-400" : "!bg-slate-500"}`}
+        />
+      </div>
+    );
+  }
 
   let containerClass =
     "px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer";
   let textClass = "text-sm font-mono truncate max-w-[200px] transition-colors";
   let handleColor = "!bg-slate-500";
 
-  // Priority: pr-modified > pr-blast > blast > dimmed > orphan > circular > heatmap > default
   if (isPrModified) {
     containerClass +=
       " bg-yellow-500/15 border border-yellow-400/60 shadow-[0_0_20px_rgba(234,179,8,0.25)]";
@@ -300,10 +384,6 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
 };
 
 const nodeTypes = { glass: GlassNode };
-
-// ============================================================================
-// D3-FORCE LAYOUT (unchanged)
-// ============================================================================
 
 interface ForceNode extends Node {
   x?: number;
@@ -434,10 +514,6 @@ function getForceLayoutedElements(
   };
 }
 
-// ============================================================================
-// ANALYSIS SIDEBAR
-// ============================================================================
-
 interface SidebarProps {
   nodeCount: number;
   cycleCount: number;
@@ -447,14 +523,14 @@ interface SidebarProps {
   orphans: string[];
   selectedOrphan: string | null;
   onOrphanSelect: (path: string | null) => void;
-  // PR blast
   prChangedFiles: string[];
   prModifiedNodes: Set<string>;
   prBlastNodes: Set<string>;
-  // shared
   activeMode: ActiveMode;
   onActivateMode: (mode: ActiveMode) => void;
   onClearAll: () => void;
+  pageRankScores: Record<string, number>;
+  pageRankTopFiles: Array<{ path: string; score: number }>;
 }
 
 function AnalysisSidebar({
@@ -472,6 +548,8 @@ function AnalysisSidebar({
   activeMode,
   onActivateMode,
   onClearAll,
+  pageRankScores,
+  pageRankTopFiles,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState(true);
   const [orphanListOpen, setOrphanListOpen] = useState(true);
@@ -479,6 +557,7 @@ function AnalysisSidebar({
   const hasCircular = cycleCount > 0;
   const hasOrphans = orphans.length > 0;
   const hasPrData = prChangedFiles.length > 0;
+  const hasPageRank = Object.keys(pageRankScores).length > 0;
 
   const RAIL = [
     {
@@ -513,6 +592,14 @@ function AnalysisSidebar({
       dot: hasOrphans,
       dotColor: "bg-violet-500",
     },
+    {
+      key: "pagerank" as const,
+      icon: <Zap className="w-3.5 h-3.5" />,
+      color: hasPageRank ? "text-cyan-400" : "text-slate-600",
+      active: activeMode === "pagerank",
+      dot: false,
+      dotColor: "",
+    },
   ];
 
   return (
@@ -523,7 +610,6 @@ function AnalysisSidebar({
       className="h-full flex-shrink-0 relative z-20 flex"
       style={{ overflow: "visible" }}
     >
-      {/* ── Collapsed icon rail ── */}
       <AnimatePresence>
         {!expanded && (
           <motion.div
@@ -564,7 +650,6 @@ function AnalysisSidebar({
         )}
       </AnimatePresence>
 
-      {/* ── Expanded sidebar ── */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -574,7 +659,6 @@ function AnalysisSidebar({
             transition={{ duration: 0.18 }}
             className="w-64 h-full flex flex-col border-l border-white/5 bg-[#0e0e0e] overflow-hidden"
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-4 h-11 border-b border-white/5 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
@@ -601,7 +685,6 @@ function AnalysisSidebar({
               </div>
             </div>
 
-            {/* Graph meta */}
             <div className="px-4 py-3 border-b border-white/[0.04] flex-shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider">
@@ -625,7 +708,9 @@ function AnalysisSidebar({
                           ? "text-orange-400"
                           : activeMode === "orphan"
                             ? "text-violet-400"
-                            : "text-slate-600"
+                            : activeMode === "pagerank"
+                              ? "text-cyan-400"
+                              : "text-slate-600"
                   }`}
                 >
                   {activeMode === "pr-blast"
@@ -636,20 +721,18 @@ function AnalysisSidebar({
                         ? "Circular"
                         : activeMode === "orphan"
                           ? "Orphan"
-                          : heatmapEnabled
-                            ? "Heatmap"
-                            : "Default"}
+                          : activeMode === "pagerank"
+                            ? "PageRank"
+                            : heatmapEnabled
+                              ? "Heatmap"
+                              : "Default"}
                 </span>
               </div>
             </div>
 
-            {/* Scrollable sections */}
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-px [&::-webkit-scrollbar-thumb]:bg-white/10">
-              {/* ── SECTION 0: PR Blast Radius ── */}
               <div
-                className={`border-b border-white/[0.04] transition-colors ${
-                  activeMode === "pr-blast" ? "bg-cyan-500/[0.03]" : ""
-                }`}
+                className={`border-b border-white/[0.04] transition-colors ${activeMode === "pr-blast" ? "bg-cyan-500/[0.03]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -658,25 +741,13 @@ function AnalysisSidebar({
                       activeMode === "pr-blast" ? null : "pr-blast",
                     );
                   }}
-                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
-                    hasPrData
-                      ? "hover:bg-white/[0.02] cursor-pointer"
-                      : "cursor-default"
-                  }`}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${hasPrData ? "hover:bg-white/[0.02] cursor-pointer" : "cursor-default"}`}
                 >
                   <div
-                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${
-                      activeMode === "pr-blast" ? "bg-cyan-500" : "bg-white/10"
-                    }`}
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${activeMode === "pr-blast" ? "bg-cyan-500" : "bg-white/10"}`}
                   />
                   <GitPullRequest
-                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                      hasPrData
-                        ? activeMode === "pr-blast"
-                          ? "text-cyan-400"
-                          : "text-cyan-500/70"
-                        : "text-slate-700"
-                    }`}
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${hasPrData ? (activeMode === "pr-blast" ? "text-cyan-400" : "text-cyan-500/70") : "text-slate-700"}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -685,11 +756,7 @@ function AnalysisSidebar({
                       </span>
                       {hasPrData ? (
                         <span
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
-                            activeMode === "pr-blast"
-                              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                              : "bg-cyan-500/10 text-cyan-500/80 border border-cyan-500/15"
-                          }`}
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${activeMode === "pr-blast" ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" : "bg-cyan-500/10 text-cyan-500/80 border border-cyan-500/15"}`}
                         >
                           {prChangedFiles.length} files
                         </span>
@@ -709,7 +776,6 @@ function AnalysisSidebar({
                   </div>
                 </button>
 
-                {/* PR blast legend + stats when active */}
                 <AnimatePresence>
                   {activeMode === "pr-blast" && hasPrData && (
                     <motion.div
@@ -720,7 +786,6 @@ function AnalysisSidebar({
                       className="overflow-hidden"
                     >
                       <div className="px-4 pb-3 space-y-2">
-                        {/* Legend */}
                         <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-white/[0.02] border border-white/5">
                           <div className="flex items-center gap-2">
                             <div className="w-2.5 h-2.5 rounded-sm bg-yellow-400/80 flex-shrink-0" />
@@ -747,8 +812,6 @@ function AnalysisSidebar({
                             </span>
                           </div>
                         </div>
-
-                        {/* Changed file list — truncated to 6 */}
                         <div className="space-y-0.5">
                           <p className="text-[9px] font-mono text-slate-600 uppercase tracking-wider px-1 pb-0.5">
                             Changed files
@@ -781,16 +844,17 @@ function AnalysisSidebar({
                 </AnimatePresence>
               </div>
 
-              {/* ── SECTION 1: Blast Radius hint ── */}
               <div className="px-4 py-3 border-b border-white/[0.04]">
                 <div className="flex items-center gap-2 mb-2">
                   <div
-                    className={`w-0.5 h-3 rounded-full flex-shrink-0 ${
-                      activeMode === "blast" ? "bg-red-500" : "bg-white/10"
-                    }`}
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 ${activeMode === "blast" ? "bg-red-500" : "bg-white/10"}`}
                   />
                   <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
                     Blast Radius
+                    <InfoTooltip
+                      content="Shows every file that imports the node you click — your change's blast zone."
+                      side="left"
+                    />
                   </span>
                 </div>
                 <p className="text-[10px] font-mono text-slate-600 leading-relaxed pl-3">
@@ -810,11 +874,8 @@ function AnalysisSidebar({
                 )}
               </div>
 
-              {/* ── SECTION 2: Circular Dependencies ── */}
               <div
-                className={`border-b border-white/[0.04] transition-colors ${
-                  activeMode === "circular" ? "bg-orange-500/[0.03]" : ""
-                }`}
+                className={`border-b border-white/[0.04] transition-colors ${activeMode === "circular" ? "bg-orange-500/[0.03]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -823,40 +884,26 @@ function AnalysisSidebar({
                       activeMode === "circular" ? null : "circular",
                     );
                   }}
-                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
-                    hasCircular
-                      ? "hover:bg-white/[0.02] cursor-pointer"
-                      : "cursor-default"
-                  }`}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${hasCircular ? "hover:bg-white/[0.02] cursor-pointer" : "cursor-default"}`}
                 >
                   <div
-                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${
-                      activeMode === "circular"
-                        ? "bg-orange-500"
-                        : "bg-white/10"
-                    }`}
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${activeMode === "circular" ? "bg-orange-500" : "bg-white/10"}`}
                   />
                   <RefreshCw
-                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                      hasCircular
-                        ? activeMode === "circular"
-                          ? "text-orange-400"
-                          : "text-orange-500/70"
-                        : "text-slate-700"
-                    }`}
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${hasCircular ? (activeMode === "circular" ? "text-orange-400" : "text-orange-500/70") : "text-slate-700"}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
                         Circular Deps
+                        <InfoTooltip
+                          content="Files that import each other in a loop. These cause hard-to-debug build failures."
+                          side="left"
+                        />
                       </span>
                       {hasCircular ? (
                         <span
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
-                            activeMode === "circular"
-                              ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                              : "bg-orange-500/10 text-orange-500/80 border border-orange-500/15"
-                          }`}
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${activeMode === "circular" ? "bg-orange-500/20 text-orange-300 border border-orange-500/30" : "bg-orange-500/10 text-orange-500/80 border border-orange-500/15"}`}
                         >
                           {cycleCount}
                         </span>
@@ -911,26 +958,23 @@ function AnalysisSidebar({
                 </AnimatePresence>
               </div>
 
-              {/* ── SECTION 3: Complexity Heatmap ── */}
               <div
-                className={`border-b border-white/[0.04] transition-colors ${
-                  heatmapEnabled ? "bg-amber-500/[0.02]" : ""
-                }`}
+                className={`border-b border-white/[0.04] transition-colors ${heatmapEnabled ? "bg-amber-500/[0.02]" : ""}`}
               >
                 <div className="px-4 py-3">
                   <div className="flex items-center gap-3 mb-3">
                     <div
-                      className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${
-                        heatmapEnabled ? "bg-amber-500" : "bg-white/10"
-                      }`}
+                      className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${heatmapEnabled ? "bg-amber-500" : "bg-white/10"}`}
                     />
                     <Flame
-                      className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                        heatmapEnabled ? "text-amber-400" : "text-slate-700"
-                      }`}
+                      className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${heatmapEnabled ? "text-amber-400" : "text-slate-700"}`}
                     />
                     <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest flex-1">
                       Complexity
+                      <InfoTooltip
+                        content="Colors nodes by file size. Large files often have too many responsibilities."
+                        side="left"
+                      />
                     </span>
                     <button
                       onClick={onHeatmapToggle}
@@ -939,9 +983,7 @@ function AnalysisSidebar({
                           ? "Disable complexity heatmap"
                           : "Enable complexity heatmap"
                       }
-                      className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${
-                        heatmapEnabled ? "bg-amber-500/40" : "bg-white/10"
-                      }`}
+                      className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${heatmapEnabled ? "bg-amber-500/40" : "bg-white/10"}`}
                     >
                       <motion.div
                         animate={{ x: heatmapEnabled ? 16 : 2 }}
@@ -950,9 +992,7 @@ function AnalysisSidebar({
                           stiffness: 500,
                           damping: 30,
                         }}
-                        className={`absolute top-0.5 w-3 h-3 rounded-full transition-colors ${
-                          heatmapEnabled ? "bg-amber-400" : "bg-slate-500"
-                        }`}
+                        className={`absolute top-0.5 w-3 h-3 rounded-full transition-colors ${heatmapEnabled ? "bg-amber-400" : "bg-slate-500"}`}
                       />
                     </button>
                   </div>
@@ -974,14 +1014,10 @@ function AnalysisSidebar({
                     ).map(({ color, label, sub }) => (
                       <div key={label} className="flex items-center gap-2">
                         <div
-                          className={`w-2 h-2 rounded-sm flex-shrink-0 transition-opacity ${color} ${
-                            heatmapEnabled ? "opacity-100" : "opacity-30"
-                          }`}
+                          className={`w-2 h-2 rounded-sm flex-shrink-0 transition-opacity ${color} ${heatmapEnabled ? "opacity-100" : "opacity-30"}`}
                         />
                         <span
-                          className={`text-[10px] font-mono transition-colors ${
-                            heatmapEnabled ? "text-slate-400" : "text-slate-600"
-                          }`}
+                          className={`text-[10px] font-mono transition-colors ${heatmapEnabled ? "text-slate-400" : "text-slate-600"}`}
                         >
                           {label}
                         </span>
@@ -994,11 +1030,8 @@ function AnalysisSidebar({
                 </div>
               </div>
 
-              {/* ── SECTION 4: Orphaned Files ── */}
               <div
-                className={`transition-colors ${
-                  activeMode === "orphan" ? "bg-violet-500/[0.03]" : ""
-                }`}
+                className={`border-b border-white/[0.04] transition-colors ${activeMode === "orphan" ? "bg-violet-500/[0.03]" : ""}`}
               >
                 <button
                   onClick={() => {
@@ -1008,38 +1041,26 @@ function AnalysisSidebar({
                     if (next === null) onOrphanSelect(null);
                     setOrphanListOpen(true);
                   }}
-                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
-                    hasOrphans
-                      ? "hover:bg-white/[0.02] cursor-pointer"
-                      : "cursor-default"
-                  }`}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${hasOrphans ? "hover:bg-white/[0.02] cursor-pointer" : "cursor-default"}`}
                 >
                   <div
-                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${
-                      activeMode === "orphan" ? "bg-violet-500" : "bg-white/10"
-                    }`}
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${activeMode === "orphan" ? "bg-violet-500" : "bg-white/10"}`}
                   />
                   <Ghost
-                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                      hasOrphans
-                        ? activeMode === "orphan"
-                          ? "text-violet-400"
-                          : "text-violet-500/70"
-                        : "text-slate-700"
-                    }`}
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${hasOrphans ? (activeMode === "orphan" ? "text-violet-400" : "text-violet-500/70") : "text-slate-700"}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
                         Orphans
+                        <InfoTooltip
+                          content="Files with no imports and no importers. Likely dead code safe to delete."
+                          side="left"
+                        />
                       </span>
                       {hasOrphans ? (
                         <span
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
-                            activeMode === "orphan"
-                              ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-                              : "bg-violet-500/10 text-violet-500/80 border border-violet-500/15"
-                          }`}
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${activeMode === "orphan" ? "bg-violet-500/20 text-violet-300 border border-violet-500/30" : "bg-violet-500/10 text-violet-500/80 border border-violet-500/15"}`}
                         >
                           {orphans.length}
                         </span>
@@ -1078,25 +1099,13 @@ function AnalysisSidebar({
                                 onOrphanSelect(isSelected ? null : path)
                               }
                               title={path}
-                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-all group ${
-                                isSelected
-                                  ? "bg-violet-500/15 border border-violet-500/20"
-                                  : "hover:bg-white/[0.03] border border-transparent"
-                              }`}
+                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-all group ${isSelected ? "bg-violet-500/15 border border-violet-500/20" : "hover:bg-white/[0.03] border border-transparent"}`}
                             >
                               <div
-                                className={`w-1 h-1 rounded-full flex-shrink-0 transition-colors ${
-                                  isSelected
-                                    ? "bg-violet-400"
-                                    : "bg-slate-700 group-hover:bg-slate-500"
-                                }`}
+                                className={`w-1 h-1 rounded-full flex-shrink-0 transition-colors ${isSelected ? "bg-violet-400" : "bg-slate-700 group-hover:bg-slate-500"}`}
                               />
                               <span
-                                className={`text-[11px] font-mono truncate transition-colors ${
-                                  isSelected
-                                    ? "text-violet-200"
-                                    : "text-slate-400 group-hover:text-slate-200"
-                                }`}
+                                className={`text-[11px] font-mono truncate transition-colors ${isSelected ? "text-violet-200" : "text-slate-400 group-hover:text-slate-200"}`}
                               >
                                 {label}
                               </span>
@@ -1116,9 +1125,153 @@ function AnalysisSidebar({
                   )}
                 </AnimatePresence>
               </div>
+
+              <div
+                className={`transition-colors ${activeMode === "pagerank" ? "bg-cyan-500/[0.03]" : ""}`}
+              >
+                <button
+                  onClick={() => {
+                    if (!hasPageRank) return;
+                    onActivateMode(
+                      activeMode === "pagerank" ? null : "pagerank",
+                    );
+                  }}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${hasPageRank ? "hover:bg-white/[0.02] cursor-pointer" : "cursor-default"}`}
+                >
+                  <div
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${activeMode === "pagerank" ? "bg-cyan-500" : "bg-white/10"}`}
+                  />
+                  <Zap
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${hasPageRank ? (activeMode === "pagerank" ? "text-cyan-400" : "text-cyan-500/70") : "text-slate-700"}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
+                        Nerve Center
+                        <InfoTooltip
+                          content="Ranks files by how many others depend on them. High score = high architectural risk if changed."
+                          side="left"
+                        />
+                      </span>
+                      {hasPageRank ? (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${activeMode === "pagerank" ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" : "bg-cyan-500/10 text-cyan-500/80 border border-cyan-500/15"}`}
+                        >
+                          PageRank
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono text-slate-700">
+                          No data
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-mono text-slate-600 mt-0.5 truncate">
+                      {hasPageRank
+                        ? activeMode === "pagerank"
+                          ? `${pageRankTopFiles.length} hubs identified`
+                          : "Click to reveal arch. hubs"
+                        : "Run analysis to enable"}
+                    </p>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {activeMode === "pagerank" && hasPageRank && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 space-y-2">
+                        <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                          {(
+                            [
+                              {
+                                tier: 3,
+                                label: "Nerve Center",
+                                color: "bg-cyan-400/80",
+                                sub: "score ≥ 70",
+                              },
+                              {
+                                tier: 2,
+                                label: "High Influence",
+                                color: "bg-blue-400/80",
+                                sub: "score ≥ 40",
+                              },
+                              {
+                                tier: 1,
+                                label: "Notable",
+                                color: "bg-indigo-400/80",
+                                sub: "score ≥ 15",
+                              },
+                              {
+                                tier: 0,
+                                label: "Low Rank",
+                                color: "bg-slate-700",
+                                sub: "score < 15",
+                              },
+                            ] as const
+                          ).map(({ label, color, sub }) => (
+                            <div
+                              key={label}
+                              className="flex items-center gap-2"
+                            >
+                              <div
+                                className={`w-2.5 h-2.5 rounded-sm ${color} flex-shrink-0`}
+                              />
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {label}
+                              </span>
+                              <span className="text-[9px] font-mono text-slate-600 ml-auto">
+                                {sub}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] font-mono text-slate-600 uppercase tracking-wider px-1 pb-0.5">
+                            Top architectural hubs
+                          </p>
+                          {pageRankTopFiles
+                            .slice(0, 8)
+                            .map(({ path, score }) => {
+                              const tier = getPageRankTier(score);
+                              const s = PR_TIER_STYLES[tier];
+                              return (
+                                <div
+                                  key={path}
+                                  className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/[0.03]"
+                                >
+                                  <div
+                                    className={`w-1 h-1 rounded-full flex-shrink-0 ${tier === 3 ? "bg-cyan-400" : tier === 2 ? "bg-blue-400" : "bg-indigo-400/60"}`}
+                                  />
+                                  <span
+                                    className={`text-[10px] font-mono truncate flex-1 ${s.text}`}
+                                    title={path}
+                                  >
+                                    {path.split("/").pop()}
+                                  </span>
+                                  <span className="text-[9px] font-mono text-slate-600 flex-shrink-0">
+                                    {score}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          {pageRankTopFiles.length > 8 && (
+                            <p className="text-[9px] font-mono text-slate-600 px-2 pt-0.5">
+                              +{pageRankTopFiles.length - 8} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
 
-            {/* Footer */}
             <div className="px-4 py-2.5 border-t border-white/[0.04] flex-shrink-0">
               <p className="text-[9px] font-mono text-slate-700 uppercase tracking-widest">
                 🌀 Force Layout · {nodeCount} nodes
@@ -1131,30 +1284,27 @@ function AnalysisSidebar({
   );
 }
 
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
-
 export default function ArchitectureMap({
   dependencyGraph = {},
   entryPoints = [],
   fileMetrics = [],
   prChangedFiles = [],
+  pageRankScores = {},
 }: {
   dependencyGraph: Record<string, string[]>;
   entryPoints: string[];
   fileMetrics?: { path: string; size: number }[];
   prChangedFiles?: string[];
+  pageRankScores?: Record<string, number>;
 }) {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const previousGraphRef = useRef<string>("");
   const [activeMode, setActiveMode] = useState<ActiveMode>(
-    prChangedFiles && prChangedFiles.length > 0 ? ("pr-blast" as ActiveMode) : ("default" as ActiveMode)
+    prChangedFiles && prChangedFiles.length > 0 ? "pr-blast" : null,
   );
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [selectedOrphan, setSelectedOrphan] = useState<string | null>(null);
 
-  // ── Algorithmic computations ───────────────────────────────────────────────
   const { cycleNodes, cycleCount } = useMemo(
     () => detectCircularDependencies(dependencyGraph),
     [dependencyGraph],
@@ -1170,7 +1320,6 @@ export default function ArchitectureMap({
     [dependencyGraph],
   );
 
-  // Reverse graph — used by both single-node blast radius AND multi-source PR BFS
   const adjacencyList = useMemo(() => {
     const rev: Record<string, string[]> = {};
     Object.keys(dependencyGraph).forEach((src) => {
@@ -1182,8 +1331,6 @@ export default function ArchitectureMap({
     return rev;
   }, [dependencyGraph]);
 
-  // Multi-source reverse BFS — recomputed whenever prChangedFiles changes.
-  // Returns empty sets when no PR data is present (zero-cost default).
   const { prModifiedNodes, prBlastNodes } = useMemo(() => {
     if (!prChangedFiles || prChangedFiles.length === 0)
       return {
@@ -1197,7 +1344,23 @@ export default function ArchitectureMap({
     return { prModifiedNodes: modifiedNodes, prBlastNodes: blastNodes };
   }, [prChangedFiles, adjacencyList]);
 
-  // Auto-activate pr-blast mode when new PR data arrives
+  const pageRankTopFiles = useMemo(
+    () =>
+      Object.entries(pageRankScores)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 20)
+        .map(([path, score]) => ({ path, score })),
+    [pageRankScores],
+  );
+
+  const pageRankTierMap = useMemo(() => {
+    const map = new Map<string, PageRankTier>();
+    for (const [path, score] of Object.entries(pageRankScores)) {
+      map.set(path, getPageRankTier(score));
+    }
+    return map;
+  }, [pageRankScores]);
+
   const prevPrFilesRef = useRef<string>("");
   useEffect(() => {
     const key = prChangedFiles.join(",");
@@ -1206,7 +1369,6 @@ export default function ArchitectureMap({
     }
   }, [prChangedFiles]);
 
-  // ── Build initial nodes/edges (layout only) ────────────────────────────────
   const { initialNodes, initialEdges, graphHash } = useMemo(() => {
     if (!dependencyGraph || typeof dependencyGraph !== "object")
       return { initialNodes: [], initialEdges: [], graphHash: "" };
@@ -1230,6 +1392,9 @@ export default function ArchitectureMap({
           isOrphanHighlighted: false,
           isPrModified: false,
           isPrBlast: false,
+          pageRankScore: pageRankScores[filePath] ?? 0,
+          pageRankTier: getPageRankTier(pageRankScores[filePath] ?? 0),
+          pageRankActive: false,
         },
         position: { x: 0, y: 0 },
       });
@@ -1261,8 +1426,7 @@ export default function ArchitectureMap({
     });
 
     return { initialNodes: layoutNodes, initialEdges: layoutEdges, graphHash };
-     
-  }, [dependencyGraph, entryPoints]);
+  }, [dependencyGraph, entryPoints, pageRankScores]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -1275,8 +1439,6 @@ export default function ArchitectureMap({
     }
   }, [initialNodes, initialEdges, graphHash, setNodes, setEdges]);
 
-  // ── Apply static overlay data (heatmap, circular, orphan flags) ───────────
-  // This never re-runs the force layout.
   useEffect(() => {
     setNodes((nds) =>
       nds.map((n) => ({
@@ -1293,9 +1455,7 @@ export default function ArchitectureMap({
     );
   }, [cycleNodes, heatmapColors, heatmapEnabled, orphans, setNodes]);
 
-  // ── Master highlight effect ────────────────────────────────────────────────
   useEffect(() => {
-    // Default: clear all highlight state
     if (!activeMode && !selectedNode) {
       setNodes((nds) =>
         nds.map((n) => ({
@@ -1307,6 +1467,7 @@ export default function ArchitectureMap({
             isOrphanHighlighted: false,
             isPrModified: false,
             isPrBlast: false,
+            pageRankActive: false,
           },
         })),
       );
@@ -1321,18 +1482,69 @@ export default function ArchitectureMap({
       return;
     }
 
-    // PR-BLAST mode — multi-source reverse BFS result applied to graph
+    if (activeMode === "pagerank") {
+      setNodes((nds) =>
+        nds.map((n) => {
+          const tier = pageRankTierMap.get(n.id) ?? 0;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              pageRankActive: true,
+              pageRankTier: tier,
+              pageRankScore: pageRankScores[n.id] ?? 0,
+              isBlastRadius: false,
+              isPrModified: false,
+              isPrBlast: false,
+              isOrphanHighlighted: false,
+              isDimmed: tier === 0,
+            },
+          };
+        }),
+      );
+      setEdges((eds) =>
+        eds.map((e) => {
+          const srcTier = pageRankTierMap.get(e.source) ?? 0;
+          const tgtTier = pageRankTierMap.get(e.target) ?? 0;
+          const isHotEdge = srcTier >= 2 || tgtTier >= 2;
+          const isTier3Edge = srcTier === 3 || tgtTier === 3;
+          return {
+            ...e,
+            style: {
+              stroke: isTier3Edge
+                ? "#22d3ee"
+                : isHotEdge
+                  ? "#3b82f6"
+                  : "#475569",
+              strokeWidth: isTier3Edge ? 3 : isHotEdge ? 2 : 1,
+              opacity: isHotEdge ? 1 : 0.1,
+            },
+            animated: isTier3Edge,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: isTier3Edge
+                ? "#22d3ee"
+                : isHotEdge
+                  ? "#3b82f6"
+                  : "#475569",
+            },
+          };
+        }),
+      );
+      return;
+    }
+
     if (activeMode === "pr-blast") {
       setNodes((nds) =>
         nds.map((n) => ({
           ...n,
           data: {
             ...n.data,
+            pageRankActive: false,
             isBlastRadius: false,
             isOrphanHighlighted: false,
             isPrModified: prModifiedNodes.has(n.id),
             isPrBlast: prBlastNodes.has(n.id),
-            // Dim only nodes that are neither modified nor in the blast set
             isDimmed: !prModifiedNodes.has(n.id) && !prBlastNodes.has(n.id),
           },
         })),
@@ -1344,7 +1556,6 @@ export default function ArchitectureMap({
           const targetHit =
             prModifiedNodes.has(e.target) || prBlastNodes.has(e.target);
           const isHotEdge = sourceHit && targetHit;
-          // Yellow edge between modified nodes, red edge from modified to blast
           const isModifiedEdge =
             prModifiedNodes.has(e.source) && prModifiedNodes.has(e.target);
           return {
@@ -1373,13 +1584,13 @@ export default function ArchitectureMap({
       return;
     }
 
-    // ORPHAN mode
     if (activeMode === "orphan") {
       setNodes((nds) =>
         nds.map((n) => ({
           ...n,
           data: {
             ...n.data,
+            pageRankActive: false,
             isBlastRadius: false,
             isPrModified: false,
             isPrBlast: false,
@@ -1405,13 +1616,13 @@ export default function ArchitectureMap({
       return;
     }
 
-    // CIRCULAR mode
     if (activeMode === "circular") {
       setNodes((nds) =>
         nds.map((n) => ({
           ...n,
           data: {
             ...n.data,
+            pageRankActive: false,
             isBlastRadius: false,
             isPrModified: false,
             isPrBlast: false,
@@ -1442,7 +1653,6 @@ export default function ArchitectureMap({
       return;
     }
 
-    // BLAST mode — single node, existing behaviour unchanged
     if (activeMode === "blast" && selectedNode) {
       const blastNodes = new Set<string>();
       const blastEdges = new Set<string>();
@@ -1463,6 +1673,7 @@ export default function ArchitectureMap({
           ...n,
           data: {
             ...n.data,
+            pageRankActive: false,
             isBlastRadius: blastNodes.has(n.id),
             isDimmed: !blastNodes.has(n.id),
             isOrphanHighlighted: false,
@@ -1497,12 +1708,13 @@ export default function ArchitectureMap({
     selectedOrphan,
     prModifiedNodes,
     prBlastNodes,
+    pageRankTierMap,
+    pageRankScores,
     adjacencyList,
     setNodes,
     setEdges,
   ]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedOrphan(null);
     setSelectedNode(node.id);
@@ -1535,7 +1747,6 @@ export default function ArchitectureMap({
     setHeatmapEnabled((v) => !v);
   }, []);
 
-  // ── Empty state ────────────────────────────────────────────────────────────
   if (nodes.length === 0) {
     return (
       <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl border border-white/5 bg-black/40">
@@ -1548,7 +1759,6 @@ export default function ArchitectureMap({
 
   return (
     <div className="w-full h-full min-h-[500px] flex rounded-2xl overflow-hidden border border-white/5 bg-black/40">
-      {/* Graph canvas */}
       <div className="flex-1 relative min-w-0">
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5 pointer-events-none">
           <h3 className="text-[10px] font-bold text-slate-400 font-mono tracking-widest uppercase bg-black/50 px-2.5 py-1 rounded-md backdrop-blur-md border border-white/10 w-fit">
@@ -1560,7 +1770,6 @@ export default function ArchitectureMap({
           </div>
         </div>
 
-        {/* Active mode pill */}
         <AnimatePresence>
           {activeMode && (
             <motion.button
@@ -1577,7 +1786,9 @@ export default function ArchitectureMap({
                     ? "bg-red-500/10 border-red-500/25 text-red-400"
                     : activeMode === "circular"
                       ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
-                      : "bg-violet-500/10 border-violet-500/25 text-violet-400"
+                      : activeMode === "pagerank"
+                        ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-400"
+                        : "bg-violet-500/10 border-violet-500/25 text-violet-400"
               }`}
             >
               <span>
@@ -1587,9 +1798,11 @@ export default function ArchitectureMap({
                     ? "Blast radius active"
                     : activeMode === "circular"
                       ? "Circular deps highlighted"
-                      : selectedOrphan
-                        ? `Orphan: ${selectedOrphan.split("/").pop()}`
-                        : "Orphan mode — select a file"}
+                      : activeMode === "pagerank"
+                        ? `PageRank · ${pageRankTopFiles.filter((f) => getPageRankTier(f.score) >= 2).length} hubs`
+                        : selectedOrphan
+                          ? `Orphan: ${selectedOrphan.split("/").pop()}`
+                          : "Orphan mode — select a file"}
               </span>
               <X className="w-3 h-3 opacity-60" />
             </motion.button>
@@ -1630,7 +1843,6 @@ export default function ArchitectureMap({
         </ReactFlow>
       </div>
 
-      {/* Analysis sidebar */}
       <AnalysisSidebar
         nodeCount={nodes.length}
         cycleCount={cycleCount}
@@ -1646,6 +1858,8 @@ export default function ArchitectureMap({
         activeMode={activeMode}
         onActivateMode={handleActivateMode}
         onClearAll={handleClearAll}
+        pageRankScores={pageRankScores}
+        pageRankTopFiles={pageRankTopFiles}
       />
     </div>
   );
