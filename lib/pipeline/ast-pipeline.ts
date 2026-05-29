@@ -1,12 +1,5 @@
-/**
- * lib/pipeline/ast-pipeline.ts
- *
- * Pure, framework-agnostic AST extraction pipeline.
- * Zero Next.js / Vercel / Supabase imports — safe to run from a CLI,
- * a cron job, or any future headless API route.
- */
+// lib/pipeline/ast-pipeline.ts
 
-// ── Static imports only — dynamic imports removed ────────────────────────────
 import {
   parseRepoUrl,
   fetchRepoMeta,
@@ -18,11 +11,10 @@ import {
   buildDependencyGraph,
   computeFanIn,
   graphToMermaid,
-  getBlastRadiusTargets, // was a dynamic import in the original — static is fine
+  getBlastRadiusTargets,
 } from "@/lib/dependency-graph";
 import { calculateHealthGrade } from "@/lib/analyzer/health";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const IGNORE_PATTERNS = [
   "node_modules", "dist", "build", ".next", ".git", "coverage",
   "__pycache__", ".yarn", "vendor", "package-lock.json", "yarn.lock",
@@ -34,16 +26,12 @@ const IGNORE_EXTENSIONS = [
   ".lock", ".min.js", ".map", ".woff", ".woff2",
 ] as const;
 
-const CONFIG_FILE_PATTERN  = /\.(json|md|ya?ml|config\.(js|mjs|ts|cjs))$/i;
-const TEST_FILE_PATTERN    = /\.(test|spec)\.[jt]sx?$/i;
-const TEST_DIR_PATTERN     = /__(tests|mocks)__\//i;
+const CONFIG_FILE_PATTERN = /\.(json|md|ya?ml|config\.(js|mjs|ts|cjs))$/i;
+const TEST_FILE_PATTERN   = /\.(test|spec)\.[jt]sx?$/i;
+const TEST_DIR_PATTERN    = /__(tests|mocks)__\//i;
 
 const MAX_LOCAL_FILES       = 300;
-const MAX_LOCAL_SIZE_BYTES  = 2_000_000;  // 2 MB
-/**
- * GitHub's secondary rate limit kicks in above ~10 concurrent authenticated
- * requests. 6 gives comfortable headroom while still being fast.
- */
+const MAX_LOCAL_SIZE_BYTES  = 2_000_000;
 const MAX_FETCH_CONCURRENCY = 6;
 const FETCH_TIMEOUT_MS      = 8_000;
 const MAX_FILE_LINES        = 500;
@@ -54,7 +42,11 @@ const BLAST_RADIUS_TOP_N    = 3;
 const COVERAGE_GAP_TOP_N    = 10;
 const TOP_FILES_FOR_GROQ    = 20;
 
-// ── Typed Errors ──────────────────────────────────────────────────────────────
+const PAGERANK_ITERATIONS     = 20;
+const PAGERANK_DAMPING_FACTOR = 0.85;
+const PAGERANK_WEIGHT         = 0.7;
+const FANIN_WEIGHT            = 0.3;
+
 export type PipelineErrorCode =
   | "INVALID_REPO_URL"
   | "TOO_MANY_FILES"
@@ -66,14 +58,12 @@ export class PipelineError extends Error {
   public readonly code: PipelineErrorCode;
   constructor(code: PipelineErrorCode, message: string) {
     super(message);
-    this.name  = "PipelineError";
-    this.code  = code;
-    // Maintains proper prototype chain for `instanceof` checks
+    this.name = "PipelineError";
+    this.code = code;
     Object.setPrototypeOf(this, PipelineError.prototype);
   }
 }
 
-// ── Public Types ──────────────────────────────────────────────────────────────
 export interface FileContent {
   path: string;
   content: string;
@@ -90,13 +80,10 @@ export interface CoverageGap {
   isTested: boolean;
   testFiles: string[];
   riskScore: number;
+  pageRankScore: number;
 }
 
-export type TestCoverageMap = Record<
-  string,
-  { isTested: boolean; testFiles: string[] }
->;
-
+export type TestCoverageMap = Record<string, { isTested: boolean; testFiles: string[] }>;
 export interface PipelineResult {
   owner: string;
   repo: string;
@@ -116,8 +103,8 @@ export interface PipelineResult {
   coverageGaps: CoverageGap[];
   topFilesForGroq: Array<{ path: string; role: string }>;
   blastRadiusTargets: string[];
+  pageRankScores: Record<string, number>;
   analysis: null;
-  /** Present only when the result was served from the DB cache. */
   cached?: true;
 }
 
@@ -126,16 +113,9 @@ export interface PipelineParams {
   githubToken: string;
   isLocal?: boolean;
   localFiles?: unknown[];
-  /**
-   * Injected by the caller so the pure pipeline can check the DB without
-   * importing Supabase. Returning null/undefined means "cache miss".
-   * Any error thrown by this callback is caught and treated as a cache miss —
-   * the pipeline continues with a fresh analysis.
-   */
   checkCache?: (commitSha: string) => Promise<PipelineResult | null | undefined>;
 }
 
-// ── Concurrency Semaphore ─────────────────────────────────────────────────────
 class Semaphore {
   private permits: number;
   private readonly queue: Array<() => void> = [];
@@ -156,8 +136,6 @@ class Semaphore {
   }
 
   release(): void {
-    // If a waiter is queued, pass the permit directly — don't increment and
-    // then decrement, which would allow a race window where permits > max.
     const next = this.queue.shift();
     if (next) {
       next();
@@ -167,16 +145,6 @@ class Semaphore {
   }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
-
-/**
- * Races `promise` against a hard deadline.
- *
- * The critical correctness detail: the timeout's `clearTimeout` fires in
- * `.finally()` whether the promise wins or the timeout wins. Without this,
- * the Node timer keeps the event loop alive (and Vercel's function budget
- * ticking) even after the race has already settled.
- */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timerId: ReturnType<typeof setTimeout> | undefined;
 
@@ -217,7 +185,7 @@ function boostEntryPointScores(
 ): void {
   for (const file of files) {
     if (file.path.endsWith("index.html") || file.path.endsWith(".html")) {
-      file.role  = "entry";
+      file.role   = "entry";
       file.score += 500;
     }
   }
@@ -231,14 +199,11 @@ function sanitizeDependencyGraph(
   for (const [source, targets] of Object.entries(graph)) {
     if (isConfigFile(source)) continue;
     const validTargets = targets.filter((t) => !isConfigFile(t));
-    // Keep the source even if it has no valid targets (important for isolated files)
     if (validTargets.length > 0 || targets.length === 0) {
       sanitized[source] = validTargets;
     }
   }
 
-  // Every referenced target must have an entry so downstream consumers never
-  // encounter missing keys when walking the graph.
   const allTargets = new Set(Object.values(sanitized).flat());
   for (const target of allTargets) {
     if (!sanitized[target]) sanitized[target] = [];
@@ -271,10 +236,83 @@ function generateTestCoverageMap(allPaths: string[]): TestCoverageMap {
   return coverageMap;
 }
 
+function truncateToLines(text: string, maxLines: number): string {
+  let lineCount = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") {
+      lineCount++;
+      if (lineCount === maxLines) {
+        return text.substring(0, i + 1);
+      }
+    }
+  }
+  return text;
+}
+
+function computePageRank(
+  graph: Record<string, string[]>,
+  iterations = PAGERANK_ITERATIONS,
+  dampingFactor = PAGERANK_DAMPING_FACTOR,
+): Record<string, number> {
+  const nodes = Object.keys(graph);
+  const N = nodes.length;
+  if (N === 0) return {};
+
+  const reverseGraph: Record<string, string[]> = {};
+  for (const node of nodes) reverseGraph[node] = [];
+
+  for (const [src, targets] of Object.entries(graph)) {
+    for (const target of targets) {
+      if (!reverseGraph[target]) reverseGraph[target] = [];
+      reverseGraph[target].push(src);
+    }
+  }
+
+  let rank: Record<string, number> = {};
+  for (const node of nodes) rank[node] = 1 / N;
+
+  for (let i = 0; i < iterations; i++) {
+    let danglingMass = 0;
+    for (const node of nodes) {
+      if ((graph[node]?.length ?? 0) === 0) {
+        danglingMass += rank[node];
+      }
+    }
+
+    const next: Record<string, number> = {};
+    for (const node of nodes) {
+      let incoming = 0;
+      for (const src of reverseGraph[node] ?? []) {
+        const outDegree = graph[src]?.length;
+        if (outDegree) {
+          incoming += rank[src] / outDegree;
+        }
+      }
+      next[node] =
+        (1 - dampingFactor) / N +
+        dampingFactor * (incoming + danglingMass / N);
+    }
+    rank = next;
+  }
+
+  const values = Object.values(rank);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+
+  const normalized: Record<string, number> = {};
+  for (const [node, r] of Object.entries(rank)) {
+    normalized[node] = Math.round(((r - min) / range) * 100);
+  }
+
+  return normalized;
+}
+
 function computeCoverageGaps(
   fanIn: Record<string, number>,
   testCoverageMap: TestCoverageMap,
   topN: number,
+  pageRank: Record<string, number>,
 ): CoverageGap[] {
   return Object.entries(fanIn)
     .map(([filePath, fanInScore]) => {
@@ -282,12 +320,18 @@ function computeCoverageGaps(
         isTested: false,
         testFiles: [],
       };
+
+      const pr = pageRank[filePath] ?? 0;
+      const rawScore = pr * PAGERANK_WEIGHT + fanInScore * FANIN_WEIGHT;
+      const riskScore = coverage.isTested ? 0 : Math.round(rawScore);
+
       return {
         file: filePath,
         fanIn: fanInScore,
         isTested: coverage.isTested,
         testFiles: coverage.testFiles,
-        riskScore: coverage.isTested ? 0 : fanInScore,
+        riskScore,
+        pageRankScore: pr,
       };
     })
     .filter((gap) => gap.riskScore > 0)
@@ -295,13 +339,6 @@ function computeCoverageGaps(
     .slice(0, topN);
 }
 
-/**
- * Validates and coerces the raw `localFiles` payload.
- *
- * Security: strips path-traversal sequences (`../`, `..\`) and leading
- * separators to prevent directory escape attacks on callers that later
- * use these paths for disk operations.
- */
 function coerceLocalFiles(raw: unknown[]): FileContent[] {
   return raw
     .filter(
@@ -313,22 +350,13 @@ function coerceLocalFiles(raw: unknown[]): FileContent[] {
     )
     .map((f) => ({
       path: f.path
-        .replace(/\.\.[/\\]/g, "")   // strip traversal
-        .replace(/^[/\\]+/, ""),     // strip leading separator
+        .replace(/\.\.[/\\]/g, "")
+        .replace(/^[/\\]+/, ""),
       content: f.content,
     }))
-    .filter((f) => f.path.length > 0); // discard empty paths after sanitisation
+    .filter((f) => f.path.length > 0);
 }
 
-// ── Bounded parallel file fetcher ─────────────────────────────────────────────
-/**
- * Fetches up to `MAX_FETCH_CONCURRENCY` files in parallel, each with a hard
- * timeout. Failed or timed-out fetches resolve to `null` and are filtered out
- * so a single flaky file never blocks the whole analysis.
- *
- * `Promise.allSettled` is used deliberately — a rejection from one promise
- * must not cancel the others.
- */
 async function fetchFilesWithConcurrencyLimit(
   files: Array<{ path: string; role: string }>,
   owner: string,
@@ -347,11 +375,9 @@ async function fetchFilesWithConcurrencyLimit(
         );
         return {
           path: file.path,
-          content: raw.split("\n").slice(0, MAX_FILE_LINES).join("\n"),
+          content: truncateToLines(raw, MAX_FILE_LINES),
         };
       } finally {
-        // Always release — even if withTimeout throws, so the semaphore
-        // doesn't deadlock the remaining promises.
         semaphore.release();
       }
     }),
@@ -364,23 +390,21 @@ async function fetchFilesWithConcurrencyLimit(
     .map((r) => r.value);
 }
 
-// ── Main Pipeline ─────────────────────────────────────────────────────────────
 export async function runAstPipeline(
   params: PipelineParams,
 ): Promise<PipelineResult> {
   const { repoUrl, githubToken, isLocal, localFiles, checkCache } = params;
 
-  let allFileContents: FileContent[]  = [];
+  let allFileContents: FileContent[] = [];
   let owner       = "Local";
   let repo        = "Project";
   let commitSha   = "local-upload";
   let description = "Locally uploaded codebase";
   let stars       = 0;
   let language    = "Mixed";
-  let filteredPaths: string[]    = [];
-  let fileMetrics: FileMetric[]  = [];
+  let filteredPaths: string[]   = [];
+  let fileMetrics: FileMetric[] = [];
 
-  // ── Branch: local upload ───────────────────────────────────────────────────
   if (isLocal && localFiles != null) {
     if (localFiles.length > MAX_LOCAL_FILES) {
       throw new PipelineError(
@@ -389,7 +413,7 @@ export async function runAstPipeline(
       );
     }
 
-    const coerced  = coerceLocalFiles(localFiles);
+    const coerced   = coerceLocalFiles(localFiles);
     const totalSize = coerced.reduce((acc, f) => acc + f.content.length, 0);
 
     if (totalSize > MAX_LOCAL_SIZE_BYTES) {
@@ -403,7 +427,6 @@ export async function runAstPipeline(
     filteredPaths   = coerced.map((f) => f.path);
     fileMetrics     = coerced.map((f) => ({ path: f.path, size: f.content.length }));
 
-  // ── Branch: GitHub remote ──────────────────────────────────────────────────
   } else {
     const parsed = parseRepoUrl(repoUrl);
     if (!parsed) {
@@ -413,14 +436,12 @@ export async function runAstPipeline(
     owner = parsed.owner;
     repo  = parsed.repo;
 
-    const meta = await fetchRepoMeta(owner, repo, githubToken);
+    const meta  = await fetchRepoMeta(owner, repo, githubToken);
     commitSha   = String(meta.default_branch);
-    description = String(meta.description    ?? "");
-    stars       = Number(meta.stargazers_count ?? 0);
-    language    = String(meta.language        ?? "");
+    description = String(meta.description      ?? "");
+    stars       = Number(meta.stargazers_count  ?? 0);
+    language    = String(meta.language          ?? "");
 
-    // Cache check — errors here are intentionally swallowed so a cold DB or
-    // transient timeout never prevents a fresh analysis from running.
     if (checkCache) {
       try {
         const cached = await checkCache(commitSha);
@@ -442,7 +463,6 @@ export async function runAstPipeline(
     boostEntryPointScores(scoredFiles);
     const topFiles = getTopFiles(scoredFiles, TOP_FILES_FOR_GROQ);
 
-    // Ensure tsconfig is always present for accurate path-alias resolution
     const tsconfigEntry = scoredFiles.find(
       (f) => f.path === "tsconfig.json" || f.path === "src/tsconfig.json",
     );
@@ -462,10 +482,6 @@ export async function runAstPipeline(
     throw new PipelineError("NO_FILES_FOUND", "No readable code files found.");
   }
 
-  // ── Analysis ───────────────────────────────────────────────────────────────
-  // Score the full path list (not just fetched files) for accurate role data.
-  // Note: this is a second pass over `filteredPaths` — cheap CPU vs the
-  // alternative of threading `scoredFiles` through both branches above.
   const scoredAllFiles = classifyAndScoreFiles(filteredPaths);
   boostEntryPointScores(scoredAllFiles);
 
@@ -481,9 +497,8 @@ export async function runAstPipeline(
   const mermaidDiagram  = graphToMermaid(dependencyGraph, entryPoints);
   const blastRadiusTargets = getBlastRadiusTargets(fanIn, BLAST_RADIUS_TOP_N);
 
-  const fanInValues  = Object.values(fanIn);
-  // Guard: Math.max(...[]) returns -Infinity, which would corrupt the health score
-  const maxFanIn     = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
+  const fanInValues = Object.values(fanIn);
+  const maxFanIn    = fanInValues.length > 0 ? Math.max(...fanInValues) : 0;
   const largeFilesCount = fileMetrics.filter((f) => f.size > LARGE_FILE_BYTES).length;
 
   const healthMetrics = calculateHealthGrade({
@@ -494,7 +509,13 @@ export async function runAstPipeline(
   });
 
   const testCoverageMap = generateTestCoverageMap(filteredPaths);
-  const coverageGaps    = computeCoverageGaps(fanIn, testCoverageMap, COVERAGE_GAP_TOP_N);
+  const pageRankScores  = computePageRank(dependencyGraph);
+  const coverageGaps    = computeCoverageGaps(
+    fanIn,
+    testCoverageMap,
+    COVERAGE_GAP_TOP_N,
+    pageRankScores,
+  );
 
   return {
     owner,
@@ -515,6 +536,7 @@ export async function runAstPipeline(
     coverageGaps,
     topFilesForGroq: topFilesForGroq.map((f) => ({ path: f.path, role: f.role })),
     blastRadiusTargets: blastRadiusTargets.map((t) => t.file),
+    pageRankScores,
     analysis: null,
   };
 }
