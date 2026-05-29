@@ -768,6 +768,7 @@ const AnalyzeContent = memo(() => {
                           <ArchitectureMap
                             dependencyGraph={data.dependencyGraph}
                             entryPoints={data.entryPoints}
+                            fileMetrics={data.fileMetrics}
                           />
                         ) : (
                           <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">
@@ -886,7 +887,7 @@ const AnalyzeContent = memo(() => {
               exit={{ x: 100, opacity: 0 }}
               onClick={() => setIsChatOpen(true)}
               aria-label="Open chat assistant"
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-3 bg-[#141414]/90 backdrop-blur-md border border-white/10 border-r-0 px-4 py-4 rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] hover:bg-[#1a1a1a] hover:pr-6 transition-all group"
+              className="absolute right-0 bottom-8 z-40 flex items-center gap-3 bg-[#141414]/90 backdrop-blur-md border border-white/10 border-r-0 px-4 py-4 rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.5)] hover:bg-[#1a1a1a] hover:pr-6 transition-all group"
             >
               <div className="relative">
                 <MessageSquare className="w-5 h-5 text-slate-300 group-hover:text-white transition-colors" />
