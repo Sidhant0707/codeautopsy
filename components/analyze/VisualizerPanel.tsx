@@ -25,12 +25,17 @@ interface VisualizerPanelProps {
   data: RepoData;
   mapView: MapViewType;
   onMapViewChange: (view: MapViewType) => void;
+  // Lifted from PrImpactTab — the raw list of files changed in the analyzed PR.
+  // Empty array when no PR has been analyzed yet. Passed through to
+  // ArchitectureMap which runs the multi-source reverse BFS client-side.
+  prChangedFiles?: string[];
 }
 
 export default function VisualizerPanel({
   data,
   mapView,
   onMapViewChange,
+  prChangedFiles = [],
 }: VisualizerPanelProps) {
   return (
     <motion.div
@@ -81,6 +86,7 @@ export default function VisualizerPanel({
                 dependencyGraph={data.dependencyGraph}
                 entryPoints={data.entryPoints}
                 fileMetrics={data.fileMetrics}
+                prChangedFiles={prChangedFiles}
               />
             ) : (
               <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">

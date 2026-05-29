@@ -31,13 +31,13 @@ import {
 } from "d3-force";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle,
   CheckCircle2,
   Ghost,
   X,
   RefreshCw,
   Flame,
   ChevronRight,
+  GitPullRequest,
 } from "lucide-react";
 
 // ============================================================================
@@ -108,10 +108,52 @@ function detectOrphans(graph: Record<string, string[]>): string[] {
   );
 }
 
+/**
+ * Multi-source Reverse BFS for PR Blast Radius.
+ *
+ * Takes an array of PR-changed files as starting nodes and walks the
+ * REVERSE dependency graph (adjacencyList = who imports X) to find every
+ * file that could break if one of the changed files changes.
+ *
+ * Returns:
+ *   modifiedNodes  — the files directly changed in the PR (yellow)
+ *   blastNodes     — files that import (transitively) a modified file (red)
+ *
+ * A file in modifiedNodes that is ALSO reachable via the reverse graph stays
+ * in modifiedNodes (yellow takes priority over red in the renderer).
+ */
+function computePrBlastRadius(
+  changedFiles: string[],
+  adjacencyList: Record<string, string[]>, // reverse graph: file → who imports it
+): { modifiedNodes: Set<string>; blastNodes: Set<string> } {
+  const modifiedNodes = new Set<string>(changedFiles);
+  const blastNodes = new Set<string>();
+
+  const queue = [...changedFiles];
+  const visited = new Set<string>(changedFiles);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const importers = adjacencyList[current] || [];
+    for (const importer of importers) {
+      if (!visited.has(importer)) {
+        visited.add(importer);
+        // Only add to blastNodes if not one of the directly modified files
+        if (!modifiedNodes.has(importer)) {
+          blastNodes.add(importer);
+        }
+        queue.push(importer);
+      }
+    }
+  }
+
+  return { modifiedNodes, blastNodes };
+}
+
 // ============================================================================
-// ACTIVE MODE TYPE — single source of truth, replaces ad-hoc if/else chain
+// ACTIVE MODE TYPE
 // ============================================================================
-type ActiveMode = "blast" | "circular" | "orphan" | null;
+type ActiveMode = "blast" | "circular" | "orphan" | "pr-blast" | null;
 
 // ============================================================================
 // GLASS NODE
@@ -127,6 +169,9 @@ interface GlassNodeData {
   heatmap?: "green" | "yellow" | "red";
   isOrphan?: boolean;
   isOrphanHighlighted?: boolean;
+  // PR blast fields
+  isPrModified?: boolean; // changed in the PR → yellow
+  isPrBlast?: boolean; // breaks because of the PR → red
 }
 
 const HEATMAP_STYLES: Record<
@@ -154,15 +199,33 @@ const HEATMAP_STYLES: Record<
 };
 
 const GlassNode = ({ data }: { data: GlassNodeData }) => {
-  const { isBlastRadius, isDimmed, isCircular, heatmap, isOrphanHighlighted } =
-    data;
+  const {
+    isBlastRadius,
+    isDimmed,
+    isCircular,
+    heatmap,
+    isOrphanHighlighted,
+    isPrModified,
+    isPrBlast,
+  } = data;
 
   let containerClass =
     "px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer";
   let textClass = "text-sm font-mono truncate max-w-[200px] transition-colors";
   let handleColor = "!bg-slate-500";
 
-  if (isBlastRadius) {
+  // Priority: pr-modified > pr-blast > blast > dimmed > orphan > circular > heatmap > default
+  if (isPrModified) {
+    containerClass +=
+      " bg-yellow-500/15 border border-yellow-400/60 shadow-[0_0_20px_rgba(234,179,8,0.25)]";
+    textClass += " text-yellow-200";
+    handleColor = "!bg-yellow-400";
+  } else if (isPrBlast) {
+    containerClass +=
+      " bg-red-500/10 border border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.2)]";
+    textClass += " text-red-200";
+    handleColor = "!bg-red-500";
+  } else if (isBlastRadius) {
     containerClass +=
       " bg-red-500/10 border border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.2)]";
     textClass += " text-red-200";
@@ -203,12 +266,22 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
             Entry Point
           </div>
         )}
-        {data.isOrphan && !isBlastRadius && (
+        {isPrModified && (
+          <div className="text-[8px] uppercase tracking-widest text-yellow-400 font-bold mb-1">
+            PR Changed
+          </div>
+        )}
+        {isPrBlast && !isPrModified && (
+          <div className="text-[8px] uppercase tracking-widest text-red-400 font-bold mb-1">
+            Breaks
+          </div>
+        )}
+        {data.isOrphan && !isBlastRadius && !isPrModified && !isPrBlast && (
           <div className="text-[8px] uppercase tracking-widest text-violet-400 font-bold mb-1">
             Orphan
           </div>
         )}
-        {isCircular && !isBlastRadius && (
+        {isCircular && !isBlastRadius && !isPrModified && !isPrBlast && (
           <div className="text-[8px] uppercase tracking-widest text-orange-400 font-bold mb-1">
             Circular
           </div>
@@ -229,7 +302,7 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
 const nodeTypes = { glass: GlassNode };
 
 // ============================================================================
-// D3-FORCE LAYOUT (unchanged from original)
+// D3-FORCE LAYOUT (unchanged)
 // ============================================================================
 
 interface ForceNode extends Node {
@@ -366,18 +439,18 @@ function getForceLayoutedElements(
 // ============================================================================
 
 interface SidebarProps {
-  // graph meta
   nodeCount: number;
-  // feature 1
   cycleCount: number;
   cycleNodes: Set<string>;
-  // feature 2
   heatmapEnabled: boolean;
   onHeatmapToggle: () => void;
-  // feature 3
   orphans: string[];
   selectedOrphan: string | null;
   onOrphanSelect: (path: string | null) => void;
+  // PR blast
+  prChangedFiles: string[];
+  prModifiedNodes: Set<string>;
+  prBlastNodes: Set<string>;
   // shared
   activeMode: ActiveMode;
   onActivateMode: (mode: ActiveMode) => void;
@@ -393,6 +466,9 @@ function AnalysisSidebar({
   orphans,
   selectedOrphan,
   onOrphanSelect,
+  prChangedFiles,
+  prModifiedNodes,
+  prBlastNodes,
   activeMode,
   onActivateMode,
   onClearAll,
@@ -402,9 +478,17 @@ function AnalysisSidebar({
 
   const hasCircular = cycleCount > 0;
   const hasOrphans = orphans.length > 0;
+  const hasPrData = prChangedFiles.length > 0;
 
-  // Icon rail icons for collapsed state
   const RAIL = [
+    {
+      key: "pr-blast" as const,
+      icon: <GitPullRequest className="w-3.5 h-3.5" />,
+      color: hasPrData ? "text-cyan-400" : "text-slate-600",
+      active: activeMode === "pr-blast",
+      dot: hasPrData,
+      dotColor: "bg-cyan-500",
+    },
     {
       key: "circular" as const,
       icon: <RefreshCw className="w-3.5 h-3.5" />,
@@ -448,7 +532,6 @@ function AnalysisSidebar({
             exit={{ opacity: 0 }}
             className="w-10 h-full flex flex-col items-center py-4 gap-1 border-l border-white/5 bg-[#0e0e0e]"
           >
-            {/* Expand button */}
             <button
               onClick={() => setExpanded(true)}
               className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors mb-2"
@@ -456,16 +539,11 @@ function AnalysisSidebar({
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
-
             <div className="w-5 h-px bg-white/5 mb-1" />
-
-            {/* Rail icons */}
             {RAIL.map((item) => (
               <div key={item.key} className="relative">
                 <button
-                  onClick={() => {
-                    setExpanded(true);
-                  }}
+                  onClick={() => setExpanded(true)}
                   title={item.key}
                   className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
                     item.active
@@ -496,7 +574,7 @@ function AnalysisSidebar({
             transition={{ duration: 0.18 }}
             className="w-64 h-full flex flex-col border-l border-white/5 bg-[#0e0e0e] overflow-hidden"
           >
-            {/* Sidebar header */}
+            {/* Header */}
             <div className="flex items-center justify-between px-4 h-11 border-b border-white/5 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
@@ -539,35 +617,177 @@ function AnalysisSidebar({
                 </span>
                 <span
                   className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
-                    activeMode === "blast"
-                      ? "text-red-400"
-                      : activeMode === "circular"
-                        ? "text-orange-400"
-                        : activeMode === "orphan"
-                          ? "text-violet-400"
-                          : "text-slate-600"
+                    activeMode === "pr-blast"
+                      ? "text-cyan-400"
+                      : activeMode === "blast"
+                        ? "text-red-400"
+                        : activeMode === "circular"
+                          ? "text-orange-400"
+                          : activeMode === "orphan"
+                            ? "text-violet-400"
+                            : "text-slate-600"
                   }`}
                 >
-                  {activeMode === "blast"
-                    ? "Blast Radius"
-                    : activeMode === "circular"
-                      ? "Circular"
-                      : activeMode === "orphan"
-                        ? "Orphan"
-                        : heatmapEnabled
-                          ? "Heatmap"
-                          : "Default"}
+                  {activeMode === "pr-blast"
+                    ? "PR Blast"
+                    : activeMode === "blast"
+                      ? "Blast Radius"
+                      : activeMode === "circular"
+                        ? "Circular"
+                        : activeMode === "orphan"
+                          ? "Orphan"
+                          : heatmapEnabled
+                            ? "Heatmap"
+                            : "Default"}
                 </span>
               </div>
             </div>
 
             {/* Scrollable sections */}
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-px [&::-webkit-scrollbar-thumb]:bg-white/10">
-              {/* ── SECTION 1: Blast radius hint ── */}
+              {/* ── SECTION 0: PR Blast Radius ── */}
+              <div
+                className={`border-b border-white/[0.04] transition-colors ${
+                  activeMode === "pr-blast" ? "bg-cyan-500/[0.03]" : ""
+                }`}
+              >
+                <button
+                  onClick={() => {
+                    if (!hasPrData) return;
+                    onActivateMode(
+                      activeMode === "pr-blast" ? null : "pr-blast",
+                    );
+                  }}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
+                    hasPrData
+                      ? "hover:bg-white/[0.02] cursor-pointer"
+                      : "cursor-default"
+                  }`}
+                >
+                  <div
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${
+                      activeMode === "pr-blast" ? "bg-cyan-500" : "bg-white/10"
+                    }`}
+                  />
+                  <GitPullRequest
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
+                      hasPrData
+                        ? activeMode === "pr-blast"
+                          ? "text-cyan-400"
+                          : "text-cyan-500/70"
+                        : "text-slate-700"
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
+                        PR Blast Radius
+                      </span>
+                      {hasPrData ? (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
+                            activeMode === "pr-blast"
+                              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                              : "bg-cyan-500/10 text-cyan-500/80 border border-cyan-500/15"
+                          }`}
+                        >
+                          {prChangedFiles.length} files
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono text-slate-700">
+                          No PR
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-mono text-slate-600 mt-0.5 truncate">
+                      {hasPrData
+                        ? activeMode === "pr-blast"
+                          ? `${prModifiedNodes.size} changed · ${prBlastNodes.size} break`
+                          : "Click to visualize on graph"
+                        : "Analyze a PR to enable"}
+                    </p>
+                  </div>
+                </button>
+
+                {/* PR blast legend + stats when active */}
+                <AnimatePresence>
+                  {activeMode === "pr-blast" && hasPrData && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 space-y-2">
+                        {/* Legend */}
+                        <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-yellow-400/80 flex-shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Changed in PR
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-600 ml-auto">
+                              {prModifiedNodes.size}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-red-500/80 flex-shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Downstream impact
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-600 ml-auto">
+                              {prBlastNodes.size}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-white/5 border border-white/10 flex-shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-600">
+                              Unaffected
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Changed file list — truncated to 6 */}
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] font-mono text-slate-600 uppercase tracking-wider px-1 pb-0.5">
+                            Changed files
+                          </p>
+                          {Array.from(prModifiedNodes)
+                            .slice(0, 6)
+                            .map((f) => (
+                              <div
+                                key={f}
+                                className="flex items-center gap-2 px-2 py-1 rounded"
+                              >
+                                <div className="w-1 h-1 rounded-full bg-yellow-400/60 flex-shrink-0" />
+                                <span
+                                  className="text-[10px] font-mono text-yellow-300/70 truncate"
+                                  title={f}
+                                >
+                                  {f.split("/").pop()}
+                                </span>
+                              </div>
+                            ))}
+                          {prModifiedNodes.size > 6 && (
+                            <p className="text-[9px] font-mono text-slate-600 px-2 pt-0.5">
+                              +{prModifiedNodes.size - 6} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── SECTION 1: Blast Radius hint ── */}
               <div className="px-4 py-3 border-b border-white/[0.04]">
                 <div className="flex items-center gap-2 mb-2">
                   <div
-                    className={`w-0.5 h-3 rounded-full flex-shrink-0 ${activeMode === "blast" ? "bg-red-500" : "bg-white/10"}`}
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 ${
+                      activeMode === "blast" ? "bg-red-500" : "bg-white/10"
+                    }`}
                   />
                   <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
                     Blast Radius
@@ -654,7 +874,6 @@ function AnalysisSidebar({
                   </div>
                 </button>
 
-                {/* Cycle node list — shown when active */}
                 <AnimatePresence>
                   {activeMode === "circular" && cycleNodes.size > 0 && (
                     <motion.div
@@ -713,15 +932,9 @@ function AnalysisSidebar({
                     <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest flex-1">
                       Complexity
                     </span>
-                    {/* Toggle */}
                     <button
                       onClick={onHeatmapToggle}
                       aria-label={
-                        heatmapEnabled
-                          ? "Disable complexity heatmap"
-                          : "Enable complexity heatmap"
-                      }
-                      title={
                         heatmapEnabled
                           ? "Disable complexity heatmap"
                           : "Enable complexity heatmap"
@@ -743,8 +956,6 @@ function AnalysisSidebar({
                       />
                     </button>
                   </div>
-
-                  {/* Legend — always visible so user knows what to expect */}
                   <div className="pl-6 space-y-1.5">
                     {(
                       [
@@ -758,11 +969,7 @@ function AnalysisSidebar({
                           label: "Medium",
                           sub: "66–90th pct",
                         },
-                        {
-                          color: "bg-red-400",
-                          label: "Large",
-                          sub: "top 10%",
-                        },
+                        { color: "bg-red-400", label: "Large", sub: "top 10%" },
                       ] as const
                     ).map(({ color, label, sub }) => (
                       <div key={label} className="flex items-center gap-2">
@@ -850,7 +1057,6 @@ function AnalysisSidebar({
                   </div>
                 </button>
 
-                {/* Orphan file list */}
                 <AnimatePresence>
                   {activeMode === "orphan" && hasOrphans && orphanListOpen && (
                     <motion.div
@@ -912,7 +1118,7 @@ function AnalysisSidebar({
               </div>
             </div>
 
-            {/* Sidebar footer */}
+            {/* Footer */}
             <div className="px-4 py-2.5 border-t border-white/[0.04] flex-shrink-0">
               <p className="text-[9px] font-mono text-slate-700 uppercase tracking-widest">
                 🌀 Force Layout · {nodeCount} nodes
@@ -933,19 +1139,18 @@ export default function ArchitectureMap({
   dependencyGraph = {},
   entryPoints = [],
   fileMetrics = [],
+  prChangedFiles = [],
 }: {
   dependencyGraph: Record<string, string[]>;
   entryPoints: string[];
   fileMetrics?: { path: string; size: number }[];
+  prChangedFiles?: string[];
 }) {
-  // ── Core state ─────────────────────────────────────────────────────────────
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const previousGraphRef = useRef<string>("");
-
-  // ── Single enum for active highlight mode ──────────────────────────────────
-  const [activeMode, setActiveMode] = useState<ActiveMode>(null);
-
-  // ── Feature-specific state ─────────────────────────────────────────────────
+  const [activeMode, setActiveMode] = useState<ActiveMode>(
+    prChangedFiles && prChangedFiles.length > 0 ? ("pr-blast" as ActiveMode) : ("default" as ActiveMode)
+  );
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [selectedOrphan, setSelectedOrphan] = useState<string | null>(null);
 
@@ -965,7 +1170,7 @@ export default function ArchitectureMap({
     [dependencyGraph],
   );
 
-  // ── Reverse graph for blast radius ─────────────────────────────────────────
+  // Reverse graph — used by both single-node blast radius AND multi-source PR BFS
   const adjacencyList = useMemo(() => {
     const rev: Record<string, string[]> = {};
     Object.keys(dependencyGraph).forEach((src) => {
@@ -977,7 +1182,31 @@ export default function ArchitectureMap({
     return rev;
   }, [dependencyGraph]);
 
-  // ── Build initial nodes/edges (layout only, no feature data) ───────────────
+  // Multi-source reverse BFS — recomputed whenever prChangedFiles changes.
+  // Returns empty sets when no PR data is present (zero-cost default).
+  const { prModifiedNodes, prBlastNodes } = useMemo(() => {
+    if (!prChangedFiles || prChangedFiles.length === 0)
+      return {
+        prModifiedNodes: new Set<string>(),
+        prBlastNodes: new Set<string>(),
+      };
+    const { modifiedNodes, blastNodes } = computePrBlastRadius(
+      prChangedFiles,
+      adjacencyList,
+    );
+    return { prModifiedNodes: modifiedNodes, prBlastNodes: blastNodes };
+  }, [prChangedFiles, adjacencyList]);
+
+  // Auto-activate pr-blast mode when new PR data arrives
+  const prevPrFilesRef = useRef<string>("");
+  useEffect(() => {
+    const key = prChangedFiles.join(",");
+    if (key && key !== prevPrFilesRef.current) {
+      prevPrFilesRef.current = key;
+    }
+  }, [prChangedFiles]);
+
+  // ── Build initial nodes/edges (layout only) ────────────────────────────────
   const { initialNodes, initialEdges, graphHash } = useMemo(() => {
     if (!dependencyGraph || typeof dependencyGraph !== "object")
       return { initialNodes: [], initialEdges: [], graphHash: "" };
@@ -999,6 +1228,8 @@ export default function ArchitectureMap({
           heatmap: undefined,
           isOrphan: false,
           isOrphanHighlighted: false,
+          isPrModified: false,
+          isPrBlast: false,
         },
         position: { x: 0, y: 0 },
       });
@@ -1036,7 +1267,6 @@ export default function ArchitectureMap({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Guard: only re-layout when the graph actually changes
   useEffect(() => {
     if (previousGraphRef.current !== graphHash) {
       setNodes(initialNodes);
@@ -1045,7 +1275,8 @@ export default function ArchitectureMap({
     }
   }, [initialNodes, initialEdges, graphHash, setNodes, setEdges]);
 
-  // ── Apply feature overlay data (does NOT re-run layout) ───────────────────
+  // ── Apply static overlay data (heatmap, circular, orphan flags) ───────────
+  // This never re-runs the force layout.
   useEffect(() => {
     setNodes((nds) =>
       nds.map((n) => ({
@@ -1062,9 +1293,9 @@ export default function ArchitectureMap({
     );
   }, [cycleNodes, heatmapColors, heatmapEnabled, orphans, setNodes]);
 
-  // ── Master highlight effect — driven by activeMode enum ───────────────────
+  // ── Master highlight effect ────────────────────────────────────────────────
   useEffect(() => {
-    // Default: clear everything
+    // Default: clear all highlight state
     if (!activeMode && !selectedNode) {
       setNodes((nds) =>
         nds.map((n) => ({
@@ -1074,6 +1305,8 @@ export default function ArchitectureMap({
             isBlastRadius: false,
             isDimmed: false,
             isOrphanHighlighted: false,
+            isPrModified: false,
+            isPrBlast: false,
           },
         })),
       );
@@ -1088,6 +1321,58 @@ export default function ArchitectureMap({
       return;
     }
 
+    // PR-BLAST mode — multi-source reverse BFS result applied to graph
+    if (activeMode === "pr-blast") {
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          data: {
+            ...n.data,
+            isBlastRadius: false,
+            isOrphanHighlighted: false,
+            isPrModified: prModifiedNodes.has(n.id),
+            isPrBlast: prBlastNodes.has(n.id),
+            // Dim only nodes that are neither modified nor in the blast set
+            isDimmed: !prModifiedNodes.has(n.id) && !prBlastNodes.has(n.id),
+          },
+        })),
+      );
+      setEdges((eds) =>
+        eds.map((e) => {
+          const sourceHit =
+            prModifiedNodes.has(e.source) || prBlastNodes.has(e.source);
+          const targetHit =
+            prModifiedNodes.has(e.target) || prBlastNodes.has(e.target);
+          const isHotEdge = sourceHit && targetHit;
+          // Yellow edge between modified nodes, red edge from modified to blast
+          const isModifiedEdge =
+            prModifiedNodes.has(e.source) && prModifiedNodes.has(e.target);
+          return {
+            ...e,
+            style: {
+              stroke: isModifiedEdge
+                ? "#eab308"
+                : isHotEdge
+                  ? "#ef4444"
+                  : "#475569",
+              strokeWidth: isHotEdge ? 3 : 2,
+              opacity: isHotEdge ? 1 : 0.12,
+            },
+            animated: isHotEdge,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: isModifiedEdge
+                ? "#eab308"
+                : isHotEdge
+                  ? "#ef4444"
+                  : "#475569",
+            },
+          };
+        }),
+      );
+      return;
+    }
+
     // ORPHAN mode
     if (activeMode === "orphan") {
       setNodes((nds) =>
@@ -1096,6 +1381,8 @@ export default function ArchitectureMap({
           data: {
             ...n.data,
             isBlastRadius: false,
+            isPrModified: false,
+            isPrBlast: false,
             isDimmed: selectedOrphan ? n.id !== selectedOrphan : false,
             isOrphanHighlighted: selectedOrphan
               ? n.id === selectedOrphan
@@ -1126,6 +1413,8 @@ export default function ArchitectureMap({
           data: {
             ...n.data,
             isBlastRadius: false,
+            isPrModified: false,
+            isPrBlast: false,
             isDimmed: !cycleNodes.has(n.id),
             isOrphanHighlighted: false,
           },
@@ -1153,7 +1442,7 @@ export default function ArchitectureMap({
       return;
     }
 
-    // BLAST mode (existing logic unchanged)
+    // BLAST mode — single node, existing behaviour unchanged
     if (activeMode === "blast" && selectedNode) {
       const blastNodes = new Set<string>();
       const blastEdges = new Set<string>();
@@ -1177,6 +1466,8 @@ export default function ArchitectureMap({
             isBlastRadius: blastNodes.has(n.id),
             isDimmed: !blastNodes.has(n.id),
             isOrphanHighlighted: false,
+            isPrModified: false,
+            isPrBlast: false,
           },
         })),
       );
@@ -1204,6 +1495,8 @@ export default function ArchitectureMap({
     selectedNode,
     cycleNodes,
     selectedOrphan,
+    prModifiedNodes,
+    prBlastNodes,
     adjacencyList,
     setNodes,
     setEdges,
@@ -1255,9 +1548,8 @@ export default function ArchitectureMap({
 
   return (
     <div className="w-full h-full min-h-[500px] flex rounded-2xl overflow-hidden border border-white/5 bg-black/40">
-      {/* ── Graph canvas (fills all available space) ── */}
+      {/* Graph canvas */}
       <div className="flex-1 relative min-w-0">
-        {/* Top-left: minimal graph label only — analysis moved to sidebar */}
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5 pointer-events-none">
           <h3 className="text-[10px] font-bold text-slate-400 font-mono tracking-widest uppercase bg-black/50 px-2.5 py-1 rounded-md backdrop-blur-md border border-white/10 w-fit">
             Interactive Architecture Map
@@ -1268,7 +1560,7 @@ export default function ArchitectureMap({
           </div>
         </div>
 
-        {/* Active mode pill — floats top-center, always dismissible */}
+        {/* Active mode pill */}
         <AnimatePresence>
           {activeMode && (
             <motion.button
@@ -1279,21 +1571,25 @@ export default function ArchitectureMap({
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
               onClick={handleClearAll}
               className={`absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${
-                activeMode === "blast"
-                  ? "bg-red-500/10 border-red-500/25 text-red-400"
-                  : activeMode === "circular"
-                    ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
-                    : "bg-violet-500/10 border-violet-500/25 text-violet-400"
+                activeMode === "pr-blast"
+                  ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-400"
+                  : activeMode === "blast"
+                    ? "bg-red-500/10 border-red-500/25 text-red-400"
+                    : activeMode === "circular"
+                      ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
+                      : "bg-violet-500/10 border-violet-500/25 text-violet-400"
               }`}
             >
               <span>
-                {activeMode === "blast"
-                  ? "Blast radius active"
-                  : activeMode === "circular"
-                    ? "Circular deps highlighted"
-                    : selectedOrphan
-                      ? `Orphan: ${selectedOrphan.split("/").pop()}`
-                      : "Orphan mode — select a file"}
+                {activeMode === "pr-blast"
+                  ? `PR · ${prModifiedNodes.size} changed · ${prBlastNodes.size} impacted`
+                  : activeMode === "blast"
+                    ? "Blast radius active"
+                    : activeMode === "circular"
+                      ? "Circular deps highlighted"
+                      : selectedOrphan
+                        ? `Orphan: ${selectedOrphan.split("/").pop()}`
+                        : "Orphan mode — select a file"}
               </span>
               <X className="w-3 h-3 opacity-60" />
             </motion.button>
@@ -1334,7 +1630,7 @@ export default function ArchitectureMap({
         </ReactFlow>
       </div>
 
-      {/* ── Analysis sidebar (right, collapsible) ── */}
+      {/* Analysis sidebar */}
       <AnalysisSidebar
         nodeCount={nodes.length}
         cycleCount={cycleCount}
@@ -1344,6 +1640,9 @@ export default function ArchitectureMap({
         orphans={orphans}
         selectedOrphan={selectedOrphan}
         onOrphanSelect={handleOrphanSelect}
+        prChangedFiles={prChangedFiles}
+        prModifiedNodes={prModifiedNodes}
+        prBlastNodes={prBlastNodes}
         activeMode={activeMode}
         onActivateMode={handleActivateMode}
         onClearAll={handleClearAll}

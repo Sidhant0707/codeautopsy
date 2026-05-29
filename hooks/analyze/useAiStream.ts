@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import { RepoData } from "@/lib/types/analyze";
 
-// The subset of swrData fields that the AI endpoint consumes.
-// Keeps the hook signature explicit and avoids a full RepoData dependency.
 interface AiStreamInput {
   owner: string;
   repo: string;
@@ -14,44 +12,32 @@ interface AiStreamInput {
   fileContents?: { path: string; content: string }[];
   blastRadiusTargets?: unknown;
   healthMetrics?: unknown;
-  // analysis is null when the server deferred AI generation to the client stream
   analysis: RepoData["analysis"] | null;
 }
+
+// Gate states the UI needs to react to
+export type AiGateState = "auth_required" | "limit_reached" | null;
 
 interface UseAiStreamReturn {
   aiAnalysis: Record<string, unknown> | null;
   isAiStreaming: boolean;
+  aiGateState: AiGateState;
 }
 
-/**
- * Owns the real-time AI streaming engine.
- *
- * When `swrData.analysis` comes back as `null`, the server has signalled that
- * the AI generation should be streamed client-side. This hook opens a POST
- * stream to `/api/ai`, reads NDJSON chunks, and applies on-the-fly partial
- * JSON repair so the UI can render progressive updates before the stream
- * completes.
- *
- * The hook is intentionally idempotent: once streaming has started (or
- * completed), it will not re-trigger for the same `swrData` reference.
- */
 export function useAiStream(
   swrData: AiStreamInput | null | undefined,
 ): UseAiStreamReturn {
-  const [aiAnalysis, setAiAnalysis] = useState<Record<string, unknown> | null>(
-    null,
-  );
+  const [aiAnalysis, setAiAnalysis] = useState<Record<string, unknown> | null>(null);
   const [isAiStreaming, setIsAiStreaming] = useState(false);
+  const [aiGateState, setAiGateState] = useState<AiGateState>(null);
 
   useEffect(() => {
-    // Only start the stream when:
-    // 1. swrData has arrived
-    // 2. The server explicitly deferred analysis (analysis === null)
-    // 3. We are not already streaming
-    // 4. We have not already received a completed result
     if (!swrData || swrData.analysis !== null || isAiStreaming || aiAnalysis) {
       return;
     }
+
+    // Don't retry if we already know the gate is closed
+    if (aiGateState) return;
 
     setIsAiStreaming(true);
 
@@ -71,8 +57,20 @@ export function useAiStream(
           }),
         });
 
-        if (!res.body) return;
+        // ── Handle gate responses ───────────────────────────────────────────
+        if (res.status === 401) {
+          setAiGateState("auth_required");
+          return;
+        }
 
+        if (res.status === 402) {
+          setAiGateState("limit_reached");
+          return;
+        }
+
+        if (!res.ok || !res.body) return;
+
+        // ── Stream processing (unchanged) ───────────────────────────────────
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let jsonText = "";
@@ -83,18 +81,13 @@ export function useAiStream(
 
           jsonText += decoder.decode(value, { stream: true });
 
-          // 1. Attempt to parse the complete accumulated JSON first.
           try {
             setAiAnalysis(JSON.parse(jsonText));
           } catch {
-            // 2. On-the-fly partial JSON repair for progressive UI rendering.
-            //    The incoming stream is valid JSON that may be mid-write, so we
-            //    close any open string literals and balance braces/brackets.
             try {
               let fixed = jsonText.replace(/("[^"]*)$/, '"');
-
-              const openBraces = (fixed.match(/\{/g) || []).length;
-              const closeBraces = (fixed.match(/\}/g) || []).length;
+              const openBraces   = (fixed.match(/\{/g) || []).length;
+              const closeBraces  = (fixed.match(/\}/g) || []).length;
               const openBrackets = (fixed.match(/\[/g) || []).length;
               const closeBrackets = (fixed.match(/\]/g) || []).length;
 
@@ -105,8 +98,7 @@ export function useAiStream(
               const partial = JSON.parse(fixed);
               if (partial) setAiAnalysis(partial);
             } catch {
-              // Silently wait for the next chunk if the fragment is still
-              // unparseable after repair attempts.
+              // Wait for next chunk
             }
           }
         }
@@ -120,9 +112,6 @@ export function useAiStream(
     fetchAiStream();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swrData]);
-  // Intentionally omitting `isAiStreaming` and `aiAnalysis` from deps:
-  // the guard conditions at the top of the effect body are sufficient, and
-  // including them would risk re-triggering the stream on state updates.
 
-  return { aiAnalysis, isAiStreaming };
+  return { aiAnalysis, isAiStreaming, aiGateState };
 }

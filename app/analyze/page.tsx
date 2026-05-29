@@ -33,15 +33,15 @@ import RiskRadarPanel from "@/components/analyze/RiskRadarPanel";
 import ChatPanel from "@/components/analyze/ChatPanel";
 import ExitModal from "@/components/analyze/ExitModal";
 
-// ─── Lazy Tab Panels (unchanged from original) ────────────────────────────────
+// ─── Lazy Tab Panels ──────────────────────────────────────────────────────────
 const OverviewTab = dynamic(() => import("@/components/analyze/OverviewTab"), {
   loading: () => <SkeletonLoader />,
   ssr: false,
 });
-const PrImpactTab = dynamic(() => import("@/components/analyze/PrImpactTab"), {
-  loading: () => <SkeletonLoader />,
-  ssr: false,
-});
+
+// PrImpactTab is NOT lazy-loaded here because we need to pass callbacks to it.
+// It is imported directly so TypeScript can see the prop types at compile time.
+import PrImpactTab from "@/components/analyze/PrImpactTab";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ const AnalyzeContent = memo(() => {
   const repoUrl = searchParams.get("url") || searchParams.get("repo");
   const source = searchParams.get("source");
 
-  // ── Mount flag (prevents SSR / sessionStorage mismatches) ──────────────────
+  // ── Mount flag ──────────────────────────────────────────────────────────────
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setIsMounted(true), 0);
@@ -63,11 +63,12 @@ const AnalyzeContent = memo(() => {
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────────────
-  const { data, loading, error, isRateLimit, isAiStreaming } = useAnalyzeData({
-    repoUrl,
-    source,
-    onRequireGitHubAuth: () => setShowGitHubAuthModal(true),
-  });
+  const { data, loading, error, isRateLimit, isAiStreaming, aiGateState } =
+    useAnalyzeData({
+      repoUrl,
+      source,
+      onRequireGitHubAuth: () => setShowGitHubAuthModal(true),
+    });
 
   // ── UI State ────────────────────────────────────────────────────────────────
   const {
@@ -85,7 +86,23 @@ const AnalyzeContent = memo(() => {
     isMounted,
   });
 
-  // ── Exit modal focus trap ref ───────────────────────────────────────────────
+  // ── PR Blast Radius state — lifted from PrImpactTab ─────────────────────────
+  // Holds the raw list of files changed in the most recently analyzed PR.
+  // Empty array = no PR has been analyzed yet (ArchitectureMap shows default).
+  const [prChangedFiles, setPrChangedFiles] = useState<string[]>([]);
+
+  // Called by PrImpactTab after a successful PR analysis.
+  // Stores the file list AND switches to the visualizer tab so the user
+  // immediately sees the graph with pr-blast mode activated.
+  const handlePrAnalyzed = useCallback(
+    (files: string[]) => {
+      setPrChangedFiles(files);
+      setActiveTab("visualizer");
+    },
+    [setActiveTab],
+  );
+
+  // ── Exit modal ref ──────────────────────────────────────────────────────────
   const exitModalRef = useRef<HTMLDivElement>(null);
 
   // ── Feedback ────────────────────────────────────────────────────────────────
@@ -99,7 +116,7 @@ const AnalyzeContent = memo(() => {
   // ── Loading animation ───────────────────────────────────────────────────────
   const { loadingStep, loadingControls } = useLoadingAnimation(loading);
 
-  // ── GitHub OAuth handler ────────────────────────────────────────────────────
+  // ── GitHub OAuth ────────────────────────────────────────────────────────────
   const handleGitHubLogin = useCallback(async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -155,7 +172,6 @@ const AnalyzeContent = memo(() => {
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
           <AnalyzeTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-          {/* Tab panels */}
           <div className="flex-1 overflow-hidden relative">
             <AnimatePresence mode="wait">
               {activeTab === "overview" && (
@@ -172,7 +188,11 @@ const AnalyzeContent = memo(() => {
                   key="pr-boundary"
                   fallbackMessage="Failed to load PR impact analyzer."
                 >
-                  <PrImpactTab data={data} />
+                  <PrImpactTab
+                    data={data}
+                    onPrAnalyzed={handlePrAnalyzed}
+                    onViewOnGraph={() => setActiveTab("visualizer")}
+                  />
                 </ErrorBoundary>
               )}
 
@@ -181,6 +201,7 @@ const AnalyzeContent = memo(() => {
                   data={data}
                   mapView={mapView}
                   onMapViewChange={setMapView}
+                  prChangedFiles={prChangedFiles}
                 />
               )}
 
@@ -189,6 +210,7 @@ const AnalyzeContent = memo(() => {
                   data={data}
                   source={source}
                   onOpenChat={() => setIsChatOpen(true)}
+                  aiGateState={aiGateState}
                 />
               )}
 
