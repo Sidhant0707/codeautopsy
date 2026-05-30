@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
-  Sparkles,
 } from "lucide-react";
 import { RepoData } from "@/lib/types/analyze";
 import { computeArticulationPoints } from "@/lib/algorithms/articulationPoints";
@@ -174,7 +173,7 @@ function StatCard({
   );
 }
 
-// ── Pro gate overlay — sits on top of blurred content ────────────────────────
+// ── Pro gate overlay ──────────────────────────────────────────────────────────
 
 function ProTabGate({
   label,
@@ -184,25 +183,33 @@ function ProTabGate({
   onUpgrade: () => void;
 }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10 bg-[#0a0a0a]/70 backdrop-blur-[3px] rounded-xl">
-      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-        <Lock className="w-5 h-5 text-amber-400" />
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-10 bg-[#0a0a0a]/80 backdrop-blur-[2px] rounded-xl">
+      <div className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+        <Lock className="w-4 h-4 text-slate-400" />
       </div>
-      <div className="text-center px-6">
-        <p className="text-sm font-bold text-white mb-1">
-          {label} is a Pro feature
+      <div className="text-center px-8 space-y-1.5">
+        <p className="text-sm font-semibold text-white tracking-tight">
+          {label} requires Pro
         </p>
-        <p className="text-xs text-slate-400 leading-relaxed max-w-[240px]">
-          Upgrade to Pro to access stability analysis, instability distribution,
-          and architectural health metrics.
+        <p className="text-[11px] text-slate-500 leading-relaxed max-w-[220px]">
+          Stability analysis, instability distribution, and architectural health
+          metrics.
         </p>
       </div>
       <button
         onClick={onUpgrade}
-        className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono uppercase tracking-widest transition-all"
+        className="group flex items-center gap-2 px-5 py-2 rounded-lg bg-white text-[#0a0a0a] text-[11px] font-bold font-mono uppercase tracking-widest hover:bg-slate-200 transition-colors"
       >
-        <Sparkles className="w-3.5 h-3.5" />
         Upgrade to Pro
+        <svg
+          className="w-3 h-3 transition-transform group-hover:translate-x-0.5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
       </button>
     </div>
   );
@@ -701,12 +708,10 @@ function StabilityTab({ data }: { data: RepoData }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div
-                    className="flex-1 h-1 rounded-full bg-white/5"
-                    style={{ "--inst": `${instPct}%` } as React.CSSProperties}
-                  >
+                  <div className="flex-1 h-1 rounded-full bg-white/5">
                     <div
-                      className={`h-1 rounded-full transition-all [width:var(--inst)] ${barColor}`}
+                      className={`h-1 rounded-full transition-all ${barColor}`}
+                      style={{ width: `${instPct}%` }}
                     />
                   </div>
                   <span className="text-[9px] font-mono text-slate-500 w-8 text-right flex-shrink-0 tabular-nums">
@@ -954,7 +959,7 @@ export default function ArchInsightsPanel({
                 <tab.icon className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="hidden sm:inline">{tab.label}</span>
                 {isLocked && (
-                  <Lock className="w-3 h-3 text-amber-500/60 flex-shrink-0" />
+                  <Lock className="w-3 h-3 text-slate-600 flex-shrink-0" />
                 )}
                 <span className="sm:hidden pointer-events-none" aria-hidden>
                   <InfoTooltip content={tab.tooltip} side="bottom" />
@@ -973,7 +978,7 @@ export default function ArchInsightsPanel({
           </span>
           <InfoTooltip content={current.tooltip} side="right" />
           {current.proGated && !isPro && (
-            <span className="ml-auto text-[9px] font-mono font-black px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/20 uppercase tracking-widest">
+            <span className="ml-auto text-[9px] font-mono font-black px-1.5 py-0.5 rounded border bg-white/5 text-slate-400 border-white/10 uppercase tracking-widest">
               Pro
             </span>
           )}
