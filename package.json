@@ -13,6 +13,7 @@
     "@ai-sdk/openai": "^3.0.65",
     "@google/generative-ai": "^0.24.1",
     "@icons-pack/react-simple-icons": "^13.13.0",
+    "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
     "@upstash/ratelimit": "^2.0.8",

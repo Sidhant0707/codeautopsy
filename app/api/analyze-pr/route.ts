@@ -34,12 +34,23 @@ export async function POST(req: Request) {
     if (authError || !user)
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
 
-    const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
-    if (!isUnderLimit)
-      return NextResponse.json(
-        { error: "RATE_LIMIT_REACHED", message: "Daily limit of 10 scans reached. Please upgrade to the Architect tier to continue." },
-        { status: 429 },
-      );
+    // Check pro status — pro users skip the usage limit entirely
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan_tier")
+      .eq("id", user.id)
+      .single();
+
+    const isPro = profile?.plan_tier === "pro";
+
+    if (!isPro) {
+      const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+      if (!isUnderLimit)
+        return NextResponse.json(
+          { error: "RATE_LIMIT_REACHED", message: "Daily limit of 10 scans reached. Please upgrade to the Specialist tier to continue." },
+          { status: 429 },
+        );
+    }
 
     // ── PR metadata ───────────────────────────────────────────────────────────
     const prMetaRes = await fetch(
@@ -57,14 +68,11 @@ export async function POST(req: Request) {
     const prFiles = await prFilesRes.json();
 
     // ── Extract changed filenames for the client-side graph BFS ──────────────
-    // This is the only addition to the original route: we collect the raw
-    // filename list and attach it to the final response so ArchitectureMap
-    // can run the reverse BFS entirely on the client without a second API call.
     const changedFiles: string[] = Array.isArray(prFiles)
       ? prFiles.map((f: { filename: string }) => f.filename)
       : [];
 
-    // ── Secret scanning + author fetch (unchanged) ────────────────────────────
+    // ── Secret scanning + author fetch ────────────────────────────────────────
     const securityAlerts: string[] = [];
 
     const filePromises = prFiles.slice(0, 15).map(
@@ -82,7 +90,7 @@ export async function POST(req: Request) {
     const fileChangesArray = await Promise.all(filePromises);
     const fileChangesText = fileChangesArray.join("\n\n");
 
-    // ── Groq prompt (unchanged) ───────────────────────────────────────────────
+    // ── Groq prompt ───────────────────────────────────────────────────────────
     const systemPrompt = `You are a senior software engineer conducting a strict code review on a Pull Request.
 Repository: ${owner}/${repo}
 PR Title: ${prMeta.title}
@@ -127,7 +135,7 @@ Analyze these code changes and return ONLY a valid JSON object with EXACTLY this
     const finalResult = JSON.parse(data.choices[0].message.content);
     console.log("🤖 RAW AI PAYLOAD:", JSON.stringify(finalResult.suggestedReviewers, null, 2));
 
-    // ── Security alert injection (unchanged) ──────────────────────────────────
+    // ── Security alert injection ──────────────────────────────────────────────
     if (securityAlerts.length > 0) {
       finalResult.riskLevel = "high";
       if (!finalResult.blastRadius) finalResult.blastRadius = [];
@@ -139,7 +147,7 @@ Analyze these code changes and return ONLY a valid JSON object with EXACTLY this
     // ── Attach raw changed files for client-side graph BFS ────────────────────
     finalResult.changedFiles = changedFiles;
 
-    // ── Persist to Supabase (unchanged) ───────────────────────────────────────
+    // ── Persist to Supabase ───────────────────────────────────────────────────
     const { error: dbError } = await supabase.from("pr_analyses").insert({
       user_id: user.id,
       repo_name: `${owner}/${repo}`,

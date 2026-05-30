@@ -1,16 +1,13 @@
 /**
  * app/api/analyze/route.ts
- *
- * Network layer only: Auth, Rate-limiting, DB cache, Streaming.
- * All heavy lifting is delegated to `runAstPipeline`.
  */
 
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
+import { ratelimitAuth, ratelimitFree, ratelimitPro } from "@/lib/ratelimit";
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { ratelimitAuth, ratelimitFree } from "@/lib/ratelimit";
 import { checkUsageLimit } from "@/lib/usage";
 import { processAndStoreCodebase } from "@/lib/rag";
 import {
@@ -23,16 +20,6 @@ import { GitHubAuthError } from "@/lib/github";
 const ANALYSIS_VERSION = 10;
 
 // ── SafeStream ────────────────────────────────────────────────────────────────
-/**
- * Guards the ReadableStreamDefaultController against two classes of bugs
- * that crash Vercel serverless functions in production:
- *
- * 1. `enqueue()` after `close()` — throws "Controller is already closed".
- * 2. `close()` called twice — same error.
- *
- * The `keepAlive` interval is always cleared through this class, making it
- * impossible to forget a clearInterval in any code path.
- */
 class SafeStream {
   private closed = false;
 
@@ -42,26 +29,15 @@ class SafeStream {
     private readonly keepAlive: ReturnType<typeof setInterval>,
   ) {}
 
-  /**
-   * Serialises `payload` as JSON and enqueues it.
-   * If the stream is already closed (or the client disconnected), the error is
-   * absorbed and `close()` is called to clean up the interval immediately.
-   */
   send(payload: object): void {
     if (this.closed) return;
     try {
       this.ctrl.enqueue(this.enc.encode(JSON.stringify(payload)));
     } catch {
-      // Client disconnected or stream was cancelled — clean up now rather
-      // than waiting for the next keep-alive tick.
       this.close();
     }
   }
 
-  /**
-   * Clears the keep-alive interval and closes the stream.
-   * Safe to call multiple times.
-   */
   close(): void {
     if (this.closed) return;
     this.closed = true;
@@ -69,11 +45,9 @@ class SafeStream {
     try {
       this.ctrl.close();
     } catch {
-      // Already closed or errored — nothing to do.
     }
   }
 
-  /** Convenience: send an error envelope and close the stream. */
   sendError(error: string, extra?: Record<string, unknown>): void {
     this.send({ error, ...extra });
     this.close();
@@ -83,8 +57,6 @@ class SafeStream {
 // ── Route Handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   // ── 1. Body parsing ────────────────────────────────────────────────────────
-  // `req.json()` throws on malformed JSON or an empty body. Handle it before
-  // opening the stream so we can return a clean 400 response.
   let body: { repoUrl?: unknown; isLocal?: unknown; localFiles?: unknown };
   try {
     body = await req.json();
@@ -97,8 +69,6 @@ export async function POST(req: NextRequest) {
   const localFiles = Array.isArray(body.localFiles) ? body.localFiles : undefined;
 
   // ── 2. Input validation ────────────────────────────────────────────────────
-  // Validate before touching Supabase / Upstash to avoid wasting quota on
-  // obviously bad requests.
   if (!isLocal && !repoUrl) {
     return NextResponse.json(
       { error: "repoUrl is required for non-local analysis." },
@@ -150,6 +120,7 @@ export async function POST(req: NextRequest) {
   let session  = null;
   let authUser = null;
   let isAuthor = false;
+  let isPro    = false;
 
   try {
     const { data: { session: s } } = await supabase.auth.getSession();
@@ -162,6 +133,15 @@ export async function POST(req: NextRequest) {
         isAuthor = user.email === process.env.AUTHOR_EMAIL;
 
         if (!isAuthor) {
+          // Check pro status
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("plan_tier")
+            .eq("id", user.id)
+            .single();
+
+          isPro = profile?.plan_tier === "pro";
+
           const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
           if (!isUnderLimit) {
             return NextResponse.json(
@@ -173,8 +153,6 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    // Auth failure is non-fatal — demote to anonymous. The subsequent
-    // rate-limit check will use the IP instead.
     console.error("[analyze] Auth setup error:", err);
   }
 
@@ -183,7 +161,14 @@ export async function POST(req: NextRequest) {
   // ── 4. Rate limiting ───────────────────────────────────────────────────────
   if (!isAuthor) {
     const identifier = userId ?? ip;
-    const limiter    = userId ? ratelimitAuth : ratelimitFree;
+
+    // Pro users get a higher Upstash bucket, anon users get IP-based free bucket
+    const limiter = !userId
+      ? ratelimitFree
+      : isPro
+      ? ratelimitPro
+      : ratelimitAuth;
+
     const { success, limit, reset, remaining } = await limiter.limit(identifier);
 
     if (!success) {
@@ -210,10 +195,6 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(ctrl) {
-      // The keep-alive ping enqueues raw whitespace directly on `ctrl`.
-      // This is intentional: SafeStream JSON-encodes its payloads, which
-      // would produce `{}` and could confuse single-value JSON parsers.
-      // If enqueue fails (stream closed/cancelled), the interval clears itself.
       const keepAlive = setInterval(() => {
         try {
           ctrl.enqueue(encoder.encode(" "));
@@ -222,8 +203,6 @@ export async function POST(req: NextRequest) {
         }
       }, 2_000);
 
-      // All further writes/closes go through SafeStream to prevent
-      // enqueue-after-close exceptions from crashing the function.
       const safe = new SafeStream(ctrl, encoder, keepAlive);
 
       try {
@@ -232,8 +211,6 @@ export async function POST(req: NextRequest) {
           githubToken,
           isLocal,
           localFiles,
-          // Don't register a cache checker for local uploads — there's nothing
-          // to cache against (no stable commitSha).
           checkCache: isLocal
             ? undefined
             : async (commitSha) => {
@@ -248,7 +225,6 @@ export async function POST(req: NextRequest) {
                   .maybeSingle();
 
                 if (cacheError) {
-                  // Supabase returns soft errors — log and treat as miss
                   console.warn("[analyze] Cache query error:", cacheError.message);
                   return null;
                 }
@@ -257,10 +233,7 @@ export async function POST(req: NextRequest) {
               },
         });
 
-        // Persist fresh analyses only — cached results are already in the DB.
         if (!isLocal && !result.cached) {
-          // DB insert is non-fatal. A failure here must NOT prevent the
-          // freshly-computed result from reaching the client.
           try {
             const { error: insertError } = await supabase.from("analyses").insert({
               repo_url:         repoUrl,
@@ -277,9 +250,6 @@ export async function POST(req: NextRequest) {
             console.error("[analyze] DB insert threw:", err);
           }
 
-          // RAG indexing is also non-fatal — a failure should never block
-          // the response. `fileContents` is always an array from the pipeline,
-          // but guard anyway for safety.
           try {
             await processAndStoreCodebase(
               supabase,
@@ -300,8 +270,6 @@ export async function POST(req: NextRequest) {
         if (err instanceof GitHubAuthError || message === "REQUIRE_GITHUB_AUTH") {
           safe.sendError("REQUIRE_GITHUB_AUTH", { message: "GitHub auth required." });
         } else if (err instanceof PipelineError) {
-          // Typed pipeline errors include a machine-readable code so the
-          // client can render specific UI (e.g., "Too many files" banner).
           safe.sendError(message, { code: err.code });
         } else {
           safe.sendError(message);

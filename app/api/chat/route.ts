@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Messages missing" }, { status: 400 });
     }
 
-    
     const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,17 +31,29 @@ export async function POST(req: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
-      if (!isUnderLimit) {
-        return NextResponse.json({ error: "Daily limit reached." }, { status: 429 });
+      // Check pro status — pro users skip the usage limit entirely
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan_tier")
+        .eq("id", user.id)
+        .single();
+
+      const isPro = profile?.plan_tier === "pro";
+
+      if (!isPro) {
+        const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
+        if (!isUnderLimit) {
+          return NextResponse.json(
+            { error: "RATE_LIMIT_REACHED", message: "Daily limit reached." },
+            { status: 429 }
+          );
+        }
       }
     }
 
-    
     let contextText = "No repository context provided.";
     if (repoContext) {
-      
-      contextText = JSON.stringify(repoContext).substring(0, 20000); 
+      contextText = JSON.stringify(repoContext).substring(0, 20000);
     }
 
     const systemPrompt = `You are a Senior Systems Architect analyzing a codebase.
@@ -51,7 +62,6 @@ Use the provided JSON context about the repository to answer the user's question
 REPOSITORY CONTEXT (JSON):
 ${contextText}`;
 
-    
     const res = await fetch(GROQ_URL, {
       method: "POST",
       headers: {

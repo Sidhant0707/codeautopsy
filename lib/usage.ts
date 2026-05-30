@@ -1,13 +1,15 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-
 const ADMIN_EMAILS = [
-  "sidhantkumar431@gmail.com", 
+  "sidhantkumar431@gmail.com",
   "sidhantkumar0707@gmail.com",
 ];
 
+const FREE_DAILY_LIMIT = 10;
+const PRO_DAILY_LIMIT = 100;
+
 export async function getUsageCount(
-  supabase: SupabaseClient, 
+  supabase: SupabaseClient,
   userId: string
 ): Promise<number> {
   const today = new Date();
@@ -15,18 +17,18 @@ export async function getUsageCount(
   const startOfDay = today.toISOString();
 
   const { count: repoCount, error: repoError } = await supabase
-    .from('analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
+    .from("analyses")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", startOfDay);
 
   if (repoError) console.error("Error checking repo usage:", repoError);
 
   const { count: prCount, error: prError } = await supabase
-    .from('pr_analyses')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', startOfDay);
+    .from("pr_analyses")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", startOfDay);
 
   if (prError) console.error("Error checking PR usage:", prError);
 
@@ -34,19 +36,26 @@ export async function getUsageCount(
 }
 
 export async function checkUsageLimit(
-  supabase: SupabaseClient, 
-  userId: string, 
+  supabase: SupabaseClient,
+  userId: string,
   userEmail?: string
 ): Promise<boolean> {
-  
-  
+  // Admins always bypass
   if (userEmail && ADMIN_EMAILS.includes(userEmail)) {
     console.log(`🛡️ Admin bypass active for: ${userEmail}`);
-    return true; 
+    return true;
   }
 
-  const MAX_DAILY_SCANS = 10;
+  // Check plan tier
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan_tier")
+    .eq("id", userId)
+    .single();
+
+  const isPro = profile?.plan_tier === "pro";
+  const limit = isPro ? PRO_DAILY_LIMIT : FREE_DAILY_LIMIT;
+
   const totalUsage = await getUsageCount(supabase, userId);
-  
-  return totalUsage < MAX_DAILY_SCANS;
+  return totalUsage < limit;
 }
