@@ -1,7 +1,8 @@
-
+// lib/debug/heuristics.ts
 
 import { TraversalNode } from "./types";
 
+// ── Debug heuristics ──────────────────────────────────────────────────────────
 export function applyDebugHeuristics(
   nodes: TraversalNode[],
   errorType: string
@@ -9,22 +10,12 @@ export function applyDebugHeuristics(
   return nodes.map((node) => {
     let bonus = 0;
 
-    
-    if (node.relationship === "upstream") {
-      bonus += 2;
-    }
+    if (node.relationship === "upstream") bonus += 2;
 
-    
-    if (/config|setup|init|bootstrap|env/i.test(node.file)) {
-      bonus += 1.5;
-    }
+    if (/config|setup|init|bootstrap|env/i.test(node.file)) bonus += 1.5;
 
-    
-    if (node.file.includes("index.") || node.file.includes("main.")) {
-      bonus += 1;
-    }
+    if (node.file.includes("index.") || node.file.includes("main.")) bonus += 1;
 
-    
     if (
       (errorType === "TypeError" || errorType === "ReferenceError") &&
       (node.file.includes("api/") ||
@@ -35,7 +26,6 @@ export function applyDebugHeuristics(
       bonus += 1.5;
     }
 
-    
     if (
       errorType.toLowerCase().includes("auth") &&
       (node.file.includes("auth") ||
@@ -45,7 +35,6 @@ export function applyDebugHeuristics(
       bonus += 2;
     }
 
-    
     if (
       node.file.includes("middleware") ||
       node.file.includes("route") ||
@@ -54,58 +43,61 @@ export function applyDebugHeuristics(
       bonus += 1;
     }
 
-    return {
-      ...node,
-      relevance_score: node.relevance_score + bonus,
-    };
+    return { ...node, relevance_score: node.relevance_score + bonus };
   });
 }
 
-
+// ── Confidence ────────────────────────────────────────────────────────────────
+// Confidence is derived from traversal quality only — NOT from the AI response,
+// which previously generated a confidence value that was silently discarded.
 export function calculateConfidence(
-  traversalPath: TraversalNode[],
+  traversalPath: TraversalNode[]
 ): "high" | "medium" | "low" {
-  const upstreamCount = traversalPath.filter(
+  const total = traversalPath.length;
+
+  // Not enough context to be confident
+  if (total <= 1) return "low";
+
+  const upstreamNodes = traversalPath.filter(
     (n) => n.relationship === "upstream"
-  ).length;
+  );
+  const upstreamCount = upstreamNodes.length;
+
   const highFanInCount = traversalPath.filter((n) => n.fan_in > 5).length;
 
-  
-  if (upstreamCount >= 3 && highFanInCount >= 2) {
-    return "high";
-  }
+  // Score based on proportion, not fixed thresholds
+  const upstreamRatio = upstreamCount / total;
+  const fanInRatio = highFanInCount / total;
 
-  
-  if (upstreamCount >= 1) {
-    return "medium";
-  }
-
-  
+  if (upstreamRatio >= 0.3 && fanInRatio >= 0.2) return "high";
+  if (upstreamCount >= 1) return "medium";
   return "low";
 }
 
-
+// ── Runtime check ─────────────────────────────────────────────────────────────
+// Previously matched overly broad patterns like /undefined/ and /null/ which
+// appear in nearly every TypeError, making this flag meaningless.
+// Now targets patterns that specifically indicate runtime/external state issues.
 export function requiresRuntimeCheck(
   errorType: string,
   errorMessage: string
 ): boolean {
   const runtimeIndicators = [
-    /undefined/i,
-    /null/i,
-    /cannot read/i,
-    /is not a function/i,
-    /missing/i,
-    /not found/i,
     /failed to fetch/i,
-    /network/i,
+    /network error/i,
     /timeout/i,
-    /connection/i,
+    /connection refused/i,
+    /ECONNREFUSED/,
     /database/i,
-    /authentication/i,
+    /authentication failed/i,
     /unauthorized/i,
+    /403/,
+    /401/,
+    /500/,
+    /missing.*env/i,
+    /env.*missing/i,
   ];
 
   const fullText = `${errorType} ${errorMessage}`;
-
   return runtimeIndicators.some((pattern) => pattern.test(fullText));
 }
