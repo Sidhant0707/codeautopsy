@@ -1,4 +1,4 @@
-
+// lib/debug/graph-traversal.ts
 
 import { DependencyGraph } from "@/lib/dependency-graph";
 import { TraversalNode } from "./types";
@@ -9,6 +9,30 @@ interface TraversalConfig {
   prioritizeUpstream: boolean;
 }
 
+// ── Reverse graph cache ───────────────────────────────────────────────────────
+// Previously: buildReverseGraph() was called on every request,
+// rebuilding the full reverse graph each time.
+// Now: memoized per graph reference — rebuilt only when graph changes.
+const reverseGraphCache = new WeakMap<DependencyGraph, DependencyGraph>();
+
+function getOrBuildReverseGraph(graph: DependencyGraph): DependencyGraph {
+  if (reverseGraphCache.has(graph)) {
+    return reverseGraphCache.get(graph)!;
+  }
+
+  const reverse: DependencyGraph = {};
+  for (const [file, imports] of Object.entries(graph)) {
+    for (const imp of imports) {
+      if (!reverse[imp]) reverse[imp] = [];
+      reverse[imp].push(file);
+    }
+  }
+
+  reverseGraphCache.set(graph, reverse);
+  return reverse;
+}
+
+// ── Main traversal ────────────────────────────────────────────────────────────
 export function traverseFromCrash(
   crashNode: string,
   graph: DependencyGraph,
@@ -20,47 +44,48 @@ export function traverseFromCrash(
   }
 ): TraversalNode[] {
   const result: TraversalNode[] = [];
-  const visited = new Set<string>();
 
-  
+  // Separate visited sets per direction so upstream traversal
+  // is not blocked by nodes already visited during downstream traversal.
+  const visitedDownstream = new Set<string>([crashNode]);
+  const visitedUpstream = new Set<string>([crashNode]);
+
   result.push({
     file: crashNode,
     distance: 0,
     fan_in: fanIn[crashNode] || 0,
     relationship: "crash_site",
-    relevance_score: 1000, 
+    relevance_score: 1000,
   });
-  visited.add(crashNode);
 
-  
   const downstreamNodes = bfsTraversal(
     crashNode,
     graph,
     fanIn,
     config.maxDepth,
     "downstream",
-    visited
+    visitedDownstream
   );
 
-  
+  const reverseGraph = getOrBuildReverseGraph(graph);
+
   const upstreamNodes = bfsTraversal(
     crashNode,
-    buildReverseGraph(graph),
+    reverseGraph,
     fanIn,
     config.maxDepth,
     "upstream",
-    visited
+    visitedUpstream
   );
 
   result.push(...downstreamNodes, ...upstreamNodes);
 
-  
   result.sort((a, b) => b.relevance_score - a.relevance_score);
 
-  
   return result.slice(0, config.maxNodes);
 }
 
+// ── BFS ───────────────────────────────────────────────────────────────────────
 function bfsTraversal(
   startNode: string,
   graph: DependencyGraph,
@@ -69,13 +94,16 @@ function bfsTraversal(
   relationship: "upstream" | "downstream",
   visited: Set<string>
 ): TraversalNode[] {
+  // Using an index pointer instead of array.shift() avoids O(n)
+  // dequeue cost on large graphs.
   const queue: { node: string; depth: number }[] = [
     { node: startNode, depth: 0 },
   ];
+  let head = 0;
   const result: TraversalNode[] = [];
 
-  while (queue.length > 0) {
-    const { node, depth } = queue.shift()!;
+  while (head < queue.length) {
+    const { node, depth } = queue[head++];
 
     if (depth >= maxDepth) continue;
 
@@ -88,8 +116,6 @@ function bfsTraversal(
       const distance = depth + 1;
       const fanInScore = fanIn[neighbor] || 0;
 
-      
-      
       const relevance_score =
         (maxDepth - distance) * (1 + Math.log(fanInScore + 1));
 
@@ -106,17 +132,4 @@ function bfsTraversal(
   }
 
   return result;
-}
-
-function buildReverseGraph(graph: DependencyGraph): DependencyGraph {
-  const reverse: DependencyGraph = {};
-
-  for (const [file, imports] of Object.entries(graph)) {
-    for (const imp of imports) {
-      if (!reverse[imp]) reverse[imp] = [];
-      reverse[imp].push(file);
-    }
-  }
-
-  return reverse;
 }

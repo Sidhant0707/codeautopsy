@@ -1,7 +1,11 @@
-
+// lib/debug/file-fetcher.ts
 
 import { TraversalNode } from "./types";
 import { fetchFileContent } from "@/lib/github";
+
+// Consistent line limit used for both GitHub-fetched and
+// existing file content — prevents the 100 vs 300 mismatch.
+const MAX_LINES_PER_FILE = 300;
 
 export async function fetchMissingFiles(
   traversalPath: TraversalNode[],
@@ -12,30 +16,41 @@ export async function fetchMissingFiles(
 ): Promise<Map<string, string>> {
   const missing = traversalPath
     .filter((n) => !existingContents.has(n.file))
-    .slice(0, 10); 
+    .slice(0, 10);
 
   const fetched = new Map(existingContents);
 
-  for (const node of missing) {
-    try {
-      const content = await fetchFileContent(
-        owner,
-        repo,
-        node.file,
-        providerToken
+  if (missing.length === 0) return fetched;
+
+  // ── Parallel fetch ──────────────────────────────────────────────────────────
+  // Previously sequential — each file waited for the prior one.
+  // Promise.allSettled fetches all missing files concurrently and
+  // handles individual failures without aborting the entire batch.
+  const results = await Promise.allSettled(
+    missing.map((node) =>
+      fetchFileContent(owner, repo, node.file, providerToken).then(
+        (content) => ({ file: node.file, content })
+      )
+    )
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const { file, content } = result.value;
+      fetched.set(
+        file,
+        content.split("\n").slice(0, MAX_LINES_PER_FILE).join("\n")
       );
-      
-      fetched.set(node.file, content.split("\n").slice(0, 100).join("\n"));
-    } catch (err) {
-      console.warn(`Failed to fetch ${node.file}:`, err);
-      
-      fetched.set(node.file, "// Content not available");
+    } else {
+      // Find the node that failed to log it properly
+      const failedFile = missing[results.indexOf(result)]?.file ?? "unknown";
+      console.warn(`[file-fetcher] Failed to fetch ${failedFile}:`, result.reason);
+      fetched.set(failedFile, "// Content not available");
     }
   }
 
   return fetched;
 }
-
 
 export function extractLineContext(
   content: string,
