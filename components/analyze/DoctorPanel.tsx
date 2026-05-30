@@ -1,3 +1,5 @@
+// components/analyze/DoctorPanel.tsx
+
 "use client";
 
 import { motion } from "framer-motion";
@@ -18,6 +20,8 @@ interface DoctorPanelProps {
   source: string | null;
   onOpenChat: () => void;
   aiGateState: "free" | "login-required" | "limit-reached" | null;
+  isPro: boolean;
+  diagnosticCount: number;
 }
 
 export default function DoctorPanel({
@@ -25,6 +29,8 @@ export default function DoctorPanel({
   source,
   onOpenChat,
   aiGateState,
+  isPro,
+  diagnosticCount,
 }: DoctorPanelProps) {
   const repoUrl =
     source === "local"
@@ -53,7 +59,11 @@ export default function DoctorPanel({
           <>
             <div className="w-full flex-1 min-h-0 rounded-2xl border border-white/5 overflow-hidden bg-[#0e0e0e] relative">
               <ErrorBoundary fallbackMessage="Diagnostic interface crashed.">
-                <DebugInterface repoUrl={repoUrl} />
+                <DebugInterface
+                  repoUrl={repoUrl}
+                  isPro={isPro}
+                  diagnosticCount={diagnosticCount}
+                />
               </ErrorBoundary>
 
               {(aiGateState === "login-required" ||

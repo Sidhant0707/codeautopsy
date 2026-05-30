@@ -10,6 +10,16 @@ export const runtime = "edge";
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+// Free tier: fast + cheap, smaller context
+const FREE_MODEL        = "llama-3.3-70b-versatile";
+const FREE_CONTEXT_SIZE = 6000;
+const FREE_MAX_TOKENS   = 512;
+
+// Pro tier: smarter, larger context
+const PRO_MODEL        = "deepseek-r1-distill-llama-70b";
+const PRO_CONTEXT_SIZE = 14000;
+const PRO_MAX_TOKENS   = 1024;
+
 export async function POST(req: NextRequest) {
   try {
     if (!GROQ_API_KEY) {
@@ -29,16 +39,17 @@ export async function POST(req: NextRequest) {
       { cookies: { get(name: string) { return cookieStore.get(name)?.value; } } }
     );
 
+    let isPro = false;
+
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Check pro status — pro users skip the usage limit entirely
       const { data: profile } = await supabase
         .from("profiles")
         .select("plan_tier")
         .eq("id", user.id)
         .single();
 
-      const isPro = profile?.plan_tier === "pro";
+      isPro = profile?.plan_tier === "pro";
 
       if (!isPro) {
         const isUnderLimit = await checkUsageLimit(supabase, user.id, user.email);
@@ -51,13 +62,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const contextSize = isPro ? PRO_CONTEXT_SIZE : FREE_CONTEXT_SIZE;
+    const model       = isPro ? PRO_MODEL : FREE_MODEL;
+    const maxTokens   = isPro ? PRO_MAX_TOKENS : FREE_MAX_TOKENS;
+
     let contextText = "No repository context provided.";
     if (repoContext) {
-      contextText = JSON.stringify(repoContext).substring(0, 20000);
+      contextText = JSON.stringify(repoContext).substring(0, contextSize);
     }
 
     const systemPrompt = `You are a Senior Systems Architect analyzing a codebase.
-Use the provided JSON context about the repository to answer the user's questions. 
+Use the provided JSON context about the repository to answer the user's questions.
 
 REPOSITORY CONTEXT (JSON):
 ${contextText}`;
@@ -69,13 +84,13 @@ ${contextText}`;
         "Authorization": `Bearer ${GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
         ],
         temperature: 0.1,
-        max_tokens: 1024,
+        max_tokens: maxTokens,
         stream: true,
       }),
     });

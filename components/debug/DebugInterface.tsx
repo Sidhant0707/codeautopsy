@@ -1,3 +1,5 @@
+// components/debug/DebugInterface.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,11 +8,34 @@ import { DebugForm } from "./DebugForm";
 import { DebugResults } from "./DebugResults";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { motion } from "framer-motion";
-import { AlertCircle, Cpu, Maximize2, Minimize2 } from "lucide-react";
+import {
+  AlertCircle,
+  Cpu,
+  Maximize2,
+  Minimize2,
+  Lock,
+  Sparkles,
+} from "lucide-react";
 
-export default function DebugInterface({ repoUrl }: { initialChart?: string; repoUrl: string }) {
-  const { analyzeCrash, result, isLoading, error, reset } = useDebugAnalysis(repoUrl);
+const FREE_DIAGNOSTIC_LIMIT = 3;
+
+interface DebugInterfaceProps {
+  repoUrl: string;
+  initialChart?: string;
+  isPro: boolean;
+  diagnosticCount: number;
+}
+
+export default function DebugInterface({
+  repoUrl,
+  isPro,
+  diagnosticCount,
+}: DebugInterfaceProps) {
+  const { analyzeCrash, result, isLoading, error, reset } =
+    useDebugAnalysis(repoUrl);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [usedCount, setUsedCount] = useState(diagnosticCount);
+  const hitLimit = !isPro && usedCount >= FREE_DIAGNOSTIC_LIMIT;
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -27,6 +52,12 @@ export default function DebugInterface({ repoUrl }: { initialChart?: string; rep
       window.removeEventListener("keydown", handleEscape);
     };
   }, [isMaximized]);
+
+  const handleSubmit = async (input: string) => {
+    if (hitLimit) return;
+    await analyzeCrash(input);
+    if (!isPro) setUsedCount((c) => c + 1);
+  };
 
   return (
     <>
@@ -45,47 +76,89 @@ export default function DebugInterface({ repoUrl }: { initialChart?: string; rep
         }`}
       >
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#111_1px,transparent_1px),linear-gradient(to_bottom,#111_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0" />
-        <motion.div initial={{ top: "-50%" }} animate={{ top: "150%" }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center">
+        <motion.div
+          initial={{ top: "-50%" }}
+          animate={{ top: "150%" }}
+          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          className="absolute left-0 right-0 h-[400px] pointer-events-none z-0 flex flex-col justify-center"
+        >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent blur-sm" />
           <div className="w-full h-[1px] bg-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative z-10" />
         </motion.div>
         <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,1)] pointer-events-none z-0" />
 
-        {}
         <button
           onClick={() => setIsMaximized(!isMaximized)}
           className={`absolute z-20 p-2 bg-black/40 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all backdrop-blur-md ${
             isMaximized ? "top-6 right-6" : "top-4 right-4"
           }`}
         >
-          {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          {isMaximized ? (
+            <Minimize2 className="w-4 h-4" />
+          ) : (
+            <Maximize2 className="w-4 h-4" />
+          )}
         </button>
 
         <div className="relative z-10 p-6 md:p-8 flex-1 min-h-0 flex flex-col overflow-hidden">
-
           <div className="flex flex-col gap-3 mb-6 pb-6 border-b border-white/5 flex-shrink-0 pr-12">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
-                <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden flex-shrink-0">
+                  <Cpu className="w-6 h-6 text-slate-300 relative z-10" />
+                </div>
+                <h2 className="cabinet text-xl md:text-3xl font-bold text-white tracking-tight">
+                  CodeAutopsy Diagnostic Engine{" "}
+                  <span className="text-slate-600 font-mono text-sm ml-2 align-top">
+                    v1.0
+                  </span>
+                </h2>
               </div>
-              <h2 className="cabinet text-2xl md:text-3xl font-bold text-white tracking-tight">
-                CodeAutopsy Diagnostic Engine <span className="text-slate-600 font-mono text-sm ml-2 align-top">v1.0</span>
-              </h2>
+
+              {/* Usage counter — free users only */}
+              {!isPro && (
+                <div
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-mono text-xs transition-colors ${
+                    hitLimit
+                      ? "border-red-500/30 bg-red-500/10 text-red-400"
+                      : usedCount >= FREE_DIAGNOSTIC_LIMIT - 1
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                        : "border-white/10 bg-white/5 text-slate-400"
+                  }`}
+                >
+                  <span className="tabular-nums font-bold">{usedCount}</span>
+                  <span className="text-slate-600">/</span>
+                  <span>{FREE_DIAGNOSTIC_LIMIT}</span>
+                  <span className="hidden sm:inline text-slate-600 ml-1">
+                    today
+                  </span>
+                </div>
+              )}
             </div>
+
             <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono uppercase tracking-[0.2em] ml-16">
-              [ SYSTEM STATUS: <span className="text-green-500 font-bold animate-pulse">ONLINE</span> ] <span className="hidden sm:inline text-slate-700 mx-2">•</span> Powered by graph traversal + AI reasoning
+              [ SYSTEM STATUS:{" "}
+              <span className="text-green-500 font-bold animate-pulse">
+                ONLINE
+              </span>{" "}
+              ]<span className="hidden sm:inline text-slate-700 mx-2">•</span>
+              Powered by graph traversal + AI reasoning
             </p>
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-2">
-
             {error && (
               <div className="mb-6 p-4 bg-red-900/20 border border-red-500/20 backdrop-blur-md rounded-xl text-red-200 text-sm flex gap-3 items-start flex-shrink-0">
-                <span className="text-lg"><AlertCircle className="w-4 h-4 text-red-400"/></span>
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="font-medium mb-1">Diagnosis Failed</p>
                   <p className="text-xs text-red-400/70">{error}</p>
-                  <button onClick={reset} className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors">{">"} REBOOT_DIAGNOSIS</button>
+                  <button
+                    onClick={reset}
+                    className="mt-3 text-xs text-red-400 hover:text-red-300 underline font-mono transition-colors"
+                  >
+                    {"> REBOOT_DIAGNOSIS"}
+                  </button>
                 </div>
               </div>
             )}
@@ -93,24 +166,64 @@ export default function DebugInterface({ repoUrl }: { initialChart?: string; rep
             {isLoading && (
               <div className="mb-6 p-4 bg-[#0a0a0a]/80 border border-white/10 rounded-xl font-mono text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl backdrop-blur-md flex-shrink-0">
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                  <span>🔍 DEPTH_SEARCH: <span className="text-white font-bold">ACTIVE</span></span>
+                  <span>
+                    🔍 DEPTH_SEARCH:{" "}
+                    <span className="text-white font-bold">ACTIVE</span>
+                  </span>
                   <span className="hidden sm:inline text-slate-700">|</span>
                   <span>NODES_SCANNED: INCREASING...</span>
                 </div>
-                <span className="animate-pulse text-white flex items-center gap-2"><span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" /> ANALYZING_FLOW...</span>
+                <span className="animate-pulse text-white flex items-center gap-2">
+                  <span className="w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]" />{" "}
+                  ANALYZING_FLOW...
+                </span>
               </div>
             )}
 
-            <div className="flex-1 flex flex-col min-h-0 w-full h-full">
-              {isLoading ? (
-                <LoadingSkeleton />
-              ) : result ? (
-                <DebugResults result={result} onReset={reset} />
-              ) : (
-                <DebugForm onSubmit={analyzeCrash} isLoading={isLoading} />
-              )}
-            </div>
+            {/* Paywall state — limit hit */}
+            {hitLimit && !isLoading && !result && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                className="flex-1 flex flex-col items-center justify-center gap-4 py-12 text-center"
+              >
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Lock className="w-6 h-6 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white mb-2">
+                    Daily limit reached
+                  </p>
+                  <p className="text-xs text-slate-400 leading-relaxed max-w-[260px]">
+                    Free users get {FREE_DIAGNOSTIC_LIMIT} diagnoses per day.
+                    Upgrade to Pro for unlimited diagnostics.
+                  </p>
+                </div>
+                <button
+                  onClick={() => window.open("/pricing", "_blank")}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono uppercase tracking-widest transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Upgrade to Pro
+                </button>
+                <p className="text-[10px] font-mono text-slate-600">
+                  Resets at midnight UTC
+                </p>
+              </motion.div>
+            )}
 
+            {!hitLimit && (
+              <div className="flex-1 flex flex-col min-h-0 w-full h-full">
+                {isLoading ? (
+                  <LoadingSkeleton />
+                ) : result ? (
+                  <DebugResults result={result} onReset={reset} />
+                ) : (
+                  <DebugForm onSubmit={handleSubmit} isLoading={isLoading} />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

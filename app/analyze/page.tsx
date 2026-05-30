@@ -1,3 +1,5 @@
+// app/analyze/page.tsx
+
 "use client";
 
 import {
@@ -15,13 +17,11 @@ import dynamic from "next/dynamic";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { createClient } from "@/lib/supabase-browser";
 
-// ─── Hooks ────────────────────────────────────────────────────────────────────
 import { useAnalyzeData } from "@/hooks/analyze/useAnalyzeData";
 import { useAnalyzeUIState } from "@/hooks/analyze/useAnalyzeUIState";
 import { useFeedback } from "@/hooks/analyze/useFeedback";
 import { useLoadingAnimation } from "@/hooks/analyze/useLoadingAnimation";
 
-// ─── Components ───────────────────────────────────────────────────────────────
 import SkeletonLoader from "@/components/analyze/SkeletonLoader";
 import AnalyzeLoadingScreen from "@/components/analyze/AnalyzeLoadingScreen";
 import AnalyzeErrorScreen from "@/components/analyze/AnalyzeErrorScreen";
@@ -33,18 +33,12 @@ import DoctorPanel from "@/components/analyze/DoctorPanel";
 import RiskRadarPanel from "@/components/analyze/RiskRadarPanel";
 import ChatPanel from "@/components/analyze/ChatPanel";
 import ExitModal from "@/components/analyze/ExitModal";
+import PrImpactTab from "@/components/analyze/PrImpactTab";
 
-// ─── Lazy Tab Panels ──────────────────────────────────────────────────────────
 const OverviewTab = dynamic(() => import("@/components/analyze/OverviewTab"), {
   loading: () => <SkeletonLoader />,
   ssr: false,
 });
-
-// PrImpactTab is NOT lazy-loaded here because we need to pass callbacks to it.
-// It is imported directly so TypeScript can see the prop types at compile time.
-import PrImpactTab from "@/components/analyze/PrImpactTab";
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 const AnalyzeContent = memo(() => {
   const searchParams = useSearchParams();
@@ -53,17 +47,54 @@ const AnalyzeContent = memo(() => {
   const repoUrl = searchParams.get("url") || searchParams.get("repo");
   const source = searchParams.get("source");
 
-  // ── Mount flag ──────────────────────────────────────────────────────────────
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setIsMounted(true), 0);
     return () => clearTimeout(id);
   }, []);
 
-  // ── GitHub Auth Modal ───────────────────────────────────────────────────────
+  // ── Pro status — resolved once, never re-fetched ──────────────────────────
+  const [isPro, setIsPro] = useState(false);
+  const [diagnosticCount, setDiagnosticCount] = useState(0);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    async function resolveProStatus() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const [profileRes, diagRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("plan_tier")
+          .eq("id", user.id)
+          .single(),
+        supabase
+          .from("diagnostic_runs")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .gte(
+            "created_at",
+            (() => {
+              const d = new Date();
+              d.setUTCHours(0, 0, 0, 0);
+              return d.toISOString();
+            })(),
+          ),
+      ]);
+
+      setIsPro(profileRes.data?.plan_tier === "pro");
+      setDiagnosticCount(diagRes.count ?? 0);
+    }
+
+    resolveProStatus();
+  }, []);
+
   const [showGitHubAuthModal, setShowGitHubAuthModal] = useState(false);
 
-  // ── Data ────────────────────────────────────────────────────────────────────
   const { data, loading, error, isRateLimit, isAiStreaming, aiGateState } =
     useAnalyzeData({
       repoUrl,
@@ -71,7 +102,6 @@ const AnalyzeContent = memo(() => {
       onRequireGitHubAuth: () => setShowGitHubAuthModal(true),
     });
 
-  // ── UI State ────────────────────────────────────────────────────────────────
   const {
     activeTab,
     setActiveTab,
@@ -87,14 +117,8 @@ const AnalyzeContent = memo(() => {
     isMounted,
   });
 
-  // ── PR Blast Radius state — lifted from PrImpactTab ─────────────────────────
-  // Holds the raw list of files changed in the most recently analyzed PR.
-  // Empty array = no PR has been analyzed yet (ArchitectureMap shows default).
   const [prChangedFiles, setPrChangedFiles] = useState<string[]>([]);
 
-  // Called by PrImpactTab after a successful PR analysis.
-  // Stores the file list AND switches to the visualizer tab so the user
-  // immediately sees the graph with pr-blast mode activated.
   const handlePrAnalyzed = useCallback(
     (files: string[]) => {
       setPrChangedFiles(files);
@@ -103,10 +127,8 @@ const AnalyzeContent = memo(() => {
     [setActiveTab],
   );
 
-  // ── Exit modal ref ──────────────────────────────────────────────────────────
   const exitModalRef = useRef<HTMLDivElement>(null);
 
-  // ── Feedback ────────────────────────────────────────────────────────────────
   const { feedbackSubmitted, hideFeedback, handleFeedback } = useFeedback({
     repoName: data?.repo,
     repoUrl,
@@ -114,10 +136,8 @@ const AnalyzeContent = memo(() => {
     onCloseExitModal: () => setShowExitModal(false),
   });
 
-  // ── Loading animation ───────────────────────────────────────────────────────
   const { loadingStep, loadingControls } = useLoadingAnimation(loading);
 
-  // ── GitHub OAuth ────────────────────────────────────────────────────────────
   const handleGitHubLogin = useCallback(async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -129,13 +149,10 @@ const AnalyzeContent = memo(() => {
     });
   }, [repoUrl]);
 
-  // ── Back navigation ─────────────────────────────────────────────────────────
   const handleBackNavigation = useCallback(() => {
     if (!feedbackSubmitted) setShowExitModal(true);
     else router.back();
   }, [feedbackSubmitted, router, setShowExitModal]);
-
-  // ── Render branches ─────────────────────────────────────────────────────────
 
   if (!isMounted || loading)
     return (
@@ -154,8 +171,6 @@ const AnalyzeContent = memo(() => {
 
   if (showGitHubAuthModal)
     return <GitHubAuthModal onLogin={handleGitHubLogin} />;
-
-  // ── Main layout ─────────────────────────────────────────────────────────────
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0a] text-slate-200 overflow-hidden flex flex-col font-satoshi">
@@ -191,6 +206,7 @@ const AnalyzeContent = memo(() => {
                 >
                   <PrImpactTab
                     data={data}
+                    isPro={isPro}
                     onPrAnalyzed={handlePrAnalyzed}
                     onViewOnGraph={() => setActiveTab("visualizer")}
                   />
@@ -212,16 +228,21 @@ const AnalyzeContent = memo(() => {
                   source={source}
                   onOpenChat={() => setIsChatOpen(true)}
                   aiGateState={aiGateState}
+                  isPro={isPro}
+                  diagnosticCount={diagnosticCount}
                 />
               )}
 
-              {activeTab === "risk_radar" && <RiskRadarPanel data={data} />}
+              {activeTab === "risk_radar" && (
+                <RiskRadarPanel data={data} isPro={isPro} />
+              )}
+
               {activeTab === "arch_insights" && (
                 <ErrorBoundary
                   key="arch-insights-boundary"
                   fallbackMessage="Failed to load architecture insights."
                 >
-                  <ArchInsightsPanel data={data} />
+                  <ArchInsightsPanel data={data} isPro={isPro} />
                 </ErrorBoundary>
               )}
             </AnimatePresence>
@@ -247,8 +268,6 @@ const AnalyzeContent = memo(() => {
 });
 
 AnalyzeContent.displayName = "AnalyzeContent";
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function AnalyzePage() {
   return (
