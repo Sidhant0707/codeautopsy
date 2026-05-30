@@ -10,7 +10,6 @@ import {
   Target,
   AlertCircle,
   Lock,
-  Sparkles,
 } from "lucide-react";
 
 interface CoverageGap {
@@ -145,16 +144,28 @@ export default function RiskDashboard({
             <Lock className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <p className="text-xs text-slate-400 flex-1">
               <span className="font-bold text-slate-200">
-                Auto-Patch is a Pro feature.
+                Auto-Patch requires Pro.
               </span>{" "}
               Upgrade to generate AI test coverage for your riskiest files.
             </p>
             <button
               onClick={() => window.open("/pricing", "_blank")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-[10px] font-bold font-mono uppercase tracking-widest transition-all flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-[#0a0a0a] text-[10px] font-bold font-mono uppercase tracking-widest hover:bg-slate-200 transition-colors flex-shrink-0"
             >
-              <Sparkles className="w-3 h-3" />
               Upgrade
+              <svg
+                className="w-2.5 h-2.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
             </button>
           </motion.div>
         )}
