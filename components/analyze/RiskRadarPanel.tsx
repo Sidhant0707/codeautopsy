@@ -1,3 +1,5 @@
+// components/analyze/RiskRadarPanel.tsx
+
 "use client";
 
 import { motion } from "framer-motion";
@@ -13,9 +15,10 @@ const RiskDashboard = dynamic(() => import("@/components/RiskDashboard"), {
 
 interface RiskRadarPanelProps {
   data: RepoData;
+  isPro: boolean;
 }
 
-export default function RiskRadarPanel({ data }: RiskRadarPanelProps) {
+export default function RiskRadarPanel({ data, isPro }: RiskRadarPanelProps) {
   return (
     <motion.div
       key="risk_radar"
@@ -33,6 +36,7 @@ export default function RiskRadarPanel({ data }: RiskRadarPanelProps) {
           <RiskDashboard
             coverageGaps={data.coverageGaps}
             fileContents={data.fileContents}
+            isPro={isPro}
           />
         </ErrorBoundary>
       ) : (

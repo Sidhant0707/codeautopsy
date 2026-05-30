@@ -1,4 +1,5 @@
 // components/analyze/ArchInsightsPanel.tsx
+
 "use client";
 
 import { useMemo, useState, memo, useCallback } from "react";
@@ -11,6 +12,8 @@ import {
   ChevronRight,
   CheckCircle2,
   AlertTriangle,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { RepoData } from "@/lib/types/analyze";
 import { computeArticulationPoints } from "@/lib/algorithms/articulationPoints";
@@ -18,14 +21,9 @@ import { computeStability } from "@/lib/algorithms/stability";
 import { computeDeadCode } from "@/lib/algorithms/deadCode";
 import InfoTooltip from "@/components/InfoTooltip";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const MAX_BRIDGES_SHOWN = 8;
 const MAX_FILES_SHOWN = 30;
-
 const TAB_CONTENT_TRANSITION = { duration: 0.15 };
-
-// ─── Sub-tab config ───────────────────────────────────────────────────────────
 
 const SUB_TABS = [
   {
@@ -37,6 +35,7 @@ const SUB_TABS = [
     activeText: "text-red-300",
     activeBg: "bg-red-500/10",
     activeBorder: "border-red-500/30",
+    proGated: false,
     tooltip:
       "Files that if removed would split the codebase into disconnected pieces.",
   },
@@ -49,6 +48,7 @@ const SUB_TABS = [
     activeText: "text-blue-300",
     activeBg: "bg-blue-500/10",
     activeBorder: "border-blue-500/30",
+    proGated: true,
     tooltip:
       "How stable each file is based on how many files import it vs how many it imports.",
   },
@@ -61,29 +61,23 @@ const SUB_TABS = [
     activeText: "text-violet-300",
     activeBg: "bg-violet-500/10",
     activeBorder: "border-violet-500/30",
+    proGated: true,
     tooltip:
       "Files that can never be reached from your entry points at runtime.",
   },
 ] as const;
 
 type SubTabId = (typeof SUB_TABS)[number]["id"];
-
 const SUB_TAB_MAP = new Map(SUB_TABS.map((t) => [t.id, t]));
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fileName(path: string) {
   return path.split("/").pop() ?? path;
 }
-
 function dirName(path: string) {
   const idx = path.lastIndexOf("/");
   return idx > -1 ? path.slice(0, idx) : "";
 }
 
-// Severity is rank-based: top file = critical, second = high, rest = medium.
-// This ensures visual differentiation even in small repos where absolute
-// disconnect counts are all small numbers.
 type Severity = "critical" | "high" | "medium";
 
 function getSeverityByRank(index: number): Severity {
@@ -138,8 +132,6 @@ function getZoneTag(zone: string | undefined): ZoneTag {
   return null;
 }
 
-// ─── Shared empty-state ───────────────────────────────────────────────────────
-
 function AllClear({
   title,
   description,
@@ -155,8 +147,6 @@ function AllClear({
     </div>
   );
 }
-
-// ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({
   label,
@@ -184,14 +174,47 @@ function StatCard({
   );
 }
 
-// ─── Articulation Points Tab ──────────────────────────────────────────────────
+// ── Pro gate overlay — sits on top of blurred content ────────────────────────
+
+function ProTabGate({
+  label,
+  onUpgrade,
+}: {
+  label: string;
+  onUpgrade: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10 bg-[#0a0a0a]/70 backdrop-blur-[3px] rounded-xl">
+      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+        <Lock className="w-5 h-5 text-amber-400" />
+      </div>
+      <div className="text-center px-6">
+        <p className="text-sm font-bold text-white mb-1">
+          {label} is a Pro feature
+        </p>
+        <p className="text-xs text-slate-400 leading-relaxed max-w-[240px]">
+          Upgrade to Pro to access stability analysis, instability distribution,
+          and architectural health metrics.
+        </p>
+      </div>
+      <button
+        onClick={onUpgrade}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono uppercase tracking-widest transition-all"
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        Upgrade to Pro
+      </button>
+    </div>
+  );
+}
+
+// ── APTab (free) ──────────────────────────────────────────────────────────────
 
 function APTab({ data }: { data: RepoData }) {
   const result = useMemo(
     () => computeArticulationPoints(data.dependencyGraph ?? {}),
     [data.dependencyGraph],
   );
-
   const sorted = useMemo(
     () =>
       Array.from(result.articulationPoints).sort(
@@ -217,7 +240,6 @@ function APTab({ data }: { data: RepoData }) {
 
   return (
     <div className="space-y-4">
-      {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard
           label="Critical Files"
@@ -245,7 +267,6 @@ function APTab({ data }: { data: RepoData }) {
         />
       </div>
 
-      {/* Risk callout if top file is severe */}
       {topDisconnects >= 3 && (
         <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-red-500/20 bg-red-500/[0.04]">
           <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -259,7 +280,6 @@ function APTab({ data }: { data: RepoData }) {
         </div>
       )}
 
-      {/* File list */}
       <div className="space-y-2">
         <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-1">
           Files — sorted by impact
@@ -268,15 +288,12 @@ function APTab({ data }: { data: RepoData }) {
           const disconnects = result.componentSizes.get(ap) ?? 0;
           const severity = getSeverityByRank(idx);
           const { border, dot, text, badge } = SEVERITY_STYLES[severity];
-
           return (
             <div
               key={ap}
               className={`px-3 py-2.5 rounded-xl border ${border} flex items-center gap-3`}
             >
-              {/* Glowing dot */}
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
-
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p
@@ -295,7 +312,6 @@ function APTab({ data }: { data: RepoData }) {
                   {dirName(ap)}
                 </p>
               </div>
-
               <div className="flex-shrink-0 text-right">
                 <p
                   className={`text-sm font-mono font-bold tabular-nums ${text}`}
@@ -311,7 +327,6 @@ function APTab({ data }: { data: RepoData }) {
         })}
       </div>
 
-      {/* Bridges section */}
       {result.bridges.length > 0 && (
         <div className="space-y-2 pt-1">
           <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-1">
@@ -352,7 +367,7 @@ function APTab({ data }: { data: RepoData }) {
   );
 }
 
-// ─── Scatter Plot ─────────────────────────────────────────────────────────────
+// ── ScatterPlot ───────────────────────────────────────────────────────────────
 
 const ScatterPlot = memo(function ScatterPlot({
   files,
@@ -392,7 +407,6 @@ const ScatterPlot = memo(function ScatterPlot({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40">
-      {/* Grid lines */}
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <line
           key={v}
@@ -405,8 +419,6 @@ const ScatterPlot = memo(function ScatterPlot({
           strokeWidth={1}
         />
       ))}
-
-      {/* Zone of Pain — edge marker only */}
       <rect
         x={PAD}
         y={PAD}
@@ -435,8 +447,6 @@ const ScatterPlot = memo(function ScatterPlot({
       >
         pain
       </text>
-
-      {/* Zone of Uselessness — edge marker only */}
       <rect
         x={PAD + innerW * 0.85}
         y={PAD}
@@ -465,8 +475,6 @@ const ScatterPlot = memo(function ScatterPlot({
       >
         unused
       </text>
-
-      {/* Axis labels */}
       <text
         x={PAD}
         y={H - 4}
@@ -494,8 +502,6 @@ const ScatterPlot = memo(function ScatterPlot({
       >
         Ca↑
       </text>
-
-      {/* Dots */}
       {dots.map((d, i) => (
         <circle
           key={i}
@@ -514,7 +520,7 @@ const ScatterPlot = memo(function ScatterPlot({
   );
 });
 
-// ─── Stability Tab ────────────────────────────────────────────────────────────
+// ── StabilityTab ──────────────────────────────────────────────────────────────
 
 type StabilityFilter = "all" | "pain" | "uselessness" | "unstable";
 
@@ -553,8 +559,6 @@ function StabilityTab({ data }: { data: RepoData }) {
     return sortedFiles;
   }, [sortedFiles, filter]);
 
-  // Entry points never need an UNUSED badge — they have Ca:0 by definition
-  // (nothing imports the root), but that's expected, not a smell.
   const entryPointSet = useMemo(
     () => new Set(data.entryPoints),
     [data.entryPoints],
@@ -573,7 +577,6 @@ function StabilityTab({ data }: { data: RepoData }) {
 
   return (
     <div className="space-y-4">
-      {/* Scatter plot */}
       <div className="p-3 rounded-xl border border-white/8 bg-black/20">
         <div className="flex items-center gap-2 mb-3">
           <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
@@ -585,7 +588,6 @@ function StabilityTab({ data }: { data: RepoData }) {
           />
         </div>
         <ScatterPlot files={result.files} />
-        {/* Legend */}
         <div className="flex gap-3 mt-2 flex-wrap">
           {[
             { color: "#ef4444", label: "Zone of Pain" },
@@ -606,39 +608,36 @@ function StabilityTab({ data }: { data: RepoData }) {
         </div>
       </div>
 
-      {/* Filter buttons */}
       <div className="grid grid-cols-3 gap-2">
-        {(
-          [
-            {
-              key: "pain" as const,
-              label: "Zone of Pain",
-              count: painCount,
-              countColor: "text-red-400",
-              sub: "rigid & hard to change",
-              activeBorder: "border-red-500/30",
-              activeBg: "bg-red-500/8",
-            },
-            {
-              key: "uselessness" as const,
-              label: "Uselessness",
-              count: uselessCount,
-              countColor: "text-yellow-400",
-              sub: "nobody imports them",
-              activeBorder: "border-yellow-500/30",
-              activeBg: "bg-yellow-500/8",
-            },
-            {
-              key: "unstable" as const,
-              label: "Unstable",
-              count: unstableCount,
-              countColor: "text-orange-400",
-              sub: "instability > 70%",
-              activeBorder: "border-orange-500/30",
-              activeBg: "bg-orange-500/8",
-            },
-          ] as const
-        ).map(
+        {[
+          {
+            key: "pain" as const,
+            label: "Zone of Pain",
+            count: painCount,
+            countColor: "text-red-400",
+            sub: "rigid & hard to change",
+            activeBorder: "border-red-500/30",
+            activeBg: "bg-red-500/8",
+          },
+          {
+            key: "uselessness" as const,
+            label: "Uselessness",
+            count: uselessCount,
+            countColor: "text-yellow-400",
+            sub: "nobody imports them",
+            activeBorder: "border-yellow-500/30",
+            activeBg: "bg-yellow-500/8",
+          },
+          {
+            key: "unstable" as const,
+            label: "Unstable",
+            count: unstableCount,
+            countColor: "text-orange-400",
+            sub: "instability > 70%",
+            activeBorder: "border-orange-500/30",
+            activeBg: "bg-orange-500/8",
+          },
+        ].map(
           ({ key, label, count, countColor, sub, activeBorder, activeBg }) => (
             <button
               key={key}
@@ -665,7 +664,6 @@ function StabilityTab({ data }: { data: RepoData }) {
         )}
       </div>
 
-      {/* File list */}
       <div className="space-y-1.5">
         <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-1">
           {filter === "all"
@@ -680,11 +678,7 @@ function StabilityTab({ data }: { data: RepoData }) {
               : f.instability > 0.4
                 ? "bg-orange-400"
                 : "bg-emerald-500";
-
-          // Suppress UNUSED badge for entry points — Ca:0 is expected for
-          // roots, not a sign of uselessness.
           const zoneTag = entryPointSet.has(f.path) ? null : getZoneTag(f.zone);
-
           return (
             <div
               key={f.path}
@@ -738,14 +732,13 @@ function StabilityTab({ data }: { data: RepoData }) {
   );
 }
 
-// ─── Dead Code Tab ────────────────────────────────────────────────────────────
+// ── DeadCodeTab ───────────────────────────────────────────────────────────────
 
 function DeadCodeTab({ data }: { data: RepoData }) {
   const result = useMemo(
     () => computeDeadCode(data.dependencyGraph ?? {}, data.entryPoints),
     [data.dependencyGraph, data.entryPoints],
   );
-
   const dirs = useMemo(
     () => Object.entries(result.unreachableByDirectory),
     [result.unreachableByDirectory],
@@ -753,7 +746,6 @@ function DeadCodeTab({ data }: { data: RepoData }) {
   const [openDir, setOpenDir] = useState<string | null>(
     () => dirs[0]?.[0] ?? null,
   );
-
   const toggleDir = useCallback(
     (dir: string) => setOpenDir((prev) => (prev === dir ? null : dir)),
     [],
@@ -772,7 +764,6 @@ function DeadCodeTab({ data }: { data: RepoData }) {
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         <StatCard
           label="Reachable"
@@ -806,7 +797,6 @@ function DeadCodeTab({ data }: { data: RepoData }) {
         />
       </div>
 
-      {/* Reachability bar */}
       <div>
         <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
           <motion.div
@@ -826,7 +816,6 @@ function DeadCodeTab({ data }: { data: RepoData }) {
         </div>
       </div>
 
-      {/* Entry points */}
       <div className="p-3 rounded-xl border border-white/5 bg-white/[0.015]">
         <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">
           Entry Points Traced
@@ -843,7 +832,6 @@ function DeadCodeTab({ data }: { data: RepoData }) {
         </div>
       </div>
 
-      {/* Dead files by directory */}
       <div className="space-y-1.5">
         <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-1">
           Unreachable files by directory
@@ -904,11 +892,22 @@ function DeadCodeTab({ data }: { data: RepoData }) {
   );
 }
 
-// ─── Main Panel ───────────────────────────────────────────────────────────────
+// ── Main Panel ────────────────────────────────────────────────────────────────
 
-export default function ArchInsightsPanel({ data }: { data: RepoData }) {
+export default function ArchInsightsPanel({
+  data,
+  isPro,
+}: {
+  data: RepoData;
+  isPro: boolean;
+}) {
   const [activeTab, setActiveTab] = useState<SubTabId>("ap");
   const current = SUB_TAB_MAP.get(activeTab)!;
+
+  const handleUpgrade = useCallback(
+    () => window.open("/pricing", "_blank"),
+    [],
+  );
 
   return (
     <motion.div
@@ -923,7 +922,6 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
       className="absolute inset-0 p-4 sm:p-6 overflow-y-auto [&::-webkit-scrollbar]:w-px [&::-webkit-scrollbar-thumb]:bg-white/10"
     >
       <div className="max-w-2xl mx-auto space-y-4">
-        {/* Header */}
         <div>
           <h2 className="text-sm font-bold text-slate-200 font-mono tracking-widest uppercase">
             Architecture Insights
@@ -933,10 +931,10 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
           </p>
         </div>
 
-        {/* Sub-tab strip */}
         <div className="flex gap-1 p-1 rounded-xl border border-white/8 bg-black/30 w-full">
           {SUB_TABS.map((tab) => {
             const isActive = activeTab === tab.id;
+            const isLocked = tab.proGated && !isPro;
             return (
               <button
                 key={tab.id}
@@ -947,7 +945,6 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
                     : "text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent"
                 }`}
               >
-                {/* Active indicator line */}
                 {isActive && (
                   <span
                     className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-[2px] rounded-full"
@@ -956,6 +953,9 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
                 )}
                 <tab.icon className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="hidden sm:inline">{tab.label}</span>
+                {isLocked && (
+                  <Lock className="w-3 h-3 text-amber-500/60 flex-shrink-0" />
+                )}
                 <span className="sm:hidden pointer-events-none" aria-hidden>
                   <InfoTooltip content={tab.tooltip} side="bottom" />
                 </span>
@@ -964,7 +964,6 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
           })}
         </div>
 
-        {/* Active tab label */}
         <div className="flex items-center gap-2 px-1">
           <current.icon className={`w-4 h-4 ${current.color}`} />
           <span
@@ -973,9 +972,13 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
             {current.label}
           </span>
           <InfoTooltip content={current.tooltip} side="right" />
+          {current.proGated && !isPro && (
+            <span className="ml-auto text-[9px] font-mono font-black px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/20 uppercase tracking-widest">
+              Pro
+            </span>
+          )}
         </div>
 
-        {/* Tab content */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -983,10 +986,43 @@ export default function ArchInsightsPanel({ data }: { data: RepoData }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={TAB_CONTENT_TRANSITION}
+            className="relative"
           >
             {activeTab === "ap" && <APTab data={data} />}
-            {activeTab === "stability" && <StabilityTab data={data} />}
-            {activeTab === "dead" && <DeadCodeTab data={data} />}
+
+            {activeTab === "stability" && (
+              <>
+                <div
+                  className={
+                    isPro
+                      ? ""
+                      : "blur-sm pointer-events-none select-none opacity-50"
+                  }
+                >
+                  <StabilityTab data={data} />
+                </div>
+                {!isPro && (
+                  <ProTabGate label="Stability" onUpgrade={handleUpgrade} />
+                )}
+              </>
+            )}
+
+            {activeTab === "dead" && (
+              <>
+                <div
+                  className={
+                    isPro
+                      ? ""
+                      : "blur-sm pointer-events-none select-none opacity-50"
+                  }
+                >
+                  <DeadCodeTab data={data} />
+                </div>
+                {!isPro && (
+                  <ProTabGate label="Dead Code" onUpgrade={handleUpgrade} />
+                )}
+              </>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

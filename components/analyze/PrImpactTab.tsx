@@ -1,3 +1,5 @@
+// components/analyze/PrImpactTab.tsx
+
 "use client";
 
 import { useState, useCallback } from "react";
@@ -13,21 +15,80 @@ import {
   Users,
   ArrowLeft,
   GitBranch,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { RepoData, PRAnalysisResult } from "@/lib/types/analyze";
 
 interface PrImpactTabProps {
   data: RepoData;
-  // Called once a PR has been analyzed successfully.
-  // Passes the raw changed file list up to AnalyzeContent so the
-  // Visualizer tab can activate pr-blast mode automatically.
+  isPro: boolean;
   onPrAnalyzed: (changedFiles: string[]) => void;
-  // Callback to switch to the visualizer tab — triggered by "View on Graph"
   onViewOnGraph: () => void;
+}
+
+function ProGate({ onUpgrade }: { onUpgrade: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+      className="w-full mt-4"
+    >
+      {/* Blurred ghost preview */}
+      <div className="relative rounded-xl overflow-hidden border border-white/5 mb-4">
+        <div className="blur-sm pointer-events-none select-none p-4 space-y-3 opacity-40">
+          <div className="flex items-center justify-between">
+            <div className="h-4 w-24 bg-white/10 rounded" />
+            <div className="h-5 w-16 bg-red-500/20 rounded-lg" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="h-16 bg-white/5 rounded-lg border border-white/5"
+              />
+            ))}
+          </div>
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-10 bg-white/5 rounded-lg border border-white/5"
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Overlay */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-[2px]">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <Lock className="w-5 h-5 text-amber-400" />
+          </div>
+          <div className="text-center px-4">
+            <p className="text-sm font-bold text-white mb-1">Pro Feature</p>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-[220px]">
+              PR Impact Analysis is only available on the Pro plan. Upgrade to
+              unlock blast radius, breaking dependencies, and reviewer
+              suggestions.
+            </p>
+          </div>
+          <button
+            onClick={onUpgrade}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono uppercase tracking-widest transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Upgrade to Pro
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function PrImpactTab({
   data,
+  isPro,
   onPrAnalyzed,
   onViewOnGraph,
 }: PrImpactTabProps) {
@@ -35,9 +96,16 @@ export default function PrImpactTab({
   const [isAnalyzingPR, setIsAnalyzingPR] = useState(false);
   const [prResult, setPrResult] = useState<PRAnalysisResult | null>(null);
   const [prError, setPrError] = useState<string | null>(null);
+  const [showGate, setShowGate] = useState(false);
 
   const handleAnalyzePR = useCallback(async () => {
     if (!prInput.trim()) return;
+
+    if (!isPro) {
+      setShowGate(true);
+      return;
+    }
+
     setIsAnalyzingPR(true);
     setPrError(null);
 
@@ -59,12 +127,13 @@ export default function PrImpactTab({
         }),
       });
       const json: PRAnalysisResult = await res.json();
-      if (!res.ok) throw new Error((json as unknown as { error: string }).error || "Failed to analyze PR");
+      if (!res.ok)
+        throw new Error(
+          (json as unknown as { error: string }).error ||
+            "Failed to analyze PR",
+        );
 
       setPrResult(json);
-
-      // Lift the changed files up to AnalyzeContent so the visualizer can
-      // consume them. Guard against missing field (e.g. older cached results).
       if (json.changedFiles && json.changedFiles.length > 0) {
         onPrAnalyzed(json.changedFiles);
       }
@@ -73,7 +142,11 @@ export default function PrImpactTab({
     } finally {
       setIsAnalyzingPR(false);
     }
-  }, [prInput, data.owner, data.repo, onPrAnalyzed]);
+  }, [prInput, isPro, data.owner, data.repo, onPrAnalyzed]);
+
+  const handleUpgrade = useCallback(() => {
+    window.open("/pricing", "_blank");
+  }, []);
 
   return (
     <motion.div
@@ -135,11 +208,14 @@ export default function PrImpactTab({
                 )}
               </button>
             </div>
+
             {prError && (
               <p className="text-red-400 text-xs font-mono mt-3 text-center">
                 {prError}
               </p>
             )}
+
+            {showGate && !isPro && <ProGate onUpgrade={handleUpgrade} />}
           </>
         ) : (
           <motion.div
@@ -148,9 +224,11 @@ export default function PrImpactTab({
             variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
             className="w-full text-left"
           >
-            {/* PR header */}
             <motion.div
-              variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+              variants={{
+                hidden: { opacity: 0, y: 10 },
+                visible: { opacity: 1, y: 0 },
+              }}
               className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 pb-6 border-b border-white/10 gap-4"
             >
               <div className="pr-0 md:pr-4">
@@ -185,10 +263,12 @@ export default function PrImpactTab({
               </div>
             </motion.div>
 
-            {/* View on Graph CTA — shown only when changedFiles were returned */}
             {prResult.changedFiles && prResult.changedFiles.length > 0 && (
               <motion.div
-                variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+                variants={{
+                  hidden: { opacity: 0, y: 10 },
+                  visible: { opacity: 1, y: 0 },
+                }}
                 className="mb-6"
               >
                 <button
@@ -204,8 +284,8 @@ export default function PrImpactTab({
                         View PR Blast Radius on Graph
                       </p>
                       <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                        {prResult.changedFiles.length} changed files ·{" "}
-                        switches to Blueprint Map
+                        {prResult.changedFiles.length} changed files · switches
+                        to Blueprint Map
                       </p>
                     </div>
                   </div>
@@ -216,9 +296,11 @@ export default function PrImpactTab({
               </motion.div>
             )}
 
-            {/* Blast radius + architectural changes */}
             <motion.div
-              variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+              variants={{
+                hidden: { opacity: 0, y: 10 },
+                visible: { opacity: 1, y: 0 },
+              }}
               className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"
             >
               <div className="space-y-4">
@@ -290,49 +372,55 @@ export default function PrImpactTab({
               </div>
             </motion.div>
 
-            {/* Suggested reviewers */}
-            {prResult.suggestedReviewers && prResult.suggestedReviewers.length > 0 && (
-              <motion.div
-                variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
-                className="mt-8 space-y-4 text-left border-t border-white/5 pt-6"
-              >
-                <h4 className="text-xs font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Context-Aware Reviewers
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {prResult.suggestedReviewers.map((reviewer, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors"
-                    >
-                      <Image
-                        src={`https://github.com/${reviewer.username}.png`}
-                        alt={reviewer.username}
-                        width={40}
-                        height={40}
-                        unoptimized
-                        className="w-10 h-10 rounded-full border border-white/10 flex-shrink-0 bg-[#141414]"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://github.com/ghost.png";
-                        }}
-                      />
-                      <div>
-                        <span className="text-sm font-bold text-slate-200 block mb-1">
-                          @{reviewer.username}
-                        </span>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          {reviewer.reason}
-                        </p>
+            {prResult.suggestedReviewers &&
+              prResult.suggestedReviewers.length > 0 && (
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="mt-8 space-y-4 text-left border-t border-white/5 pt-6"
+                >
+                  <h4 className="text-xs font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Context-Aware Reviewers
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {prResult.suggestedReviewers.map((reviewer, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Image
+                          src={`https://github.com/${reviewer.username}.png`}
+                          alt={reviewer.username}
+                          width={40}
+                          height={40}
+                          unoptimized
+                          className="w-10 h-10 rounded-full border border-white/10 flex-shrink-0 bg-[#141414]"
+                          onError={(e) => {
+                            e.currentTarget.src =
+                              "https://github.com/ghost.png";
+                          }}
+                        />
+                        <div>
+                          <span className="text-sm font-bold text-slate-200 block mb-1">
+                            @{reviewer.username}
+                          </span>
+                          <p className="text-xs text-slate-400 leading-relaxed">
+                            {reviewer.reason}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                    ))}
+                  </div>
+                </motion.div>
+              )}
 
-            {/* Analyze another PR */}
             <motion.div
-              variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+              variants={{
+                hidden: { opacity: 0, y: 10 },
+                visible: { opacity: 1, y: 0 },
+              }}
               className="flex justify-center border-t border-white/10 pt-6 mt-8"
             >
               <button
