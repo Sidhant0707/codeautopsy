@@ -1,5 +1,3 @@
-// components/ArchitectureMap.tsx
-
 "use client";
 
 import InfoTooltip from "@/components/InfoTooltip";
@@ -44,6 +42,11 @@ import {
   GitPullRequest,
   Zap,
 } from "lucide-react";
+import {
+  computeArticulationPoints,
+  getRankedArticulationPoints,
+  type RankedArticulationPoint,
+} from "@/lib/algorithms/articulationPoints";
 
 function detectCircularDependencies(graph: Record<string, string[]>): {
   cycleNodes: Set<string>;
@@ -148,6 +151,7 @@ type ActiveMode =
   | "orphan"
   | "pr-blast"
   | "pagerank"
+  | "fragile"
   | null;
 
 interface GlassNodeData {
@@ -165,6 +169,9 @@ interface GlassNodeData {
   pageRankScore?: number;
   pageRankTier?: PageRankTier;
   pageRankActive?: boolean;
+  isArticulationPoint?: boolean;
+  apDisconnects?: number;
+  isBridge?: boolean;
 }
 
 const PR_TIER_STYLES: Record<
@@ -299,7 +306,17 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
   let textClass = "text-sm font-mono truncate max-w-[200px] transition-colors";
   let handleColor = "!bg-slate-500";
 
-  if (isPrModified) {
+  if (
+    data.isArticulationPoint &&
+    !isPrModified &&
+    !isPrBlast &&
+    !isBlastRadius
+  ) {
+    containerClass +=
+      " bg-red-500/8 border border-red-400/50 shadow-[0_0_18px_rgba(248,113,113,0.3)]";
+    textClass += " text-red-200";
+    handleColor = "!bg-red-400";
+  } else if (isPrModified) {
     containerClass +=
       " bg-yellow-500/15 border border-yellow-400/60 shadow-[0_0_20px_rgba(234,179,8,0.25)]";
     textClass += " text-yellow-200";
@@ -370,9 +387,29 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
             Circular
           </div>
         )}
+        {data.isArticulationPoint &&
+          !isBlastRadius &&
+          !isPrModified &&
+          !isPrBlast &&
+          !isCircular && (
+            <div className="text-[8px] uppercase tracking-widest text-red-400 font-bold mb-1 flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              Fragile
+            </div>
+          )}
         <div className={textClass} title={data.fullPath}>
           {data.label}
         </div>
+        {data.isArticulationPoint &&
+          data.apDisconnects !== undefined &&
+          data.apDisconnects > 0 &&
+          !isPrModified &&
+          !isPrBlast &&
+          !isBlastRadius && (
+            <div className="mt-0.5 text-[8px] font-mono text-red-400/70">
+              {data.apDisconnects} files affected
+            </div>
+          )}
       </div>
       <Handle
         type="source"
@@ -526,6 +563,8 @@ interface SidebarProps {
   prChangedFiles: string[];
   prModifiedNodes: Set<string>;
   prBlastNodes: Set<string>;
+  rankedAPs: RankedArticulationPoint[];
+  bridges: Array<[string, string]>;
   activeMode: ActiveMode;
   onActivateMode: (mode: ActiveMode) => void;
   onClearAll: () => void;
@@ -545,6 +584,8 @@ function AnalysisSidebar({
   prChangedFiles,
   prModifiedNodes,
   prBlastNodes,
+  rankedAPs,
+  bridges,
   activeMode,
   onActivateMode,
   onClearAll,
@@ -558,6 +599,7 @@ function AnalysisSidebar({
   const hasOrphans = orphans.length > 0;
   const hasPrData = prChangedFiles.length > 0;
   const hasPageRank = Object.keys(pageRankScores).length > 0;
+  const hasAPs = rankedAPs.length > 0;
 
   const RAIL = [
     {
@@ -710,7 +752,9 @@ function AnalysisSidebar({
                             ? "text-violet-400"
                             : activeMode === "pagerank"
                               ? "text-cyan-400"
-                              : "text-slate-600"
+                              : activeMode === "fragile"
+                                ? "text-red-400"
+                                : "text-slate-600"
                   }`}
                 >
                   {activeMode === "pr-blast"
@@ -723,14 +767,17 @@ function AnalysisSidebar({
                           ? "Orphan"
                           : activeMode === "pagerank"
                             ? "PageRank"
-                            : heatmapEnabled
-                              ? "Heatmap"
-                              : "Default"}
+                            : activeMode === "fragile"
+                              ? "Fragile"
+                              : heatmapEnabled
+                                ? "Heatmap"
+                                : "Default"}
                 </span>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-px [&::-webkit-scrollbar-thumb]:bg-white/10">
+              {/* ── PR Blast Radius ── */}
               <div
                 className={`border-b border-white/[0.04] transition-colors ${activeMode === "pr-blast" ? "bg-cyan-500/[0.03]" : ""}`}
               >
@@ -844,6 +891,7 @@ function AnalysisSidebar({
                 </AnimatePresence>
               </div>
 
+              {/* ── Blast Radius ── */}
               <div className="px-4 py-3 border-b border-white/[0.04]">
                 <div className="flex items-center gap-2 mb-2">
                   <div
@@ -874,6 +922,7 @@ function AnalysisSidebar({
                 )}
               </div>
 
+              {/* ── Circular Deps ── */}
               <div
                 className={`border-b border-white/[0.04] transition-colors ${activeMode === "circular" ? "bg-orange-500/[0.03]" : ""}`}
               >
@@ -958,6 +1007,125 @@ function AnalysisSidebar({
                 </AnimatePresence>
               </div>
 
+              {/* ── Fragile Points ── */}
+              <div
+                className={`border-b border-white/[0.04] transition-colors ${activeMode === "fragile" ? "bg-red-500/[0.03]" : ""}`}
+              >
+                <button
+                  onClick={() => {
+                    if (!hasAPs) return;
+                    onActivateMode(activeMode === "fragile" ? null : "fragile");
+                  }}
+                  className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${hasAPs ? "hover:bg-white/[0.02] cursor-pointer" : "cursor-default"}`}
+                >
+                  <div
+                    className={`w-0.5 h-3 rounded-full flex-shrink-0 transition-colors ${activeMode === "fragile" ? "bg-red-500" : "bg-white/10"}`}
+                  />
+                  <svg
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${hasAPs ? (activeMode === "fragile" ? "text-red-400" : "text-red-500/70") : "text-slate-700"}`}
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M8 2L2 13h12L8 2z" />
+                    <path d="M8 6v4M8 11.5v.5" strokeLinecap="round" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
+                        Fragile Points
+                        <InfoTooltip
+                          content="Files whose removal splits the codebase into disconnected pieces. Single points of structural failure."
+                          side="left"
+                        />
+                      </span>
+                      {hasAPs ? (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${activeMode === "fragile" ? "bg-red-500/20 text-red-300 border border-red-500/30" : "bg-red-500/10 text-red-500/80 border border-red-500/15"}`}
+                        >
+                          {rankedAPs.length} APs
+                        </span>
+                      ) : (
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500/60" />
+                      )}
+                    </div>
+                    <p className="text-[10px] font-mono text-slate-600 mt-0.5 truncate">
+                      {hasAPs
+                        ? activeMode === "fragile"
+                          ? `${bridges.length} critical edges`
+                          : "Single points of failure"
+                        : "No fragile points"}
+                    </p>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {activeMode === "fragile" && hasAPs && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 space-y-2">
+                        <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-red-400/80 flex-shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Articulation points
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-600 ml-auto">
+                              {rankedAPs.length}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-red-600/60 flex-shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Bridge edges
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-600 ml-auto">
+                              {bridges.length}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] font-mono text-slate-600 uppercase tracking-wider px-1 pb-0.5">
+                            Ranked by severity
+                          </p>
+                          {rankedAPs
+                            .slice(0, 8)
+                            .map(({ path, disconnects }) => (
+                              <div
+                                key={path}
+                                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/[0.03]"
+                              >
+                                <div className="w-1 h-1 rounded-full bg-red-400/60 flex-shrink-0" />
+                                <span
+                                  className="text-[10px] font-mono text-red-300/70 truncate flex-1"
+                                  title={path}
+                                >
+                                  {path.split("/").pop()}
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-600 flex-shrink-0">
+                                  {disconnects}f
+                                </span>
+                              </div>
+                            ))}
+                          {rankedAPs.length > 8 && (
+                            <p className="text-[9px] font-mono text-slate-600 px-2 pt-0.5">
+                              +{rankedAPs.length - 8} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Complexity Heatmap ── */}
               <div
                 className={`border-b border-white/[0.04] transition-colors ${heatmapEnabled ? "bg-amber-500/[0.02]" : ""}`}
               >
@@ -1030,6 +1198,7 @@ function AnalysisSidebar({
                 </div>
               </div>
 
+              {/* ── Orphans ── */}
               <div
                 className={`border-b border-white/[0.04] transition-colors ${activeMode === "orphan" ? "bg-violet-500/[0.03]" : ""}`}
               >
@@ -1126,6 +1295,7 @@ function AnalysisSidebar({
                 </AnimatePresence>
               </div>
 
+              {/* ── Nerve Center / PageRank ── */}
               <div
                 className={`transition-colors ${activeMode === "pagerank" ? "bg-cyan-500/[0.03]" : ""}`}
               >
@@ -1361,6 +1531,24 @@ export default function ArchitectureMap({
     return map;
   }, [pageRankScores]);
 
+  // ── Articulation point computation ────────────────────────────────────────
+  const apResult = useMemo(
+    () => computeArticulationPoints(dependencyGraph),
+    [dependencyGraph],
+  );
+
+  const rankedAPs = useMemo(
+    () => getRankedArticulationPoints(apResult),
+    [apResult],
+  );
+
+  const apSet = useMemo(() => apResult.articulationPoints, [apResult]);
+
+  const bridgeSet = useMemo(
+    () => new Set(apResult.bridges.map(([s, t]) => `e-${s}-${t}`)),
+    [apResult],
+  );
+
   const prevPrFilesRef = useRef<string>("");
   useEffect(() => {
     const key = prChangedFiles.join(",");
@@ -1395,6 +1583,9 @@ export default function ArchitectureMap({
           pageRankScore: pageRankScores[filePath] ?? 0,
           pageRankTier: getPageRankTier(pageRankScores[filePath] ?? 0),
           pageRankActive: false,
+          isArticulationPoint: false,
+          apDisconnects: 0,
+          isBridge: false,
         },
         position: { x: 0, y: 0 },
       });
@@ -1468,6 +1659,8 @@ export default function ArchitectureMap({
             isPrModified: false,
             isPrBlast: false,
             pageRankActive: false,
+            isArticulationPoint: false,
+            apDisconnects: 0,
           },
         })),
       );
@@ -1478,6 +1671,45 @@ export default function ArchitectureMap({
           animated: true,
           markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
         })),
+      );
+      return;
+    }
+
+    if (activeMode === "fragile") {
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          data: {
+            ...n.data,
+            pageRankActive: false,
+            isBlastRadius: false,
+            isPrModified: false,
+            isPrBlast: false,
+            isOrphanHighlighted: false,
+            isArticulationPoint: apSet.has(n.id),
+            apDisconnects: apResult.componentSizes.get(n.id) ?? 0,
+            isDimmed: !apSet.has(n.id),
+          },
+        })),
+      );
+      setEdges((eds) =>
+        eds.map((e) => {
+          const isBridge = bridgeSet.has(e.id);
+          return {
+            ...e,
+            style: {
+              stroke: isBridge ? "#f87171" : "#475569",
+              strokeWidth: isBridge ? 3 : 2,
+              strokeDasharray: isBridge ? "6 3" : undefined,
+              opacity: isBridge ? 1 : 0.08,
+            },
+            animated: false,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: isBridge ? "#f87171" : "#475569",
+            },
+          };
+        }),
       );
       return;
     }
@@ -1497,6 +1729,7 @@ export default function ArchitectureMap({
               isPrModified: false,
               isPrBlast: false,
               isOrphanHighlighted: false,
+              isArticulationPoint: false,
               isDimmed: tier === 0,
             },
           };
@@ -1543,6 +1776,7 @@ export default function ArchitectureMap({
             pageRankActive: false,
             isBlastRadius: false,
             isOrphanHighlighted: false,
+            isArticulationPoint: false,
             isPrModified: prModifiedNodes.has(n.id),
             isPrBlast: prBlastNodes.has(n.id),
             isDimmed: !prModifiedNodes.has(n.id) && !prBlastNodes.has(n.id),
@@ -1594,6 +1828,7 @@ export default function ArchitectureMap({
             isBlastRadius: false,
             isPrModified: false,
             isPrBlast: false,
+            isArticulationPoint: false,
             isDimmed: selectedOrphan ? n.id !== selectedOrphan : false,
             isOrphanHighlighted: selectedOrphan
               ? n.id === selectedOrphan
@@ -1626,6 +1861,7 @@ export default function ArchitectureMap({
             isBlastRadius: false,
             isPrModified: false,
             isPrBlast: false,
+            isArticulationPoint: false,
             isDimmed: !cycleNodes.has(n.id),
             isOrphanHighlighted: false,
           },
@@ -1679,6 +1915,7 @@ export default function ArchitectureMap({
             isOrphanHighlighted: false,
             isPrModified: false,
             isPrBlast: false,
+            isArticulationPoint: false,
           },
         })),
       );
@@ -1711,6 +1948,10 @@ export default function ArchitectureMap({
     pageRankTierMap,
     pageRankScores,
     adjacencyList,
+    apSet,
+    apResult,
+    bridgeSet,
+    rankedAPs,
     setNodes,
     setEdges,
   ]);
@@ -1788,7 +2029,9 @@ export default function ArchitectureMap({
                       ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
                       : activeMode === "pagerank"
                         ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-400"
-                        : "bg-violet-500/10 border-violet-500/25 text-violet-400"
+                        : activeMode === "fragile"
+                          ? "bg-red-500/10 border-red-500/25 text-red-400"
+                          : "bg-violet-500/10 border-violet-500/25 text-violet-400"
               }`}
             >
               <span>
@@ -1800,9 +2043,11 @@ export default function ArchitectureMap({
                       ? "Circular deps highlighted"
                       : activeMode === "pagerank"
                         ? `PageRank · ${pageRankTopFiles.filter((f) => getPageRankTier(f.score) >= 2).length} hubs`
-                        : selectedOrphan
-                          ? `Orphan: ${selectedOrphan.split("/").pop()}`
-                          : "Orphan mode — select a file"}
+                        : activeMode === "fragile"
+                          ? `Fragile · ${rankedAPs.length} APs · ${apResult.bridges.length} bridges`
+                          : selectedOrphan
+                            ? `Orphan: ${selectedOrphan.split("/").pop()}`
+                            : "Orphan mode — select a file"}
               </span>
               <X className="w-3 h-3 opacity-60" />
             </motion.button>
@@ -1855,6 +2100,8 @@ export default function ArchitectureMap({
         prChangedFiles={prChangedFiles}
         prModifiedNodes={prModifiedNodes}
         prBlastNodes={prBlastNodes}
+        rankedAPs={rankedAPs}
+        bridges={apResult.bridges}
         activeMode={activeMode}
         onActivateMode={handleActivateMode}
         onClearAll={handleClearAll}
