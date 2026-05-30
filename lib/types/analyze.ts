@@ -42,6 +42,9 @@ export interface RepoData {
   }[];
   fileContents?: { path: string; content: string }[];
   pageRankScores?: Record<string, number>;
+articulationPoints?: string[];
+bridges?: Array<[string, string]>;
+componentSizes?: Record<string, number>;
 }
 
 export interface PRBlastRadiusItem {
