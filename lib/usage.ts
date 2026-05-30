@@ -5,7 +5,7 @@ const ADMIN_EMAILS = [
   "sidhantkumar0707@gmail.com",
 ];
 
-const FREE_DAILY_LIMIT = 10;
+const FREE_DAILY_LIMIT = 5;
 const PRO_DAILY_LIMIT = 100;
 
 export async function getUsageCount(

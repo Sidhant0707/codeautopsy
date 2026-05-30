@@ -69,7 +69,7 @@ export default function ProfilePage() {
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [usageCount, setUsageCount] = useState(0);
-  const [maxLimit, setMaxLimit] = useState(10);
+  const [maxLimit, setMaxLimit] = useState(5);
   const [isLoading, setIsLoading] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("Read_Docs");

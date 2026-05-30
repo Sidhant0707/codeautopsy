@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { FaCheck, FaLock } from "react-icons/fa";
@@ -11,9 +11,33 @@ const fadeUp = {
 };
 
 export default function PricingPage() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleUpgrade() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/checkout", { method: "POST" });
+      const data = await res.json();
+
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Something went wrong. Please try again.");
+      }
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden font-satoshi">
-      {}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none" />
 
       <div className="max-w-6xl mx-auto relative z-10">
@@ -38,7 +62,7 @@ export default function PricingPage() {
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {}
+          {/* Free Tier */}
           <motion.div
             initial="hidden"
             animate="show"
@@ -47,7 +71,7 @@ export default function PricingPage() {
           >
             <div>
               <h3 className="cabinet text-white font-bold text-xl mb-2">
-                Student
+                Intern
               </h3>
               <div className="flex items-baseline gap-1 mb-8">
                 <span className="text-4xl font-black text-white">$0</span>
@@ -75,47 +99,61 @@ export default function PricingPage() {
             </Link>
           </motion.div>
 
-          {}
+          {/* Specialist Tier — LIVE */}
           <motion.div
             initial="hidden"
             animate="show"
             variants={fadeUp}
-            className="glass-card p-8 rounded-3xl border border-white/5 opacity-60 relative group cursor-not-allowed flex flex-col justify-between bg-[#141414]"
+            className="glass-card p-8 rounded-3xl border border-amber-500/30 relative overflow-hidden flex flex-col justify-between bg-[#141414] shadow-[0_0_40px_rgba(251,191,36,0.05)]"
           >
-            <div className="absolute top-4 right-4 px-2 py-1 rounded bg-slate-800 border border-white/10">
-              <span className="text-[9px] font-black text-white uppercase tracking-widest">
-                Coming Soon
+            <div className="absolute top-4 right-4 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20">
+              <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">
+                Early Access
               </span>
             </div>
             <div>
-              <h3 className="cabinet text-slate-400 font-bold text-xl mb-2 italic">
-                Architect
+              <h3 className="cabinet text-white font-bold text-xl mb-2">
+                Specialist
               </h3>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-4xl font-black text-slate-500">$19</span>
-                <span className="text-slate-600 text-sm">/mo</span>
+              <div className="flex items-baseline gap-1 mb-1">
+                <span className="text-4xl font-black text-white">₹99</span>
+                <span className="text-slate-500 text-sm">/mo</span>
               </div>
-              <ul className="space-y-4 mb-8 text-sm text-slate-600">
+              <p className="text-amber-400/70 text-xs mb-8 font-bold uppercase tracking-widest">
+                Launch price · Lock in forever
+              </p>
+              <ul className="space-y-4 mb-8 text-sm text-slate-400">
                 <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Private Repositories
+                  <FaCheck className="text-amber-400 w-3" /> 100 Autopsies / day
                 </li>
                 <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Priority Llama-3.3 Access
+                  <FaCheck className="text-amber-400 w-3" /> Private
+                  Repositories
                 </li>
                 <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Export to Markdown
+                  <FaCheck className="text-amber-400 w-3" /> Advanced Model
+                  Routing
+                </li>
+                <li className="flex items-center gap-2">
+                  <FaCheck className="text-amber-400 w-3" /> Markdown Exports
+                </li>
+                <li className="flex items-center gap-2">
+                  <FaCheck className="text-amber-400 w-3" /> Priority Analysis
+                  Queue
                 </li>
               </ul>
             </div>
-            <button
-              disabled
-              className="w-full py-3 rounded-xl bg-white/5 text-slate-600 font-bold text-xs uppercase tracking-widest cursor-not-allowed"
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleUpgrade}
+              disabled={loading}
+              className="w-full py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
             >
-              Locked
-            </button>
+              {loading ? "Redirecting..." : "Upgrade to Specialist →"}
+            </motion.button>
           </motion.div>
 
-          {}
+          {/* Chief Surgeon Tier */}
           <motion.div
             initial="hidden"
             animate="show"
@@ -129,7 +167,7 @@ export default function PricingPage() {
             </div>
             <div>
               <h3 className="cabinet text-slate-400 font-bold text-xl mb-2 italic">
-                Surgical
+                Chief Surgeon
               </h3>
               <div className="flex items-baseline gap-1 mb-8 text-slate-400">
                 <span className="text-xl font-black text-slate-500 italic uppercase tracking-tighter">
@@ -145,6 +183,9 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <FaLock className="w-3" /> Custom AI Models
+                </li>
+                <li className="flex items-center gap-2">
+                  <FaLock className="w-3" /> Workflow Integrations
                 </li>
               </ul>
             </div>
