@@ -9,7 +9,6 @@ type Props = {
   params: Promise<{ slug: string[] }>;
 };
 
-
 interface TechStackItem {
   name: string;
   purpose: string;
@@ -42,7 +41,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ViewAutopsyPage({ params }: Props) {
   const { slug } = await params;
 
-  
   if (!slug || slug.length !== 2) notFound();
 
   const owner = slug[0];
@@ -50,7 +48,6 @@ export default async function ViewAutopsyPage({ params }: Props) {
 
   const repoName = `${owner}/${repo}`.toLowerCase();
 
-  
   const { data, error } = await supabase
     .from("analyses")
     .select("result_json")
@@ -70,9 +67,7 @@ export default async function ViewAutopsyPage({ params }: Props) {
 
         <p className="text-slate-500 max-w-xs">
           The repository{" "}
-          <span className="text-slate-300 font-mono text-sm">
-            {repoName}
-          </span>{" "}
+          <span className="text-slate-300 font-mono text-sm">{repoName}</span>{" "}
           has not been dissected yet.
         </p>
 
@@ -92,101 +87,121 @@ export default async function ViewAutopsyPage({ params }: Props) {
     <div className="min-h-screen bg-[#0e0e0e] text-slate-300 relative">
       <Header />
       <div className="py-24 px-6">
-      {}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.01] blur-[150px] rounded-full pointer-events-none" />
-
-      <div className="max-w-4xl mx-auto relative z-10">
-        <Link
-          href="/"
-          className="text-slate-500 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
-        >
-          ← Back to Engine
-        </Link>
-
-        <header className="mt-8 mb-16">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 bg-white/5 px-3 py-1 rounded mb-4 inline-block">
-            Archival Report
-          </span>
-
-          <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tighter italic uppercase">
-            {result?.repo || repo}
-          </h1>
-
-          <p className="text-slate-500 mt-2 font-mono text-sm">
-            Target: {result?.owner || owner}
-          </p>
-        </header>
-
-        <section className="glass-card p-10 rounded-3xl border border-white/5 bg-white/[0.02]">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-
-            <h2 className="text-xl font-bold text-white uppercase tracking-tight">
-              {result?.analysis?.architecture_pattern || "Unknown Architecture"}
-            </h2>
-          </div>
-
-          <p className="text-lg text-slate-400 leading-relaxed italic">
-            &quot;{result?.analysis?.what_it_does || "No description available."}&quot;
-          </p>
-        </section>
-
-        <section className="mt-12">
-          <h3 className="text-lg font-bold text-white mb-4">Execution Flow</h3>
-
-          <ul className="space-y-3 text-slate-400">
-            {result?.analysis?.execution_flow?.map((step: string, i: number) => (
-              <li key={i} className="flex gap-3">
-                <span className="text-slate-500">{i + 1}.</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mt-12">
-  <h3 className="text-lg font-bold text-white mb-4">Tech Stack</h3>
-
-  <div className="flex flex-wrap gap-3">
-    {result?.analysis?.tech_stack?.map((tech: TechStackItem, i: number) => (
-      <span
-        key={i}
-        className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm"
-      >
-        <div>
-          <p className="text-white text-sm font-semibold">{tech.name}</p>
-          <p className="text-xs text-slate-500">{tech.purpose}</p>
-        </div>
-      </span>
-    ))}
-  </div>
-</section>
-
-<section className="mt-12">
-  <h3 className="text-lg font-bold text-white mb-4">Key Modules</h3>
-
-  <div className="space-y-4">
-    {result?.analysis?.key_modules?.map((mod: KeyModuleItem, i: number) => (
-      <div
-        key={i}
-        className="p-4 border border-white/10 rounded-xl bg-white/5"
-      >
-        <p className="font-mono text-sm text-white">{mod.file}</p>
-        <p className="text-slate-400 text-sm mt-1">{mod.why_it_exists}</p>
-      </div>
-    ))}
-  </div>
-</section>
-
-<section className="mt-12">
-  <DebugInterface 
-    initialChart={result?.mermaidDiagram || "graph TD\nA[Dependency graph unavailable]"} 
-    repoUrl={`https://github.com/${owner}/${repo}`}
-  />
-</section>
-
         {}
-      </div>
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/[0.01] blur-[150px] rounded-full pointer-events-none" />
+
+        <div className="max-w-4xl mx-auto relative z-10">
+          <Link
+            href="/"
+            className="text-slate-500 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
+          >
+            ← Back to Engine
+          </Link>
+
+          <header className="mt-8 mb-16">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 bg-white/5 px-3 py-1 rounded mb-4 inline-block">
+              Archival Report
+            </span>
+
+            <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tighter italic uppercase">
+              {result?.repo || repo}
+            </h1>
+
+            <p className="text-slate-500 mt-2 font-mono text-sm">
+              Target: {result?.owner || owner}
+            </p>
+          </header>
+
+          <section className="glass-card p-10 rounded-3xl border border-white/5 bg-white/[0.02]">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+
+              <h2 className="text-xl font-bold text-white uppercase tracking-tight">
+                {result?.analysis?.architecture_pattern ||
+                  "Unknown Architecture"}
+              </h2>
+            </div>
+
+            <p className="text-lg text-slate-400 leading-relaxed italic">
+              &quot;
+              {result?.analysis?.what_it_does || "No description available."}
+              &quot;
+            </p>
+          </section>
+
+          <section className="mt-12">
+            <h3 className="text-lg font-bold text-white mb-4">
+              Execution Flow
+            </h3>
+
+            <ul className="space-y-3 text-slate-400">
+              {result?.analysis?.execution_flow?.map(
+                (step: string, i: number) => (
+                  <li key={i} className="flex gap-3">
+                    <span className="text-slate-500">{i + 1}.</span>
+                    <span>{step}</span>
+                  </li>
+                ),
+              )}
+            </ul>
+          </section>
+
+          <section className="mt-12">
+            <h3 className="text-lg font-bold text-white mb-4">Tech Stack</h3>
+
+            <div className="flex flex-wrap gap-3">
+              {result?.analysis?.tech_stack?.map(
+                (tech: TechStackItem, i: number) => (
+                  <span
+                    key={i}
+                    className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm"
+                  >
+                    <div>
+                      <p className="text-white text-sm font-semibold">
+                        {tech.name}
+                      </p>
+                      <p className="text-xs text-slate-500">{tech.purpose}</p>
+                    </div>
+                  </span>
+                ),
+              )}
+            </div>
+          </section>
+
+          <section className="mt-12">
+            <h3 className="text-lg font-bold text-white mb-4">Key Modules</h3>
+
+            <div className="space-y-4">
+              {result?.analysis?.key_modules?.map(
+                (mod: KeyModuleItem, i: number) => (
+                  <div
+                    key={i}
+                    className="p-4 border border-white/10 rounded-xl bg-white/5"
+                  >
+                    <p className="font-mono text-sm text-white">{mod.file}</p>
+                    <p className="text-slate-400 text-sm mt-1">
+                      {mod.why_it_exists}
+                    </p>
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+
+          <section className="mt-12">
+            <DebugInterface
+              initialChart={
+                result?.mermaidDiagram ||
+                "graph TD\nA[Dependency graph unavailable]"
+              }
+              repoUrl={`https://github.com/${owner}/${repo}`}
+              isPro={false}
+              diagnosticCount={0}
+            />
+          </section>
+
+          {}
+        </div>
       </div>
     </div>
   );
