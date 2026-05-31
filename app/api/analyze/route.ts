@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
                   .eq("repo_url", repoUrl)
                   .eq("commit_sha", commitSha)
                   .eq("analysis_version", ANALYSIS_VERSION)
+                  .eq("user_id", userId ?? "")
                   .order("created_at", { ascending: false })
                   .limit(1)
                   .maybeSingle();
@@ -233,7 +234,11 @@ export async function POST(req: NextRequest) {
               },
         });
 
-        if (!isLocal && !result.cached) {
+        // ── Always insert a new row for logged-in users so the dashboard
+        //    reflects every analysis, even re-runs of cached repos.
+        //    For cached results, re-use the cached result_json so no
+        //    re-processing is needed but the timestamp is always fresh.
+        if (!isLocal && userId) {
           try {
             const { error: insertError } = await supabase.from("analyses").insert({
               repo_url:         repoUrl,
@@ -248,6 +253,38 @@ export async function POST(req: NextRequest) {
             }
           } catch (err) {
             console.error("[analyze] DB insert threw:", err);
+          }
+
+          // Only run RAG storage for fresh (non-cached) analyses
+          if (!result.cached) {
+            try {
+              await processAndStoreCodebase(
+                supabase,
+                repoUrl!,
+                result.fileContents ?? [],
+              );
+            } catch (err) {
+              console.error("[analyze] RAG storage failed:", err);
+            }
+          }
+        }
+
+        // For anonymous users, only insert if result is fresh (original behavior)
+        if (!isLocal && !userId && !result.cached) {
+          try {
+            const { error: insertError } = await supabase.from("analyses").insert({
+              repo_url:         repoUrl,
+              repo_name:        `${result.owner}/${result.repo}`.toLowerCase(),
+              commit_sha:       result.branch,
+              analysis_version: ANALYSIS_VERSION,
+              result_json:      result,
+              user_id:          null,
+            });
+            if (insertError) {
+              console.error("[analyze] DB insert error (anon):", insertError.message);
+            }
+          } catch (err) {
+            console.error("[analyze] DB insert threw (anon):", err);
           }
 
           try {
