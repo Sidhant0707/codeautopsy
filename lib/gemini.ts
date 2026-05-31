@@ -35,7 +35,10 @@ export async function streamAnalyzeWithGemini(
   const groq = wrapOpenAI(baseGroq, tracer);
 
   // 2. Build the optimized context text
+  // Cap at 20 files — topFiles already identifies the most important ones.
+  // On large repos this prevents runaway token spend with zero quality loss.
   const fileContentText = fileContents
+    .slice(0, 20)
     .map((f) => {
       const optimized = f.content
         .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -79,7 +82,7 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
 
   // 4. Execute the call with `stream: true` so 0xtrace can intercept it
   const response = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: "llama-3.1-8b-instant",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: "Analyze this codebase and stream ONLY the required JSON." }
