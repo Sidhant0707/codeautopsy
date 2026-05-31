@@ -136,6 +136,39 @@ function computePrBlastRadius(
   return { modifiedNodes, blastNodes };
 }
 
+// ── NEW: Self-contained PageRank computation ──────────────────────────────────
+function computePageRank(
+  graph: Record<string, string[]>,
+  iterations = 20,
+  dampingFactor = 0.85,
+): Record<string, number> {
+  const nodes = Object.keys(graph);
+  if (nodes.length === 0) return {};
+
+  const scores: Record<string, number> = {};
+  nodes.forEach((n) => (scores[n] = 1));
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const next: Record<string, number> = {};
+    nodes.forEach((n) => (next[n] = 1 - dampingFactor));
+    nodes.forEach((src) => {
+      const deps = graph[src] || [];
+      if (deps.length === 0) return;
+      deps.forEach((tgt) => {
+        next[tgt] =
+          (next[tgt] || 0) + (dampingFactor * scores[src]) / deps.length;
+      });
+    });
+    Object.assign(scores, next);
+  }
+
+  // Normalize to 0–100
+  const max = Math.max(...Object.values(scores), 1);
+  nodes.forEach((n) => (scores[n] = Math.round((scores[n] / max) * 100)));
+  return scores;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 type PageRankTier = 0 | 1 | 2 | 3;
 
 function getPageRankTier(score: number): PageRankTier {
@@ -1514,22 +1547,29 @@ export default function ArchitectureMap({
     return { prModifiedNodes: modifiedNodes, prBlastNodes: blastNodes };
   }, [prChangedFiles, adjacencyList]);
 
+  // ── NEW: Compute PageRank internally if not passed in from parent ──────────
+  const computedPageRankScores = useMemo(() => {
+    if (Object.keys(pageRankScores).length > 0) return pageRankScores;
+    return computePageRank(dependencyGraph);
+  }, [dependencyGraph, pageRankScores]);
+  // ──────────────────────────────────────────────────────────────────────────
+
   const pageRankTopFiles = useMemo(
     () =>
-      Object.entries(pageRankScores)
+      Object.entries(computedPageRankScores)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 20)
         .map(([path, score]) => ({ path, score })),
-    [pageRankScores],
+    [computedPageRankScores],
   );
 
   const pageRankTierMap = useMemo(() => {
     const map = new Map<string, PageRankTier>();
-    for (const [path, score] of Object.entries(pageRankScores)) {
+    for (const [path, score] of Object.entries(computedPageRankScores)) {
       map.set(path, getPageRankTier(score));
     }
     return map;
-  }, [pageRankScores]);
+  }, [computedPageRankScores]);
 
   // ── Articulation point computation ────────────────────────────────────────
   const apResult = useMemo(
@@ -1580,8 +1620,8 @@ export default function ArchitectureMap({
           isOrphanHighlighted: false,
           isPrModified: false,
           isPrBlast: false,
-          pageRankScore: pageRankScores[filePath] ?? 0,
-          pageRankTier: getPageRankTier(pageRankScores[filePath] ?? 0),
+          pageRankScore: computedPageRankScores[filePath] ?? 0,
+          pageRankTier: getPageRankTier(computedPageRankScores[filePath] ?? 0),
           pageRankActive: false,
           isArticulationPoint: false,
           apDisconnects: 0,
@@ -1617,7 +1657,7 @@ export default function ArchitectureMap({
     });
 
     return { initialNodes: layoutNodes, initialEdges: layoutEdges, graphHash };
-  }, [dependencyGraph, entryPoints, pageRankScores]);
+  }, [dependencyGraph, entryPoints, computedPageRankScores]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -1724,7 +1764,7 @@ export default function ArchitectureMap({
               ...n.data,
               pageRankActive: true,
               pageRankTier: tier,
-              pageRankScore: pageRankScores[n.id] ?? 0,
+              pageRankScore: computedPageRankScores[n.id] ?? 0,
               isBlastRadius: false,
               isPrModified: false,
               isPrBlast: false,
@@ -1946,7 +1986,7 @@ export default function ArchitectureMap({
     prModifiedNodes,
     prBlastNodes,
     pageRankTierMap,
-    pageRankScores,
+    computedPageRankScores,
     adjacencyList,
     apSet,
     apResult,
@@ -2105,7 +2145,7 @@ export default function ArchitectureMap({
         activeMode={activeMode}
         onActivateMode={handleActivateMode}
         onClearAll={handleClearAll}
-        pageRankScores={pageRankScores}
+        pageRankScores={computedPageRankScores}
         pageRankTopFiles={pageRankTopFiles}
       />
     </div>
