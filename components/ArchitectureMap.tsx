@@ -1589,6 +1589,24 @@ export default function ArchitectureMap({
     [apResult],
   );
 
+  // ── Articulation point computation ────────────────────────────────────────
+  const apResult = useMemo(
+    () => computeArticulationPoints(dependencyGraph),
+    [dependencyGraph],
+  );
+
+  const rankedAPs = useMemo(
+    () => getRankedArticulationPoints(apResult),
+    [apResult],
+  );
+
+  const apSet = useMemo(() => apResult.articulationPoints, [apResult]);
+
+  const bridgeSet = useMemo(
+    () => new Set(apResult.bridges.map(([s, t]) => `e-${s}-${t}`)),
+    [apResult],
+  );
+
   const prevPrFilesRef = useRef<string>("");
   useEffect(() => {
     const key = prChangedFiles.join(",");
