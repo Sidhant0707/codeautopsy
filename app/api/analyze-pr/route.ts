@@ -120,7 +120,7 @@ Analyze these code changes and return ONLY a valid JSON object with EXACTLY this
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: "Analyze this PR and return ONLY the required JSON." },
