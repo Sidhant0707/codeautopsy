@@ -75,7 +75,7 @@ function extractImports(content: string, currentFile: string, aliases: Record<st
 
   while ((match = es6Regex.exec(content)) !== null) {
     const importPath = match[1];
-    
+
     if (importPath.startsWith(".")) {
       imports.push(resolveImport(importPath, dir));
     } else if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
@@ -89,7 +89,7 @@ function extractImports(content: string, currentFile: string, aliases: Record<st
 
   while ((match = cjsRegex.exec(content)) !== null) {
     const importPath = match[1];
-    
+
     if (importPath.startsWith(".")) {
       imports.push(resolveImport(importPath, dir));
     } else if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
@@ -123,14 +123,13 @@ function resolveToActualFile(importPath: string, allFiles: string[]): string | n
 export function injectNextJsHeuristics(graph: DependencyGraph, allFiles: string[]): DependencyGraph {
   const enhancedGraph: DependencyGraph = JSON.parse(JSON.stringify(graph));
   const directories: Record<string, string[]> = {};
-  
+
   for (const file of allFiles) {
     const dir = file.split("/").slice(0, -1).join("/") || "root";
     if (!directories[dir]) directories[dir] = [];
     directories[dir].push(file);
   }
 
-  // FIXED: Changed to Object.values and removed 'dir'
   for (const filesInDir of Object.values(directories)) {
     const layout = filesInDir.find(f => f.match(/\/layout\.(tsx|ts|jsx|js)$/));
     const page = filesInDir.find(f => f.match(/\/page\.(tsx|ts|jsx|js)$/));
@@ -139,7 +138,7 @@ export function injectNextJsHeuristics(graph: DependencyGraph, allFiles: string[
 
     if (page) {
       if (!enhancedGraph[page]) enhancedGraph[page] = [];
-      
+
       if (layout && !enhancedGraph[page].includes(layout)) {
         enhancedGraph[page].push(layout);
       }
@@ -160,7 +159,7 @@ export function buildDependencyGraph(
   allFiles: string[]
 ): DependencyGraph {
   const graph: DependencyGraph = {};
-  
+
   const tsConfigFile = fileContents.find(f => f.path === "tsconfig.json");
   const aliases = tsConfigFile ? extractAliasesFromTsConfig(tsConfigFile.content) : {};
 
@@ -210,7 +209,7 @@ export function graphToMermaid(graph: DependencyGraph, entryPoints: string[]): s
     const potentialEntries = Object.keys(graph).filter(file => {
       const isEntry = file.includes("index.") || file.includes("main.") || file.includes("page.") || file.includes("app.");
       const isHighFanIn = (fanIn[file] || 0) > 2;
-      return isEntry || isHighFanIn;  
+      return isEntry || isHighFanIn;
     });
     queue.push(...potentialEntries.slice(0, 3));
   }
@@ -337,7 +336,7 @@ export function traverseFromCrash(
     distance: 0,
     fan_in: fanIn[crashNode] || 0,
     relationship: "crash_site",
-    relevance_score: 1000, 
+    relevance_score: 1000,
   });
   visited.add(crashNode);
 
@@ -374,22 +373,22 @@ export function calculateBlastRadius(
   for (const file of modifiedFiles) {
     const affected = new Set<string>();
     const queue = [file];
-    
+
     while (queue.length > 0) {
       const current = queue.shift()!;
       const dependents = reverseDependencyGraph[current] || [];
-      
+
       for (const dep of dependents) {
         if (!affected.has(dep)) {
           affected.add(dep);
-          queue.push(dep); 
+          queue.push(dep);
         }
       }
     }
 
     const affectedArray = Array.from(affected);
     let risk: BlastRadiusResult["riskScore"] = "LOW";
-    
+
     if (affectedArray.length > 20) risk = "CRITICAL";
     else if (affectedArray.length > 10) risk = "HIGH";
     else if (affectedArray.length > 3) risk = "MEDIUM";
@@ -402,4 +401,82 @@ export function calculateBlastRadius(
   }
 
   return results.sort((a, b) => b.affectedDownstream.length - a.affectedDownstream.length);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEPTH-BASED FILE SELECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DepthBatchResult {
+  files: string[];
+  depthMap: Record<string, number>;
+  layerSizes: number[];
+}
+
+export function getFilesByDepth(
+  graph: DependencyGraph,
+  entryPoints: string[],
+  maxDepth = 3,
+  maxNodes = 60,
+  fallbackRanked: string[] = [],
+): DepthBatchResult {
+  const depthMap: Record<string, number> = {};
+  const layerSizes: number[] = [];
+
+  let seeds = entryPoints.filter((ep) => ep in graph);
+
+  if (seeds.length === 0) {
+    const fanIn = computeFanIn(graph);
+    seeds = Object.entries(fanIn)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([f]) => f);
+  }
+
+  const visited = new Set<string>();
+  let currentLayer = seeds.filter((s) => {
+    if (visited.has(s)) return false;
+    visited.add(s);
+    return true;
+  });
+
+  for (const seed of currentLayer) depthMap[seed] = 0;
+
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    if (currentLayer.length === 0) break;
+
+    const nextLayer: string[] = [];
+
+    for (const node of currentLayer) {
+      const deps = graph[node] ?? [];
+      for (const dep of deps) {
+        if (!visited.has(dep)) {
+          visited.add(dep);
+          depthMap[dep] = depth;
+          nextLayer.push(dep);
+        }
+      }
+    }
+
+    layerSizes.push(nextLayer.length);
+    currentLayer = nextLayer;
+  }
+
+  const files = Array.from(visited);
+
+  if (files.length < maxNodes) {
+    for (const f of fallbackRanked) {
+      if (files.length >= maxNodes) break;
+      if (!visited.has(f)) {
+        files.push(f);
+        depthMap[f] = maxDepth + 1;
+      }
+    }
+  }
+
+  return {
+    files: files.slice(0, maxNodes),
+    depthMap,
+    layerSizes,
+  };
 }

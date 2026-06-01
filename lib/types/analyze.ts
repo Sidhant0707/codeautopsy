@@ -1,4 +1,4 @@
-// lib/types/analyze.ts
+import type { CFGResult } from "@/lib/cfg-builder";
 
 export interface Analysis {
   architecture_pattern: string;
@@ -42,9 +42,12 @@ export interface RepoData {
   }[];
   fileContents?: { path: string; content: string }[];
   pageRankScores?: Record<string, number>;
-articulationPoints?: string[];
-bridges?: Array<[string, string]>;
-componentSizes?: Record<string, number>;
+  betweennessScores?: Record<string, number>;
+  cfgFindings?: CFGResult[];
+  cfgSummary?: string;
+  articulationPoints?: string[];
+  bridges?: Array<[string, string]>;
+  componentSizes?: Record<string, number>;
 }
 
 export interface PRBlastRadiusItem {

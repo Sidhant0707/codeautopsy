@@ -5,8 +5,8 @@ import { Tracer, wrapOpenAI } from "0xtrace";
 // Wrapped per-call inside streamAnalyzeWithGemini so each repo analysis
 // gets its own session in the 0xtrace dashboard.
 const baseGroq = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY!,
-  baseURL: "https://api.groq.com/openai/v1",
+  apiKey: process.env.CEREBRAS_API_KEY!,         
+  baseURL: "https://api.cerebras.ai/v1",           
 });
 
 // ── Main Streaming Function ───────────────────────────────────────────────────
@@ -82,7 +82,7 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
 
   // 4. Execute the call with `stream: true` so 0xtrace can intercept it
   const response = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+    model: "gpt-oss-120b",    
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: "Analyze this codebase and stream ONLY the required JSON." }

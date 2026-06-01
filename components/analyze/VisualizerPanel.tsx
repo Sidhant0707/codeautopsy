@@ -37,6 +37,7 @@ interface VisualizerPanelProps {
   mapView: MapViewType;
   onMapViewChange: (view: MapViewType) => void;
   prChangedFiles?: string[];
+  betweennessScores?: Record<string, number>; // NEW
 }
 
 export default function VisualizerPanel({
@@ -44,6 +45,7 @@ export default function VisualizerPanel({
   mapView,
   onMapViewChange,
   prChangedFiles = [],
+  betweennessScores = {}, // NEW
 }: VisualizerPanelProps) {
   return (
     <motion.div
@@ -63,9 +65,18 @@ export default function VisualizerPanel({
           <h3 className="text-sm font-bold text-slate-300 font-mono tracking-widest uppercase">
             Blueprint Map
           </h3>
-          <span className="text-[10px] font-mono text-slate-500">
-            VISUAL LAYOUT
-          </span>
+          {/* NEW: wrap subtitle + legend chip in a row */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-slate-500">
+              VISUAL LAYOUT
+            </span>
+            {mapView === "graph" &&
+              Object.keys(betweennessScores).length > 0 && (
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-orange-500/30 text-orange-400 bg-orange-500/10">
+                  🔶 orange ring = high betweenness
+                </span>
+              )}
+          </div>
         </div>
 
         <div className="flex overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] bg-[#141414]/90 backdrop-blur-xl p-1 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10">
@@ -105,6 +116,7 @@ export default function VisualizerPanel({
                 fileMetrics={data.fileMetrics}
                 prChangedFiles={prChangedFiles}
                 pageRankScores={data.pageRankScores ?? {}}
+                betweennessScores={betweennessScores} // NEW
               />
             ) : (
               <div className="w-full h-full bg-[#0e0e0e] flex flex-col items-center justify-center p-4 text-center">

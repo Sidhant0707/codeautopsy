@@ -47,6 +47,28 @@ import {
   getRankedArticulationPoints,
   type RankedArticulationPoint,
 } from "@/lib/algorithms/articulationPoints";
+import {
+  betweennessToSeverity,
+  BETWEENNESS_SEVERITY_COLORS,
+} from "@/lib/algorithms/betweenness";
+type BetweennessSeverity = keyof typeof BETWEENNESS_SEVERITY_COLORS;
+
+// ─── Betweenness severity → Tailwind classes ───────────────────────────────
+const BETWEENNESS_SEVERITY_TW: Record<BetweennessSeverity, { bg: string }> = {
+  critical: { bg: "bg-red-500" },
+  high: { bg: "bg-orange-500" },
+  medium: { bg: "bg-yellow-500" },
+  low: { bg: "bg-blue-500" },
+};
+
+const BETWEENNESS_RING_COLOR: Record<BetweennessSeverity, string> = {
+  critical: "#ef4444",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "transparent",
+};
+
+// ─── Pure helper functions (stable references, no closures) ───────────────
 
 function detectCircularDependencies(graph: Record<string, string[]>): {
   cycleNodes: Set<string>;
@@ -136,7 +158,6 @@ function computePrBlastRadius(
   return { modifiedNodes, blastNodes };
 }
 
-// ── NEW: Self-contained PageRank computation ──────────────────────────────────
 function computePageRank(
   graph: Record<string, string[]>,
   iterations = 20,
@@ -162,12 +183,10 @@ function computePageRank(
     Object.assign(scores, next);
   }
 
-  // Normalize to 0–100
   const max = Math.max(...Object.values(scores), 1);
   nodes.forEach((n) => (scores[n] = Math.round((scores[n] / max) * 100)));
   return scores;
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 type PageRankTier = 0 | 1 | 2 | 3;
 
@@ -205,6 +224,8 @@ interface GlassNodeData {
   isArticulationPoint?: boolean;
   apDisconnects?: number;
   isBridge?: boolean;
+  betweennessScore?: number;
+  betweennessSeverity?: BetweennessSeverity;
 }
 
 const PR_TIER_STYLES: Record<
@@ -265,7 +286,16 @@ const HEATMAP_STYLES: Record<
   },
 };
 
-const GlassNode = ({ data }: { data: GlassNodeData }) => {
+// ─── PERF FIX 1: Wrap GlassNode in React.memo ─────────────────────────────
+// Without memo, all 85 nodes re-render on every state change (mode toggle,
+// node click, etc.). With memo, only nodes whose `data` reference actually
+// changed will re-render. ReactFlow preserves data identity via useNodesState,
+// so unaffected nodes get skipped entirely.
+const GlassNode = React.memo(function GlassNode({
+  data,
+}: {
+  data: GlassNodeData;
+}) {
   const {
     isBlastRadius,
     isDimmed,
@@ -277,7 +307,16 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
     pageRankTier,
     pageRankActive,
     pageRankScore,
+    betweennessScore,
+    betweennessSeverity,
   } = data;
+
+  const betweennessRingStyle: React.CSSProperties =
+    betweennessSeverity && betweennessSeverity !== "low"
+      ? {
+          boxShadow: `0 0 0 2px ${BETWEENNESS_RING_COLOR[betweennessSeverity]}`,
+        }
+      : {};
 
   if (
     pageRankActive &&
@@ -293,7 +332,8 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
 
     return (
       <div
-        className={`px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer ${s.bg} border ${s.border} ${s.shadow} ${dimmed ? "opacity-25" : "opacity-100"}`}
+        className={`px-4 py-2 shadow-xl rounded-xl backdrop-blur-md min-w-[150px] transition-all duration-300 cursor-pointer ${s.bg} border ${s.border} ${s.shadow} ${dimmed ? "opacity-25" : "opacity-100"} `}
+        style={betweennessRingStyle}
       >
         <Handle
           type="target"
@@ -322,6 +362,21 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
               className={`mt-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${s.badge}`}
             >
               PR {pageRankScore}
+            </div>
+          )}
+          {betweennessSeverity && (
+            <div className="flex items-center gap-1 mt-1">
+              <span
+                className={`w-2 h-2 rounded-full inline-block flex-shrink-0 ${BETWEENNESS_SEVERITY_TW[betweennessSeverity].bg}`}
+              />
+              <span className="text-[10px] font-mono text-slate-400">
+                Betweenness:{" "}
+                <span className="text-white font-bold">
+                  {betweennessSeverity.toUpperCase()}
+                </span>{" "}
+                {betweennessScore !== undefined &&
+                  `(${(betweennessScore * 100).toFixed(1)}%)`}
+              </span>
             </div>
           )}
         </div>
@@ -388,7 +443,7 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
   }
 
   return (
-    <div className={containerClass}>
+    <div className={containerClass} style={betweennessRingStyle}>
       <Handle
         type="target"
         position={Position.Top}
@@ -443,6 +498,21 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
               {data.apDisconnects} files affected
             </div>
           )}
+        {betweennessSeverity && (
+          <div className="flex items-center gap-1 mt-1">
+            <span
+              className={`w-2 h-2 rounded-full inline-block flex-shrink-0 ${BETWEENNESS_SEVERITY_TW[betweennessSeverity].bg}`}
+            />
+            <span className="text-[10px] font-mono text-slate-400">
+              Betweenness:{" "}
+              <span className="text-white font-bold">
+                {betweennessSeverity.toUpperCase()}
+              </span>{" "}
+              {betweennessScore !== undefined &&
+                `(${(betweennessScore * 100).toFixed(1)}%)`}
+            </span>
+          </div>
+        )}
       </div>
       <Handle
         type="source"
@@ -451,8 +521,11 @@ const GlassNode = ({ data }: { data: GlassNodeData }) => {
       />
     </div>
   );
-};
+});
 
+// ─── PERF FIX 2: nodeTypes at module level (not inside component) ──────────
+// This was already correct in the original. Defined here as a stable constant
+// so ReactFlow never sees a new object reference across renders.
 const nodeTypes = { glass: GlassNode };
 
 interface ForceNode extends Node {
@@ -584,6 +657,8 @@ function getForceLayoutedElements(
   };
 }
 
+// ─── Sidebar ───────────────────────────────────────────────────────────────
+
 interface SidebarProps {
   nodeCount: number;
   cycleCount: number;
@@ -605,7 +680,11 @@ interface SidebarProps {
   pageRankTopFiles: Array<{ path: string; score: number }>;
 }
 
-function AnalysisSidebar({
+// ─── PERF FIX 3: Wrap AnalysisSidebar in React.memo ──────────────────────
+// Sidebar is a heavy component (~600 lines of JSX). Without memo it re-renders
+// on every node click and mode change even though its own props haven't changed.
+// With memo it only re-renders when sidebar-relevant props actually change.
+const AnalysisSidebar = React.memo(function AnalysisSidebar({
   nodeCount,
   cycleCount,
   cycleNodes,
@@ -1485,7 +1564,9 @@ function AnalysisSidebar({
       </AnimatePresence>
     </motion.div>
   );
-}
+});
+
+// ─── Main Component ────────────────────────────────────────────────────────
 
 export default function ArchitectureMap({
   dependencyGraph = {},
@@ -1493,12 +1574,14 @@ export default function ArchitectureMap({
   fileMetrics = [],
   prChangedFiles = [],
   pageRankScores = {},
+  betweennessScores = {},
 }: {
   dependencyGraph: Record<string, string[]>;
   entryPoints: string[];
   fileMetrics?: { path: string; size: number }[];
   prChangedFiles?: string[];
   pageRankScores?: Record<string, number>;
+  betweennessScores?: Record<string, number>;
 }) {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const previousGraphRef = useRef<string>("");
@@ -1507,6 +1590,8 @@ export default function ArchitectureMap({
   );
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   const [selectedOrphan, setSelectedOrphan] = useState<string | null>(null);
+
+  // ── Derived data from graph (stable per analysis session) ────────────────
 
   const { cycleNodes, cycleCount } = useMemo(
     () => detectCircularDependencies(dependencyGraph),
@@ -1522,6 +1607,8 @@ export default function ArchitectureMap({
     () => detectOrphans(dependencyGraph),
     [dependencyGraph],
   );
+
+  const orphanSet = useMemo(() => new Set(orphans), [orphans]);
 
   const adjacencyList = useMemo(() => {
     const rev: Record<string, string[]> = {};
@@ -1547,12 +1634,10 @@ export default function ArchitectureMap({
     return { prModifiedNodes: modifiedNodes, prBlastNodes: blastNodes };
   }, [prChangedFiles, adjacencyList]);
 
-  // ── NEW: Compute PageRank internally if not passed in from parent ──────────
   const computedPageRankScores = useMemo(() => {
     if (Object.keys(pageRankScores).length > 0) return pageRankScores;
     return computePageRank(dependencyGraph);
   }, [dependencyGraph, pageRankScores]);
-  // ──────────────────────────────────────────────────────────────────────────
 
   const pageRankTopFiles = useMemo(
     () =>
@@ -1571,7 +1656,6 @@ export default function ArchitectureMap({
     return map;
   }, [computedPageRankScores]);
 
-  // ── Articulation point computation ────────────────────────────────────────
   const apResult = useMemo(
     () => computeArticulationPoints(dependencyGraph),
     [dependencyGraph],
@@ -1589,17 +1673,23 @@ export default function ArchitectureMap({
     [apResult],
   );
 
-  const prevPrFilesRef = useRef<string>("");
-  useEffect(() => {
-    const key = prChangedFiles.join(",");
-    if (key && key !== prevPrFilesRef.current) {
-      prevPrFilesRef.current = key;
-    }
-  }, [prChangedFiles]);
+  // ── PERF FIX 4: Split layout memo from decoration memo ───────────────────
+  //
+  // BEFORE: one memo ran the D3 force simulation (500 ticks, ~expensive) AND
+  // included betweennessScores + computedPageRankScores as deps. Whenever those
+  // score props changed, the entire simulation re-ran even though node positions
+  // don't depend on scores.
+  //
+  // AFTER:
+  //   layoutMemo   → runs force sim, depends only on graph structure
+  //   initialNodes → decorates with scores (no sim), runs on score changes
+  //
+  // This means the 500-tick simulation only re-runs when the graph changes,
+  // not when analysis scores are delivered.
 
-  const { initialNodes, initialEdges, graphHash } = useMemo(() => {
+  const { layoutNodes, layoutEdges, graphHash } = useMemo(() => {
     if (!dependencyGraph || typeof dependencyGraph !== "object")
-      return { initialNodes: [], initialEdges: [], graphHash: "" };
+      return { layoutNodes: [], layoutEdges: [], graphHash: "" };
 
     const nodes: Node[] = [];
     const edges: Edge[] = [];
@@ -1612,20 +1702,28 @@ export default function ArchitectureMap({
           label: filePath.split("/").pop() || filePath,
           fullPath: filePath,
           isEntry: entryPoints.includes(filePath),
+          // Static graph-derived properties baked in here so they don't
+          // need a separate effect later.
+          isCircular: cycleNodes.has(filePath),
+          isOrphan: orphanSet.has(filePath),
+          // Highlighting props — reset to neutral defaults. The mode effect
+          // overrides these when the user activates a mode.
           isBlastRadius: false,
           isDimmed: false,
-          isCircular: false,
-          heatmap: undefined,
-          isOrphan: false,
           isOrphanHighlighted: false,
           isPrModified: false,
           isPrBlast: false,
-          pageRankScore: computedPageRankScores[filePath] ?? 0,
-          pageRankTier: getPageRankTier(computedPageRankScores[filePath] ?? 0),
           pageRankActive: false,
           isArticulationPoint: false,
           apDisconnects: 0,
           isBridge: false,
+          heatmap: undefined,
+          // Scores are NOT included here — they're added in initialNodes below
+          // so that score changes don't re-trigger the force simulation.
+          pageRankScore: 0,
+          pageRankTier: 0 as PageRankTier,
+          betweennessScore: 0,
+          betweennessSeverity: undefined,
         },
         position: { x: 0, y: 0 },
       });
@@ -1644,48 +1742,67 @@ export default function ArchitectureMap({
       });
     });
 
-    const { nodes: layoutNodes, edges: layoutEdges } = getForceLayoutedElements(
-      nodes,
-      edges,
-      entryPoints,
-    );
+    const { nodes: laidOutNodes, edges: laidOutEdges } =
+      getForceLayoutedElements(nodes, edges, entryPoints);
 
-    const graphHash = JSON.stringify({
+    const hash = JSON.stringify({
       graphKeys: Object.keys(dependencyGraph).sort(),
       edgesCount: edges.length,
-      entryPoints: entryPoints.sort(),
+      entryPoints: [...entryPoints].sort(),
     });
 
-    return { initialNodes: layoutNodes, initialEdges: layoutEdges, graphHash };
-  }, [dependencyGraph, entryPoints, computedPageRankScores]);
+    return {
+      layoutNodes: laidOutNodes,
+      layoutEdges: laidOutEdges,
+      graphHash: hash,
+    };
+    // Note: cycleNodes and orphanSet are derived from dependencyGraph so they
+    // only change when dependencyGraph changes — no extra sim triggers.
+  }, [dependencyGraph, entryPoints, cycleNodes, orphanSet]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  useEffect(() => {
-    if (previousGraphRef.current !== graphHash) {
-      setNodes(initialNodes);
-      setEdges(initialEdges);
-      previousGraphRef.current = graphHash;
-    }
-  }, [initialNodes, initialEdges, graphHash, setNodes, setEdges]);
-
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => ({
+  // Decorate layout nodes with scores — fast map, no force sim.
+  const initialNodes = useMemo(() => {
+    return layoutNodes.map((n) => {
+      const bScore = betweennessScores[n.id] ?? 0;
+      const bSeverity = betweennessToSeverity(bScore);
+      const showRing = bSeverity !== "low";
+      return {
         ...n,
         data: {
           ...n.data,
-          isCircular: cycleNodes.has(n.id),
-          heatmap: heatmapEnabled
-            ? (heatmapColors.get(n.id) ?? "green")
-            : undefined,
-          isOrphan: orphans.includes(n.id),
+          pageRankScore: computedPageRankScores[n.id] ?? 0,
+          pageRankTier: getPageRankTier(computedPageRankScores[n.id] ?? 0),
+          betweennessScore: bScore,
+          betweennessSeverity: showRing ? bSeverity : undefined,
         },
-      })),
-    );
-  }, [cycleNodes, heatmapColors, heatmapEnabled, orphans, setNodes]);
+      };
+    });
+  }, [layoutNodes, computedPageRankScores, betweennessScores]);
 
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
+
+  // Sync ReactFlow state when graph structure changes (new analysis loaded).
+  useEffect(() => {
+    if (previousGraphRef.current !== graphHash) {
+      setNodes(initialNodes);
+      setEdges(layoutEdges);
+      previousGraphRef.current = graphHash;
+    }
+  }, [initialNodes, layoutEdges, graphHash, setNodes, setEdges]);
+
+  // ── PERF FIX 5: Single unified effect for all visual state ───────────────
+  //
+  // BEFORE: two separate effects both called setNodes, causing two render
+  // cycles on every mode change:
+  //   Effect 1: set isCircular, heatmap, isOrphan
+  //   Effect 2: set all mode-specific highlighting
+  //
+  // AFTER: one effect handles everything. isCircular and isOrphan are now
+  // baked into initialNodes (graph-derived, stable), so this effect only
+  // handles user-interaction state: mode highlighting + heatmap toggle.
+  //
+  // This eliminates one render cycle per interaction.
   useEffect(() => {
     if (!activeMode && !selectedNode) {
       setNodes((nds) =>
@@ -1701,6 +1818,9 @@ export default function ArchitectureMap({
             pageRankActive: false,
             isArticulationPoint: false,
             apDisconnects: 0,
+            heatmap: heatmapEnabled
+              ? (heatmapColors.get(n.id) ?? "green")
+              : undefined,
           },
         })),
       );
@@ -1729,6 +1849,7 @@ export default function ArchitectureMap({
             isArticulationPoint: apSet.has(n.id),
             apDisconnects: apResult.componentSizes.get(n.id) ?? 0,
             isDimmed: !apSet.has(n.id),
+            heatmap: undefined,
           },
         })),
       );
@@ -1771,6 +1892,7 @@ export default function ArchitectureMap({
               isOrphanHighlighted: false,
               isArticulationPoint: false,
               isDimmed: tier === 0,
+              heatmap: undefined,
             },
           };
         }),
@@ -1820,6 +1942,7 @@ export default function ArchitectureMap({
             isPrModified: prModifiedNodes.has(n.id),
             isPrBlast: prBlastNodes.has(n.id),
             isDimmed: !prModifiedNodes.has(n.id) && !prBlastNodes.has(n.id),
+            heatmap: undefined,
           },
         })),
       );
@@ -1873,6 +1996,7 @@ export default function ArchitectureMap({
             isOrphanHighlighted: selectedOrphan
               ? n.id === selectedOrphan
               : false,
+            heatmap: undefined,
           },
         })),
       );
@@ -1904,6 +2028,7 @@ export default function ArchitectureMap({
             isArticulationPoint: false,
             isDimmed: !cycleNodes.has(n.id),
             isOrphanHighlighted: false,
+            heatmap: undefined,
           },
         })),
       );
@@ -1956,6 +2081,7 @@ export default function ArchitectureMap({
             isPrModified: false,
             isPrBlast: false,
             isArticulationPoint: false,
+            heatmap: undefined,
           },
         })),
       );
@@ -1981,6 +2107,8 @@ export default function ArchitectureMap({
   }, [
     activeMode,
     selectedNode,
+    heatmapEnabled,
+    heatmapColors,
     cycleNodes,
     selectedOrphan,
     prModifiedNodes,
@@ -1991,10 +2119,11 @@ export default function ArchitectureMap({
     apSet,
     apResult,
     bridgeSet,
-    rankedAPs,
     setNodes,
     setEdges,
   ]);
+
+  // ── Event handlers (all stable via useCallback) ───────────────────────────
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedOrphan(null);

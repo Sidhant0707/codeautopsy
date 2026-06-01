@@ -140,14 +140,15 @@ const TreeNode = memo(({ data }: { data: TreeNodeData }) => {
 });
 TreeNode.displayName = "TreeNode";
 
+// ─── PERF FIX: nodeTypes at module level (not inside component) ───────────
+const nodeTypes = { treeNode: TreeNode };
+
 export default function DirectoryTreeVisualizer({
   metrics,
 }: {
   metrics: { path: string; size: number }[];
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-
-  const nodeTypes = useMemo(() => ({ treeNode: TreeNode }), []);
 
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!metrics || metrics.length === 0)
@@ -222,10 +223,9 @@ export default function DirectoryTreeVisualizer({
         id: `e-${link.source.data.path}-${link.target.data.path}`,
         source: link.source.data.path,
         target: link.target.data.path,
-        type: "smoothstep", // Keep the structured layout
+        type: "smoothstep",
         animated: false,
         style: { stroke: "#334155", strokeWidth: 1.5, opacity: 0.3 },
-        // Add this property to slightly round the sharp 90-degree corners!
         pathOptions: { borderRadius: 12 },
       });
     });
@@ -285,13 +285,12 @@ export default function DirectoryTreeVisualizer({
 
         return {
           ...e,
-          // --- PRINCIPAL UPGRADE: Active flow animation on isolated paths ---
           animated: isActiveEdge,
           style: {
             ...e.style,
             opacity: isActiveEdge ? 1 : 0.05,
             strokeWidth: isActiveEdge ? 2.5 : 1,
-            stroke: isActiveEdge ? "#10b981" : "#1e293b", // Emerald glow for active flow
+            stroke: isActiveEdge ? "#10b981" : "#1e293b",
           },
         };
       }),
