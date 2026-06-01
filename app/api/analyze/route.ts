@@ -17,7 +17,7 @@ import {
 } from "@/lib/pipeline/ast-pipeline";
 import { GitHubAuthError } from "@/lib/github";
 
-const ANALYSIS_VERSION = 10;
+const ANALYSIS_VERSION = 14;
 
 // ── SafeStream ────────────────────────────────────────────────────────────────
 class SafeStream {

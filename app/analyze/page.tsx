@@ -219,6 +219,7 @@ const AnalyzeContent = memo(() => {
                   mapView={mapView}
                   onMapViewChange={setMapView}
                   prChangedFiles={prChangedFiles}
+                  betweennessScores={data.betweennessScores ?? {}}
                 />
               )}
 

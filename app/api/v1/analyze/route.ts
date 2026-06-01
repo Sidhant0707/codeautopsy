@@ -8,7 +8,7 @@ import { ratelimitApiKey } from "@/lib/ratelimit";
 import { parseRepoUrl, GitHubAuthError } from "@/lib/github";
 import { runAstPipeline, PipelineError } from "@/lib/pipeline/ast-pipeline";
 
-const ANALYSIS_VERSION = 10;
+const ANALYSIS_VERSION = 14;
 
 const PIPELINE_ERROR_STATUS: Record<string, number> = {
   INVALID_REPO_URL:  400,
