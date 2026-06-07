@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next"; 
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,11 +15,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "CodeAutopsy | AI-Powered Codebase Visualization",
-  description: "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
+  description:
+    "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
   metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
   openGraph: {
     title: "CodeAutopsy | Dissect Any Codebase",
-    description: "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
+    description:
+      "AI-powered architecture maps and execution flows for any GitHub repository. Understand code faster.",
     url: "https://codeautopsy-lyart.vercel.app",
     siteName: "CodeAutopsy",
     images: [
@@ -36,7 +38,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "CodeAutopsy | Dissect Any Codebase",
-    description: "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
+    description:
+      "Understand any codebase in minutes. AI-powered visual architecture and execution flows.",
     creator: "@Sidhant07",
     images: ["/og-image.png"],
   },
@@ -52,9 +55,36 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "CodeAutopsy",
+              description:
+                "AI-powered GitHub repository analyzer. Visualize dependencies, detect fragile points, and understand codebases faster.",
+              applicationCategory: "DeveloperApplication",
+              operatingSystem: "Web",
+              url: "https://codeautopsy-lyart.vercel.app",
+              offers: {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "USD",
+              },
+              author: {
+                "@type": "Person",
+                name: "Sidhant Kumar",
+                url: "https://sidcore.in",
+              },
+            }),
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         {children}
-        <Analytics /> 
+        <Analytics />
       </body>
     </html>
   );
