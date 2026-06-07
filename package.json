@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postbuild": "next-sitemap"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.65",
@@ -32,6 +33,7 @@
     "lucide-react": "^1.7.0",
     "mermaid": "^11.14.0",
     "next": "16.2.2",
+    "next-sitemap": "^4.2.3",
     "openai": "^6.40.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -62,6 +64,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
     "prettier": "^3.8.3",
+    "puppeteer": "^25.1.0",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "typescript": "^5"

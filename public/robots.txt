@@ -1,0 +1,20 @@
+# *
+User-agent: *
+Allow: /
+
+# *
+User-agent: *
+Disallow: /api/
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /profile/
+Disallow: /history/
+Disallow: /analyze/
+Disallow: /pr-scan/
+Disallow: /view/
+
+# Host
+Host: https://codeautopsy-lyart.vercel.app
+
+# Sitemaps
+Sitemap: https://codeautopsy-lyart.vercel.app/sitemap.xml
