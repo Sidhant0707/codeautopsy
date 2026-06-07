@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   description:
     "Stop wrestling with unfamiliar code. CodeAutopsy analyzes GitHub repositories to provide visual architecture, execution flows, and AI-driven insights in minutes.",
   metadataBase: new URL("https://codeautopsy-lyart.vercel.app"),
+  verification: {
+    google: "c00IopCIPszhIWL0_m1d65gf9IbpT_CUR0gTQnafufQ",
+  },
   openGraph: {
     title: "CodeAutopsy | Dissect Any Codebase",
     description:
