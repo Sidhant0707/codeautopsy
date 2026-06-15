@@ -1,3 +1,4 @@
+// app/pricing/page.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -93,7 +94,7 @@ export default function PricingPage() {
             </div>
             <Link
               href="/"
-              className="cursor-pointer block text-center py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:scale-105 transition-transform active:scale-95"
+              className="cursor-pointer block text-center py-3 rounded-xl bg-white/10 text-slate-300 border border-white/10 font-bold text-xs uppercase tracking-widest hover:bg-white/15 hover:text-white transition-all active:scale-95"
             >
               Get Started
             </Link>
@@ -116,7 +117,7 @@ export default function PricingPage() {
                 Specialist
               </h3>
               <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-4xl font-black text-white">₹99</span>
+                <span className="text-4xl font-black text-white">$2</span>
                 <span className="text-slate-500 text-sm">/mo</span>
               </div>
               <p className="text-amber-400/70 text-xs mb-8 font-bold uppercase tracking-widest">
@@ -147,7 +148,7 @@ export default function PricingPage() {
               whileTap={{ scale: 0.97 }}
               onClick={handleUpgrade}
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
+              className="w-full py-3 rounded-xl bg-amber-400 text-black font-bold text-xs uppercase tracking-widest hover:bg-amber-300 transition-colors active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
             >
               {loading ? "Redirecting..." : "Upgrade to Specialist →"}
             </motion.button>
@@ -161,7 +162,7 @@ export default function PricingPage() {
             className="glass-card p-8 rounded-3xl border border-white/5 opacity-60 relative cursor-not-allowed flex flex-col justify-between bg-[#141414]"
           >
             <div className="absolute top-4 right-4 px-2 py-1 rounded bg-slate-800 border border-white/10">
-              <span className="text-[9px] font-black text-white uppercase tracking-widest">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                 Coming Soon
               </span>
             </div>
