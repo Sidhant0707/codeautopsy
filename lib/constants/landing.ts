@@ -1,3 +1,4 @@
+// lib/constants.ts
 import {
   Network,
   Brain,
@@ -106,19 +107,18 @@ export const pricingPlans = [
     period: "/forever",
     description: "For learning, scouting, and lightweight repo analysis.",
     features: [
-      "5 autopsies / day",
-      "Groq Llama analysis",
-      "Architecture summary",
-      "Basic dependency map",
+      "10 autopsies / day",
+      "Llama-3.3 70B engine",
+      "Basic architecture maps",
     ],
-    cta: "Start free",
+    cta: "Get Started",
     isPrimary: false,
     status: "active",
-    href: "/signup",
+    href: "/",
   },
   {
     name: "Specialist",
-    price: "₹99",
+    price: "$2",
     period: "/mo",
     description: "For engineers using CodeAutopsy in daily work.",
     features: [
