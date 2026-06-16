@@ -1,4 +1,4 @@
-import { streamAnalyzeWithGemini } from "@/lib/gemini";
+import { streamAnalyzeWithCerebras } from "@/lib/cerebras";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 6. Stream AI response ─────────────────────────────────────────────────
-    const responseStream = await streamAnalyzeWithGemini(
+    const responseStream = await streamAnalyzeWithCerebras(
       repoName,
       description,
       entryPoints,

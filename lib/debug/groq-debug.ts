@@ -5,9 +5,9 @@ import { DebugContext, DebugResult } from "./types";
 export async function analyzeDebugWithGroq(
   input: DebugContext
 ): Promise<DebugResult> {
-  if (process.env.USE_GROQ_FOR_ANALYSIS !== "true") {
+  if (process.env.USE_CEREBRAS_FOR_ANALYSIS !== "true") {
     throw new Error(
-      "Groq analysis is disabled. Set USE_GROQ_FOR_ANALYSIS=true in environment variables."
+      "Cerebras analysis is disabled. Set USE_CEREBRAS_FOR_ANALYSIS=true in environment variables."
     );
   }
 
