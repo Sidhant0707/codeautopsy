@@ -128,7 +128,7 @@ export const pricingPlans = [
       "Markdown exports",
       "Priority analysis queue",
     ],
-    cta: "Upgrade to Specialist →",
+    cta: "Upgrade to Specialist ",
     isPrimary: true,
     status: "active",
     badge: "Early Access",
