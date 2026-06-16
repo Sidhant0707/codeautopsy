@@ -1,203 +1,383 @@
 // app/pricing/page.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { FaCheck, FaLock } from "react-icons/fa";
 
+// ─── Razorpay SDK types ───────────────────────────────────────────────────────
+interface RazorpayPaymentResponse {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayOptions {
+  key: string;
+  subscription_id: string;
+  name: string;
+  description: string;
+  prefill: { name: string; email: string };
+  theme: { color: string };
+  handler: (response: RazorpayPaymentResponse) => void;
+  modal: { ondismiss: () => void; escape: boolean };
+}
+
+interface RazorpayInstance {
+  open: () => void;
+  close: () => void;
+}
+
+interface RazorpayConstructor {
+  new (options: RazorpayOptions): RazorpayInstance;
+}
+
+declare global {
+  interface Window {
+    Razorpay: RazorpayConstructor;
+  }
+}
+
+// ─── Checkout API response type + runtime guard ───────────────────────────────
+interface CheckoutPayload {
+  subscription_id: string;
+  key: string;
+  email: string;
+  name: string;
+}
+
+function isCheckoutPayload(value: unknown): value is CheckoutPayload {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.subscription_id === "string" &&
+    v.subscription_id.length > 0 &&
+    typeof v.key === "string" &&
+    v.key.startsWith("rzp_") &&
+    typeof v.email === "string" &&
+    v.email.includes("@") &&
+    typeof v.name === "string"
+  );
+}
+
+// ─── Singleton script loader ──────────────────────────────────────────────────
+let rzpScriptPromise: Promise<void> | null = null;
+
+function ensureRazorpayLoaded(): Promise<void> {
+  if (rzpScriptPromise !== null) return rzpScriptPromise;
+
+  rzpScriptPromise = new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("SDK must be loaded in a browser context"));
+      return;
+    }
+    if (typeof window.Razorpay === "function") {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      if (typeof window.Razorpay !== "function") {
+        rzpScriptPromise = null;
+        reject(new Error("Payment SDK loaded but unavailable"));
+        return;
+      }
+      resolve();
+    };
+    script.onerror = () => {
+      rzpScriptPromise = null;
+      reject(new Error("Failed to load payment SDK. Check your connection."));
+    };
+    document.body.appendChild(script);
+  });
+
+  return rzpScriptPromise;
+}
+
+// ─── Framer variants ──────────────────────────────────────────────────────────
 const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6 } },
+  hidden: { opacity: 0, y: 16 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, delay: i * 0.08 },
+  }),
 };
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function PricingPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false); // prevents duplicate submissions
 
-  async function handleUpgrade() {
+  // Resets UI state – called on modal dismiss or when aborting checkout
+  const resetLoadingState = () => {
+    setLoading(false);
+    inFlight.current = false;
+  };
+
+  async function handleUpgrade(): Promise<void> {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
+    setError(null);
+
+    let modalOpened = false; // ensures finally doesn't interfere with open modal
+
     try {
-      const res = await fetch("/api/checkout", { method: "POST" });
-      const data = await res.json();
+      await ensureRazorpayLoaded();
+
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
       if (res.status === 401) {
-        window.location.href = "/login";
+        router.push("/login");
         return;
       }
 
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Something went wrong. Please try again.");
+      if (!res.ok) {
+        setError("Unable to start checkout. Please try again.");
+        return;
       }
-    } catch {
-      alert("Something went wrong. Please try again.");
+
+      const raw: unknown = await res.json();
+      if (!isCheckoutPayload(raw)) {
+        console.error("[checkout] Unexpected payload shape:", raw);
+        setError("Received an invalid response. Please contact support.");
+        return;
+      }
+
+      const rzp = new window.Razorpay({
+        key: raw.key,
+        subscription_id: raw.subscription_id,
+        name: "CodeAutopsy",
+        description: "Specialist Plan — $2 / month",
+        prefill: { name: raw.name, email: raw.email },
+        theme: { color: "#ffffff" },
+        handler: () => {
+          // Payment success – redirect to confirmation page.
+          // Access is granted only after server‑side webhook verification.
+          router.push("/?upgraded=true");
+        },
+        modal: {
+          ondismiss: resetLoadingState,
+          escape: false,
+        },
+      });
+
+      rzp.open();
+      modalOpened = true; // prevent finally from prematurely resetting state
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred.";
+      setError(message);
     } finally {
-      setLoading(false);
+      // Only reset if the modal was never opened (error during setup / redirect)
+      if (!modalOpened) {
+        resetLoadingState();
+      }
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#0e0e0e] text-slate-300 py-24 px-6 relative overflow-hidden font-satoshi">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none" />
-
-      <div className="max-w-6xl mx-auto relative z-10">
+    <div className="min-h-screen bg-[#0a0a0a] text-slate-300 py-24 px-6 font-satoshi">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
         <motion.div
           initial="hidden"
           animate="show"
+          custom={0}
           variants={fadeUp}
-          className="text-center mb-20"
+          className="mb-20"
         >
           <Link
             href="/"
-            className="cursor-pointer text-slate-500 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
+            className="inline-block text-slate-600 hover:text-slate-300 text-xs font-semibold uppercase tracking-widest transition-colors mb-10"
           >
             ← Back to Home
           </Link>
-          <h1 className="cabinet text-5xl md:text-7xl font-bold text-white mt-8 mb-4 tracking-tighter italic uppercase">
-            Pricing
-          </h1>
-          <p className="text-slate-500 text-lg">
-            Pick the precision level for your codebase dissection.
-          </p>
+          <div className="border-t border-white/5 pt-10">
+            <h1 className="cabinet text-6xl md:text-8xl font-bold text-white tracking-tighter italic uppercase leading-none">
+              Pricing
+            </h1>
+            <p className="text-slate-500 text-sm mt-4 max-w-xs leading-relaxed">
+              Pick the precision level for your codebase dissection.
+            </p>
+          </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Free Tier */}
+        {/* Error banner */}
+        {error !== null && (
+          <div
+            role="alert"
+            className="mb-6 px-4 py-3 rounded-lg border border-red-500/20 bg-red-500/5 text-red-400 text-xs"
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-white/5 rounded-2xl overflow-hidden border border-white/5">
+          {/* Intern */}
           <motion.div
             initial="hidden"
             animate="show"
+            custom={1}
             variants={fadeUp}
-            className="glass-card p-8 rounded-3xl border border-white/10 relative overflow-hidden flex flex-col justify-between bg-[#141414]"
+            className="bg-[#0a0a0a] p-8 flex flex-col justify-between"
           >
             <div>
-              <h3 className="cabinet text-white font-bold text-xl mb-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-600 mb-6">
                 Intern
-              </h3>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-4xl font-black text-white">$0</span>
-                <span className="text-slate-500 text-sm">/forever</span>
+              </p>
+              <div className="mb-8">
+                <span className="text-5xl font-black text-white tracking-tighter">
+                  $0
+                </span>
+                <span className="text-slate-600 text-sm ml-1">/forever</span>
               </div>
-              <ul className="space-y-4 mb-8 text-sm text-slate-400">
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-slate-500 w-3" /> 10 Autopsies / day
+              <ul className="space-y-3 text-sm text-slate-500">
+                <li className="flex items-center gap-3">
+                  <FaCheck className="w-2.5 shrink-0 text-slate-600" />
+                  10 autopsies / day
                 </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-slate-500 w-3" /> Llama-3.3 70B
-                  Engine
+                <li className="flex items-center gap-3">
+                  <FaCheck className="w-2.5 shrink-0 text-slate-600" />
+                  Llama-3.3 70B engine
                 </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-slate-500 w-3" /> Basic Architecture
-                  Maps
+                <li className="flex items-center gap-3">
+                  <FaCheck className="w-2.5 shrink-0 text-slate-600" />
+                  Basic architecture maps
                 </li>
               </ul>
             </div>
             <Link
               href="/"
-              className="cursor-pointer block text-center py-3 rounded-xl bg-white/10 text-slate-300 border border-white/10 font-bold text-xs uppercase tracking-widest hover:bg-white/15 hover:text-white transition-all active:scale-95"
+              className="mt-10 block text-center py-2.5 rounded-lg border border-white/[0.08] text-slate-500 font-semibold text-xs uppercase tracking-widest hover:border-white/[0.15] hover:text-slate-300 transition-all"
             >
               Get Started
             </Link>
           </motion.div>
 
-          {/* Specialist Tier — LIVE */}
+          {/* Specialist */}
           <motion.div
             initial="hidden"
             animate="show"
+            custom={2}
             variants={fadeUp}
-            className="glass-card p-8 rounded-3xl border border-amber-500/30 relative overflow-hidden flex flex-col justify-between bg-[#141414] shadow-[0_0_40px_rgba(251,191,36,0.05)]"
+            className="bg-[#0e0e0e] p-8 flex flex-col justify-between relative"
           >
-            <div className="absolute top-4 right-4 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20">
-              <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">
-                Early Access
-              </span>
-            </div>
+            <div className="absolute top-0 left-8 right-8 h-px bg-white/20" />
             <div>
-              <h3 className="cabinet text-white font-bold text-xl mb-2">
-                Specialist
-              </h3>
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-4xl font-black text-white">$2</span>
-                <span className="text-slate-500 text-sm">/mo</span>
+              <div className="flex items-center justify-between mb-6">
+                <p className="text-xs font-semibold uppercase tracking-widest text-white">
+                  Specialist
+                </p>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 border border-white/10 px-2 py-0.5 rounded">
+                  Early Access
+                </span>
               </div>
-              <p className="text-amber-400/70 text-xs mb-8 font-bold uppercase tracking-widest">
+              <div className="mb-1">
+                <span className="text-5xl font-black text-white tracking-tighter">
+                  $2
+                </span>
+                <span className="text-slate-600 text-sm ml-1">/mo</span>
+              </div>
+              <p className="text-slate-600 text-[10px] font-semibold uppercase tracking-widest mb-8">
                 Launch price · Lock in forever
               </p>
-              <ul className="space-y-4 mb-8 text-sm text-slate-400">
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-amber-400 w-3" /> 100 Autopsies / day
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-amber-400 w-3" /> Private
-                  Repositories
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-amber-400 w-3" /> Advanced Model
-                  Routing
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-amber-400 w-3" /> Markdown Exports
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaCheck className="text-amber-400 w-3" /> Priority Analysis
-                  Queue
-                </li>
+              <ul className="space-y-3 text-sm text-slate-400">
+                {[
+                  "100 autopsies / day",
+                  "Private repositories",
+                  "Advanced model routing",
+                  "Markdown exports",
+                  "Priority analysis queue",
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-3">
+                    <FaCheck className="w-2.5 shrink-0 text-white" />
+                    {feature}
+                  </li>
+                ))}
               </ul>
             </div>
             <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={handleUpgrade}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                void handleUpgrade();
+              }}
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-amber-400 text-black font-bold text-xs uppercase tracking-widest hover:bg-amber-300 transition-colors active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
+              aria-busy={loading}
+              className="mt-10 w-full py-2.5 rounded-lg bg-white text-[#0a0a0a] font-bold text-xs uppercase tracking-widest hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {loading ? "Redirecting..." : "Upgrade to Specialist →"}
+              {loading ? "Loading..." : "Upgrade to Specialist"}
             </motion.button>
           </motion.div>
 
-          {/* Chief Surgeon Tier */}
+          {/* Chief Surgeon */}
           <motion.div
             initial="hidden"
             animate="show"
+            custom={3}
             variants={fadeUp}
-            className="glass-card p-8 rounded-3xl border border-white/5 opacity-60 relative cursor-not-allowed flex flex-col justify-between bg-[#141414]"
+            className="bg-[#0a0a0a] p-8 flex flex-col justify-between opacity-40 cursor-not-allowed select-none"
+            aria-disabled="true"
           >
-            <div className="absolute top-4 right-4 px-2 py-1 rounded bg-slate-800 border border-white/10">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                Coming Soon
-              </span>
-            </div>
             <div>
-              <h3 className="cabinet text-slate-400 font-bold text-xl mb-2 italic">
-                Chief Surgeon
-              </h3>
-              <div className="flex items-baseline gap-1 mb-8 text-slate-400">
-                <span className="text-xl font-black text-slate-500 italic uppercase tracking-tighter">
+              <div className="flex items-center justify-between mb-6">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 italic">
+                  Chief Surgeon
+                </p>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 border border-white/5 px-2 py-0.5 rounded">
+                  Coming Soon
+                </span>
+              </div>
+              <div className="mb-8">
+                <span className="text-2xl font-black text-slate-500 tracking-tighter uppercase italic">
                   Custom
                 </span>
               </div>
-              <ul className="space-y-4 mb-8 text-sm text-slate-600">
-                <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Unlimited Analysis
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Team Collaboration
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Custom AI Models
-                </li>
-                <li className="flex items-center gap-2">
-                  <FaLock className="w-3" /> Workflow Integrations
-                </li>
+              <ul className="space-y-3 text-sm text-slate-700">
+                {[
+                  "Unlimited analysis",
+                  "Team collaboration",
+                  "Custom AI models",
+                  "Workflow integrations",
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-3">
+                    <FaLock className="w-2.5 shrink-0" />
+                    {feature}
+                  </li>
+                ))}
               </ul>
             </div>
             <button
               disabled
-              className="w-full py-3 rounded-xl bg-white/5 text-slate-600 font-bold text-xs uppercase tracking-widest cursor-not-allowed"
+              aria-disabled="true"
+              className="mt-10 w-full py-2.5 rounded-lg border border-white/5 text-slate-700 font-semibold text-xs uppercase tracking-widest cursor-not-allowed"
             >
               Waitlist
             </button>
           </motion.div>
         </div>
+
+        <motion.p
+          initial="hidden"
+          animate="show"
+          custom={4}
+          variants={fadeUp}
+          className="text-center text-slate-700 text-xs mt-8"
+        >
+          Cancel anytime. No hidden fees. Billed monthly via Razorpay.
+        </motion.p>
       </div>
     </div>
   );

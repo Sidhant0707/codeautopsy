@@ -1,3 +1,4 @@
+// src/app/api/checkout/route.ts
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
@@ -14,43 +15,38 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const response = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+  const credentials = Buffer.from(
+    `${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`
+  ).toString('base64')
+
+  const response = await fetch('https://api.razorpay.com/v1/subscriptions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.LEMONSQUEEZY_API_KEY}`,
-      'Content-Type': 'application/vnd.api+json',
-      'Accept': 'application/vnd.api+json',
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      data: {
-        type: 'checkouts',
-        attributes: {
-          checkout_data: {
-            email: user.email,
-            custom: { supabase_user_id: user.id }
-          },
-          product_options: {
-            redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?upgraded=true`,
-          }
-        },
-        relationships: {
-          store: {
-            data: { type: 'stores', id: process.env.LEMONSQUEEZY_STORE_ID }
-          },
-          variant: {
-            data: { type: 'variants', id: process.env.LEMONSQUEEZY_VARIANT_ID }
-          }
-        }
-      }
-    })
+      plan_id: process.env.RAZORPAY_PLAN_ID,
+      total_count: 120,
+      quantity: 1,
+      customer_notify: 1,
+      notes: {
+        supabase_user_id: user.id,
+        email: user.email,
+      },
+    }),
   })
 
   const data = await response.json()
-  const checkoutUrl = data.data?.attributes?.url
 
-  if (!checkoutUrl) {
-    return NextResponse.json({ error: 'Failed to create checkout' }, { status: 500 })
+  if (!data.id) {
+    return NextResponse.json({ error: 'Failed to create subscription' }, { status: 500 })
   }
 
-  return NextResponse.json({ url: checkoutUrl })
+  return NextResponse.json({
+    subscription_id: data.id,
+    key: process.env.RAZORPAY_KEY_ID,
+    email: user.email,
+    name: user.user_metadata?.full_name ?? '',
+  })
 }
