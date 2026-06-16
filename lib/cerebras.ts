@@ -2,16 +2,16 @@ import OpenAI from "openai";
 import { Tracer, wrapOpenAI } from "0xtrace";
 
 // ── Base Groq client (unwrapped) ──────────────────────────────────────────────
-// Wrapped per-call inside streamAnalyzeWithGemini so each repo analysis
+// Wrapped per-call inside streamAnalyzeWithCerebras so each repo analysis
 // gets its own session in the 0xtrace dashboard.
-const baseGroq = new OpenAI({
+const baseCerebras = new OpenAI({
   apiKey: process.env.CEREBRAS_API_KEY!,         
   baseURL: "https://api.cerebras.ai/v1",           
 });
 
 // ── Main Streaming Function ───────────────────────────────────────────────────
 
-export async function streamAnalyzeWithGemini(
+export async function streamAnalyzeWithCerebras(
   repoName: string,
   description: string,
   entryPoints: string[],
@@ -20,8 +20,8 @@ export async function streamAnalyzeWithGemini(
   blastRadiusTargets: { file: string; dependentsCount: number }[],
   healthMetrics: { score: number; grade: string; color: string; status: string }
 ) {
-  if (process.env.USE_GROQ_FOR_ANALYSIS !== "true") {
-    throw new Error("Groq analysis is disabled. Set USE_GROQ_FOR_ANALYSIS=true.");
+  if (process.env.USE_CEREBRAS_FOR_ANALYSIS !== "true") {
+    throw new Error("Cerebras analysis is disabled. Set USE_CEREBRAS_FOR_ANALYSIS=true.");
   }
 
   // 1. Per-analysis tracer (100% PRESERVED FOR TELEMETRY)
@@ -32,7 +32,7 @@ export async function streamAnalyzeWithGemini(
     metadata: { repo: repoName },
   });
 
-  const groq = wrapOpenAI(baseGroq, tracer);
+  const cerebras = wrapOpenAI(baseCerebras, tracer);
 
   // 2. Build the optimized context text
   // Cap at 20 files — topFiles already identifies the most important ones.
@@ -81,7 +81,7 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
 }`;
 
   // 4. Execute the call with `stream: true` so 0xtrace can intercept it
-  const response = await groq.chat.completions.create({
+  const response = await cerebras.chat.completions.create({
     model: "gpt-oss-120b",    
     messages: [
       { role: "system", content: systemPrompt },
@@ -105,7 +105,7 @@ Analyze this codebase and return ONLY a valid JSON object with exactly this stru
           }
         }
       } catch (error) {
-        console.error("AI Stream Error:", error);
+        console.error("Cerebras Stream Error:", error);
       } finally {
         // The exact millisecond the stream is fully generated, flush the trace
         await tracer.flush();

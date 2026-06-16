@@ -146,7 +146,12 @@ const Message = memo(
             <div className="prose prose-sm prose-invert max-w-none prose-p:mb-4 prose-p:leading-relaxed prose-headings:mt-6 prose-headings:mb-3 prose-headings:text-white prose-li:my-1 prose-strong:text-white">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{ code: CodeBlock }}
+                components={{
+                  code: CodeBlock,
+                  p: ({ children }) => (
+                    <div className="mb-4 leading-relaxed">{children}</div>
+                  ),
+                }}
               >
                 {msg.content}
               </ReactMarkdown>
