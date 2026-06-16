@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const FREE_DIAGNOSTIC_LIMIT = 3;
+import { FREE_DIAGNOSTIC_LIMIT } from "@/lib/constants";
 
 interface DebugInterfaceProps {
   repoUrl: string;

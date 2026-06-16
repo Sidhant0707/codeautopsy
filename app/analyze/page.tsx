@@ -66,28 +66,28 @@ const AnalyzeContent = memo(() => {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, diagRes] = await Promise.all([
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+
+      const [profileRes, diagRes] = await Promise.allSettled([
         supabase
           .from("profiles")
           .select("plan_tier")
           .eq("id", user.id)
           .single(),
         supabase
-          .from("diagnostic_runs")
+          .from("debug_analyses")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .gte(
-            "created_at",
-            (() => {
-              const d = new Date();
-              d.setUTCHours(0, 0, 0, 0);
-              return d.toISOString();
-            })(),
-          ),
+          .gte("created_at", today.toISOString()),
       ]);
 
-      setIsPro(profileRes.data?.plan_tier === "pro");
-      setDiagnosticCount(diagRes.count ?? 0);
+      if (profileRes.status === "fulfilled") {
+        setIsPro(profileRes.value.data?.plan_tier === "pro");
+      }
+      if (diagRes.status === "fulfilled") {
+        setDiagnosticCount(diagRes.value.count ?? 0);
+      }
     }
 
     resolveProStatus();
