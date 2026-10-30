@@ -5,8 +5,8 @@ import { Tracer, wrapOpenAI } from "0xtrace";
 // Wrapped per-call inside streamAnalyzeWithCerebras so each repo analysis
 // gets its own session in the 0xtrace dashboard.
 const baseCerebras = new OpenAI({
-  apiKey: process.env.CEREBRAS_API_KEY!,         
-  baseURL: "https://api.cerebras.ai/v1",           
+  apiKey: process.env.GROQ_API_KEY!,
+  baseURL: "https://api.groq.com/openai/v1",
 });
 
 // ── Main Streaming Function ───────────────────────────────────────────────────
