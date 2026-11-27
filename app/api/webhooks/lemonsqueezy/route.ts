@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
   const eventName = event.meta.event_name
   const userId = event.meta.custom_data?.supabase_user_id
   const status = event.data.attributes.status
+  // Lemon Squeezy does not guarantee delivery order: only apply an event newer than the last one applied.
+  const eventAt = new Date(event.data.attributes.updated_at ?? Date.now()).toISOString()
+  const notStale = `subscription_event_at.is.null,subscription_event_at.lt.${eventAt}`
 
   if (!userId) return NextResponse.json({ error: 'No user ID' }, { status: 400 })
 
@@ -33,21 +36,24 @@ export async function POST(req: NextRequest) {
     await supabase.from('profiles').update({
       plan_tier: 'pro',
       subscription_status: 'active',
-    }).eq('id', userId)
+      subscription_event_at: eventAt,
+    }).eq('id', userId).or(notStale)
   }
 
   if (eventName === 'subscription_updated') {
     await supabase.from('profiles').update({
       plan_tier: status === 'active' ? 'pro' : 'free',
       subscription_status: status,
-    }).eq('id', userId)
+      subscription_event_at: eventAt,
+    }).eq('id', userId).or(notStale)
   }
 
   if (eventName === 'subscription_cancelled') {
     await supabase.from('profiles').update({
       plan_tier: 'free',
       subscription_status: 'cancelled',
-    }).eq('id', userId)
+      subscription_event_at: eventAt,
+    }).eq('id', userId).or(notStale)
   }
 
   return NextResponse.json({ received: true })
